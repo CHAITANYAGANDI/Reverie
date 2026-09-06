@@ -1,78 +1,160 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 
 /**
  * Coming back from Google.
  *
- * <h2>The bug these exist for</h2>
+ * <h2>The bugs these exist for</h2>
  *
- * <p>Pressing Cancel on Google's consent screen landed people on
- * `<slug>.accounts.dev/sign-in` — Clerk's own hosted Account Portal, a
- * different domain wearing a different brand, reached by backing out of a
- * Reverie sign-in.
+ * <p><b>Pressing Cancel stranded people.</b> Google returns here with nothing
+ * to exchange, and the screen went on saying "Signing you in" indefinitely.
+ * There was no way off it.
  *
- * <p>The cause was a missing prop, and the reason it survived review is that
- * nothing goes wrong when it is absent. Clerk's callback needs to be told where
- * the sign-in form lives, because not every arrival here is a completed
- * session: a cancelled consent screen, a refused scope and an account needing a
- * second factor all come back here and all need handing back to a form. Told
- * nothing, Clerk hands back to its own. `signInFallbackRedirectUrl` looks like
- * it covers this and does not — that one is where to go once a session exists.
+ * <p><b>A transferred sign-in left the product.</b> `transferable` defaults to
+ * true, so a Google identity with no Clerk user turns a sign-in attempt into a
+ * sign-up, and Clerk finished that by navigating to its own hosted sign-up on
+ * `accounts.dev`.
  *
- * <p>So the props are asserted rather than the pixels. A test that rendered the
- * page and looked at it would have passed the entire time the bug was live.
+ * <p>Both were previously delegated to `<AuthenticateWithRedirectCallback />`,
+ * which decides where to go and cannot be corrected from outside. The exchange
+ * is driven here now, so the two things worth asserting are what this file
+ * hands Clerk and what it does with the answer — neither of which is visible in
+ * a screenshot, and the first of which passed the whole time the bug was live.
  */
 
-const captured: Record<string, unknown> = {};
+const { handleRedirectCallback, replace } = vi.hoisted(() => ({
+  handleRedirectCallback: vi.fn(),
+  replace: vi.fn(),
+}));
 
 vi.mock("@clerk/nextjs", () => ({
-  AuthenticateWithRedirectCallback: (props: Record<string, unknown>) => {
-    Object.assign(captured, props);
-    return null;
-  },
+  useClerk: () => ({ handleRedirectCallback }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
 }));
 
 import SsoCallbackPage from "@/app/sso-callback/page";
 
-describe("returning from Google", () => {
-  it("tells Clerk where Reverie's own sign-in and sign-up live", () => {
+/** Puts something on the address bar, which is where the provider replies. */
+function arriveWith(search: string) {
+  window.history.replaceState({}, "", `/sso-callback${search}`);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  handleRedirectCallback.mockResolvedValue(undefined);
+  arriveWith("");
+});
+
+describe("while the exchange is running", () => {
+  it("says so, and says it once", async () => {
     render(<SsoCallbackPage />);
 
-    // Without these two, an OAuth flow that does not complete is handed to
-    // Clerk's hosted pages on accounts.dev.
-    expect(captured.signInUrl).toBe("/sign-in");
-    expect(captured.signUpUrl).toBe("/sign-up");
+    expect(screen.getByRole("status")).toHaveTextContent("Signing you in");
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
   });
 
-  it("never points anything at Clerk's hosted account portal", () => {
+  it("tells Clerk where Reverie's own forms are", async () => {
     render(<SsoCallbackPage />);
 
-    for (const [prop, value] of Object.entries(captured)) {
-      if (typeof value !== "string") continue;
-      expect(
-        value,
-        `${prop} must stay inside Reverie`,
-      ).not.toMatch(/accounts\.dev|accounts\.clerk|clerk\.com/);
-      // Every URL handed to Clerk here is one of ours, so every one is a path.
-      if (prop.endsWith("Url")) expect(value.startsWith("/")).toBe(true);
-    }
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const [params] = handleRedirectCallback.mock.calls[0];
+
+    /*
+     * `signInUrl` and `signUpUrl` are where a flow that does not complete is
+     * handed back to. Without them Clerk hands back to its own hosted pages,
+     * which is the reported bug. `signInFallbackRedirectUrl` looks like it
+     * covers this and does not — that one is where to go once a session exists.
+     */
+    expect(params.signInUrl).toBe("/sign-in");
+    expect(params.signUpUrl).toBe("/sign-up");
+    expect(params.signInFallbackRedirectUrl).toBe("/home");
+    expect(params.signUpFallbackRedirectUrl).toBe("/home");
   });
 
-  it("still says where a finished flow goes when the flow did not say", () => {
+  it("keeps every navigation Clerk asks for inside the product", async () => {
     render(<SsoCallbackPage />);
 
-    // These are the fallbacks, not the hand-back-to-a-form URLs above.
-    expect(captured.signInFallbackRedirectUrl).toBe("/home");
-    expect(captured.signUpFallbackRedirectUrl).toBe("/home");
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+
+    // The transfer, exactly as it happened: Clerk asks for its hosted sign-up.
+    await navigate("https://touching-locust-18.accounts.dev/sign-up");
+
+    expect(replace).toHaveBeenCalledWith("/sign-up");
   });
 
-  it("wears Reverie's mark while it waits", () => {
+  it("navigates once, however many times it is asked", async () => {
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+
+    await navigate("/home");
+    await navigate("/sign-in");
+
+    // A second navigation would fight the first one, and the loser is whichever
+    // page the reader is already looking at.
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith("/home");
+  });
+});
+
+describe("when it did not work", () => {
+  it("names a cancelled consent screen, and does not attempt an exchange", async () => {
+    arriveWith("?error=access_denied");
+    render(<SsoCallbackPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled that sign-in.");
+    // Nothing to exchange, so nothing is attempted — the attempt is what used
+    // to leave the page claiming to be signing somebody in.
+    expect(handleRedirectCallback).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("offers the way back rather than leaving somebody on a dead page", async () => {
+    arriveWith("?error=access_denied");
+    render(<SsoCallbackPage />);
+
+    await screen.findByRole("alert");
+    expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
+  });
+
+  it("says so when the exchange itself fails with nothing on the URL", async () => {
+    handleRedirectCallback.mockRejectedValue(new Error("nope"));
+    render(<SsoCallbackPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That sign-in did not finish.");
+    expect(screen.getByRole("link", { name: "Back to sign in" })).toBeInTheDocument();
+  });
+
+  it("promises nothing about the account it could not sign into", async () => {
+    handleRedirectCallback.mockRejectedValue(new Error("nope"));
+    render(<SsoCallbackPage />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Nothing on your account was changed.");
+  });
+});
+
+describe("what it wears", () => {
+  it("carries Reverie's mark while it waits", () => {
     const { container } = render(<SsoCallbackPage />);
 
-    // This screen sits between Google and the app and used to carry the
-    // generic microphone glyph the V2 identity study rejected.
+    // This screen sits between Google and the app and used to carry the generic
+    // microphone glyph the V2 identity study rejected.
     expect(container.querySelector("svg")).not.toBeNull();
     expect(container.textContent).toContain("Reverie");
-    expect(screen.getByRole("status")).toHaveTextContent("Signing you in");
+  });
+
+  it("never mentions Clerk", () => {
+    const { container } = render(<SsoCallbackPage />);
+
+    expect(container.textContent ?? "").not.toMatch(/clerk/i);
   });
 });
