@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * Coming back from Google.
@@ -223,6 +223,50 @@ describe("a sign-up that only needs something Reverie can answer", () => {
     expect(update).not.toHaveBeenCalled();
     expect(setActive).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith("/home");
+  });
+});
+
+describe("a step Clerk insists on that Reverie cannot draw", () => {
+  /** The navigation Clerk makes when the new session is held back by a task. */
+  async function arriveAtTheTask() {
+    render(<SsoCallbackPage />);
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+    // Wrapped because this navigation is the one that sets state rather than
+    // leaving: it stops here instead of going anywhere.
+    await act(async () => {
+      await navigate("/sign-up#/tasks/choose-organization");
+    });
+  }
+
+  it("stops and names it, rather than drawing the sign-up form again", async () => {
+    /*
+     * The reported loop: signing up with Google landed back on
+     * `/sign-up#/tasks/choose-organization`, which is Reverie's own sign-up
+     * form with a hash nothing reads behind it — indistinguishable from the
+     * sign-up having failed.
+     */
+    await arriveAtTheTask();
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/does not use them/);
+  });
+
+  it("does not claim nothing happened, because the account was made", async () => {
+    // The session is pending, not absent. Saying "nothing on your account was
+    // changed" would be this screen's one outright lie.
+    await arriveAtTheTask();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Your account was created");
+    expect(alert).not.toHaveTextContent("Nothing on your account was changed.");
+  });
+
+  it("still offers the way back", async () => {
+    await arriveAtTheTask();
+
+    await screen.findByRole("alert");
+    expect(screen.getByRole("link", { name: "Back to sign in" })).toBeInTheDocument();
   });
 });
 

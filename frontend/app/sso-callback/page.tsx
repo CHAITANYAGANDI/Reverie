@@ -51,10 +51,21 @@ import { useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { Lockup } from "@/components/v2/lockup";
 import { HOME, SIGN_IN, SIGN_UP, WELCOME } from "@/lib/routes";
-import { inApp, refusalFrom } from "@/lib/sso-return";
+import { inApp, refusalFrom, taskRefusal } from "@/lib/sso-return";
 import { completedSession, fillableFields } from "@/lib/clerk-signup";
 
-type Phase = { state: "working" } | { state: "stopped"; message: string };
+type Phase = { state: "working" } | { state: "stopped"; message: string; note: string };
+
+/** True of every stop but one: the exchange failed, so nothing happened. */
+const UNCHANGED = "Nothing on your account was changed.";
+
+/**
+ * The exception. A session held back by a task is a session that exists — the
+ * account was created and only the sign-in is unfinished — so "nothing was
+ * changed" would be this screen's one outright lie.
+ */
+const ACCOUNT_MADE =
+  "Your account was created. That step has to be turned off in Reverie's authentication settings before this sign-in can finish.";
 
 /**
  * Finish a sign-up that is only missing something Reverie will answer itself.
@@ -126,7 +137,7 @@ export default function SsoCallbackPage() {
      */
     const refusal = refusalFrom(window.location.search);
     if (refusal) {
-      setPhase({ state: "stopped", message: refusal });
+      setPhase({ state: "stopped", message: refusal, note: UNCHANGED });
       return;
     }
 
@@ -159,6 +170,29 @@ export default function SsoCallbackPage() {
           },
           async (to) => {
             if (done) return;
+
+            /*
+             * A STEP CLERK INSISTS ON THAT REVERIE HAS NO ANSWER TO.
+             *
+             * <p>Reported: a Google sign-up came back to
+             * `/sign-up#/tasks/choose-organization`, which drew the sign-up form
+             * again and read as the sign-up having failed. It had not — the
+             * account was made. The instance has organizations enabled with
+             * *force organization selection*, so the session stays pending until
+             * one is chosen, and Reverie has none to choose: nothing in the
+             * product is org-scoped.
+             *
+             * <p>Checked before the fill below, because a task arrives after
+             * the sign-up is already complete. Stopping with the reason on
+             * screen is the whole of what this side can do about a setting on
+             * the other one.
+             */
+            const blocked = taskRefusal(to);
+            if (blocked) {
+              done = true;
+              setPhase({ state: "stopped", message: blocked, note: ACCOUNT_MADE });
+              return;
+            }
 
             /*
              * A SIGN-UP THAT ONLY NEEDS SOMETHING REVERIE CAN ANSWER ITSELF.
@@ -195,7 +229,13 @@ export default function SsoCallbackPage() {
          * this is the state that left the page claiming to be signing somebody
          * in forever.
          */
-        if (!done) setPhase({ state: "stopped", message: "That sign-in did not finish." });
+        if (!done) {
+          setPhase({
+            state: "stopped",
+            message: "That sign-in did not finish.",
+            note: UNCHANGED,
+          });
+        }
       }
     })();
 
@@ -225,9 +265,7 @@ export default function SsoCallbackPage() {
         ) : (
           <div role="alert">
             <p className="text-title-1 font-headline text-ink">{phase.message}</p>
-            <p className="mt-2.5 text-body leading-[1.55] text-ink-3">
-              Nothing on your account was changed.
-            </p>
+            <p className="mt-2.5 text-body leading-[1.55] text-ink-3">{phase.note}</p>
             <Link
               href={SIGN_IN}
               className="mt-6 inline-flex h-10 items-center rounded-md bg-ink px-4 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90"

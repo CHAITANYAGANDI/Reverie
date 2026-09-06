@@ -13,6 +13,60 @@ import { HOME, SIGN_IN, SIGN_UP } from "@/lib/routes";
 const KNOWN = [SIGN_IN, SIGN_UP];
 
 /**
+ * The steps Clerk can hold a session back for, and what to say about the ones
+ * Reverie has no answer to.
+ *
+ * <h2>Why this exists</h2>
+ *
+ * <p>Reported: signing up with Google came back to
+ * `/sign-up#/tasks/choose-organization`, which drew the sign-up form again and
+ * read as the sign-up having failed. It had not — the account was made. The
+ * Clerk instance has organizations enabled with *force organization selection*,
+ * so a new session stays pending until an organization is chosen, and Clerk
+ * navigates to the screen that would choose one.
+ *
+ * <p>Reverie has no organizations. Nothing in the product is org-scoped and the
+ * server keys every row on a single user, so there is no screen to draw and
+ * nothing to choose. The honest answer is to stop and name the step that is in
+ * the way; creating an organization to slip past it would be making a real
+ * thing in somebody's account to work around a setting.
+ */
+const TASKS: Record<string, string> = {
+  "choose-organization": "That sign-in needs an organization, and Reverie does not use them.",
+};
+
+/**
+ * The task Clerk is asking for, when a navigation is one of those.
+ *
+ * <p>Clerk routes them under a fragment — `#/tasks/choose-organization` — and
+ * under a path where the surrounding component is path-routed, so both are
+ * read. Reverie has no route of its own containing `/tasks/`, so there is
+ * nothing here to collide with.
+ */
+export function sessionTask(to: string): string | null {
+  const [path, fragment = ""] = to.split("#");
+  for (const part of [fragment, path]) {
+    const match = /(?:^|\/)tasks\/([a-z0-9_-]+)/i.exec(part);
+    if (match) return match[1].toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * The sentence for a session Clerk will not finish without a step Reverie
+ * cannot supply, or null for every ordinary navigation.
+ *
+ * <p>An unrecognised task still stops rather than falling through. Whatever it
+ * is, this app does not draw it, and a navigation to a screen that does not
+ * exist is the loop this whole file is here to end.
+ */
+export function taskRefusal(to: string): string | null {
+  const task = sessionTask(to);
+  if (!task) return null;
+  return TASKS[task] ?? "That sign-in needs a step Reverie does not carry.";
+}
+
+/**
  * Where Clerk wants to go, expressed as a Reverie route.
  *
  * <h2>Why this exists</h2>
@@ -49,6 +103,16 @@ export function inApp(to: string, origin?: string): string {
   // Not a path at all, or protocol-relative — which the browser reads as a
   // host, and is how an open redirect gets in.
   if (!path.startsWith("/") || path.startsWith("//")) return SIGN_IN;
+
+  /*
+   * A fragment is Clerk's own routing and never a Reverie route: `#/tasks/...`
+   * is a step it means to draw with a component this app does not mount.
+   * Dropped so a stray one lands on a real screen instead of a form with a hash
+   * behind it that nothing reads — though the callback checks `taskRefusal`
+   * first, so an arrival here is the backstop rather than the path.
+   */
+  const fragment = path.indexOf("#");
+  if (fragment !== -1) path = path.slice(0, fragment) || "/";
 
   // Its own callback, or the bare top of a portal, is not a destination.
   if (path === "/" || path.startsWith("/sso-callback")) return HOME;

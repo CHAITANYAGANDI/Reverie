@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inApp, refusalFrom } from "@/lib/sso-return";
+import { inApp, refusalFrom, sessionTask, taskRefusal } from "@/lib/sso-return";
 
 /**
  * Where a Google round-trip is allowed to put somebody.
@@ -84,6 +84,54 @@ describe("where the callback is allowed to send somebody", () => {
     // Server-rendered, or called before there is a window to ask.
     expect(inApp("/home")).toBe("/home");
     expect(inApp("https://touching-locust-18.accounts.dev/sign-up")).toBe("/sign-up");
+  });
+});
+
+describe("a step Clerk wants that Reverie has no answer to", () => {
+  const OURS = "https://reverie.example";
+
+  it("names the organization step, which is the reported one", () => {
+    /*
+     * Reported: a Google sign-up came back to
+     * `/sign-up#/tasks/choose-organization`, which drew the sign-up form again
+     * and read as the sign-up having failed. It had not — the account was made.
+     * The instance has organizations enabled with force organization selection;
+     * Reverie has no organizations at all.
+     */
+    expect(taskRefusal("/sign-up#/tasks/choose-organization")).toBe(
+      "That sign-in needs an organization, and Reverie does not use them.",
+    );
+  });
+
+  it("reads a task off a path as well as a fragment", () => {
+    // Clerk routes these under a hash, and under a path where the surrounding
+    // component is path-routed.
+    expect(sessionTask("/sign-up#/tasks/choose-organization")).toBe("choose-organization");
+    expect(
+      sessionTask("https://touching-locust-18.accounts.dev/sign-up/tasks/choose-organization"),
+    ).toBe("choose-organization");
+  });
+
+  it("stops for a task it has never heard of rather than navigating to it", () => {
+    // Whatever it is, this app does not draw it, and a navigation to a screen
+    // that does not exist is the loop being fixed.
+    expect(taskRefusal("/sign-in#/tasks/some-future-step")).toBeTruthy();
+  });
+
+  it("says nothing at all about an ordinary navigation", () => {
+    for (const to of ["/home", "/sign-up", "https://reverie.example/welcome", "/meetings/m1"]) {
+      expect(sessionTask(to)).toBeNull();
+      expect(taskRefusal(to)).toBeNull();
+    }
+  });
+
+  it("drops a fragment rather than routing to one", () => {
+    /*
+     * The backstop. Nothing in this app reads a hash, so a route with one
+     * behind it is just the sign-up form looking like it failed.
+     */
+    expect(inApp("/sign-up#/tasks/choose-organization", OURS)).toBe("/sign-up");
+    expect(inApp("/#/tasks/choose-organization", OURS)).toBe("/home");
   });
 });
 
