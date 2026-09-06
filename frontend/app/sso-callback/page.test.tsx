@@ -22,13 +22,22 @@ import { render, screen, waitFor } from "@testing-library/react";
  * a screenshot, and the first of which passed the whole time the bug was live.
  */
 
-const { handleRedirectCallback, replace } = vi.hoisted(() => ({
+const { handleRedirectCallback, replace, update, setActive } = vi.hoisted(() => ({
   handleRedirectCallback: vi.fn(),
   replace: vi.fn(),
+  update: vi.fn(),
+  setActive: vi.fn(),
 }));
 
+/** The in-flight sign-up Clerk keeps on the client, or none. */
+let signUp: Record<string, unknown> | null;
+
 vi.mock("@clerk/nextjs", () => ({
-  useClerk: () => ({ handleRedirectCallback }),
+  useClerk: () => ({
+    handleRedirectCallback,
+    setActive,
+    client: signUp ? { signUp } : undefined,
+  }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -45,6 +54,8 @@ function arriveWith(search: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   handleRedirectCallback.mockResolvedValue(undefined);
+  setActive.mockResolvedValue(undefined);
+  signUp = null;
   arriveWith("");
 });
 
@@ -104,6 +115,113 @@ describe("while the exchange is running", () => {
     // A second navigation would fight the first one, and the loser is whichever
     // page the reader is already looking at.
     expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith("/home");
+  });
+});
+
+/**
+ * A sign-up one field short of existing.
+ *
+ * <p>Clerk's sign-up is progressive, and this instance requires a username.
+ * Reverie does not collect one — no profile, no @mention, no sharing, so it is
+ * a value nobody reads — and the email form has always filled it from the
+ * address rather than asking. The Google road never did, so it stopped one
+ * field short and Clerk sent people to its own hosted "Fill in missing fields"
+ * page to type a username into.
+ */
+describe("a sign-up that only needs something Reverie can answer", () => {
+  /** A sign-up waiting on a username, which is the reported case. */
+  function needsUsername(after: Record<string, unknown>) {
+    signUp = {
+      status: "missing_requirements",
+      missingFields: ["username"],
+      createdSessionId: null,
+      emailAddress: "maya@northstarlabs.io",
+      update,
+    };
+    update.mockResolvedValue(after);
+  }
+
+  it("fills it, signs in, and goes to onboarding", async () => {
+    needsUsername({
+      status: "complete",
+      missingFields: [],
+      createdSessionId: "sess_new",
+    });
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+
+    // Clerk asks for its hosted continue page; the fill happens instead.
+    await navigate("https://touching-locust-18.accounts.dev/sign-up/continue");
+
+    expect(update).toHaveBeenCalledWith({ username: expect.stringMatching(/^maya-[0-9a-f]{6}$/) });
+    expect(setActive).toHaveBeenCalledWith({ session: "sess_new" });
+    // A brand-new account, so the two questions rather than Now.
+    expect(replace).toHaveBeenCalledWith("/welcome");
+  });
+
+  it("never types anybody's name in for them", async () => {
+    /*
+     * A username is a value nobody reads. A first name is a real answer about a
+     * real person, it is asked for on the first screen inside, and filling it
+     * in with something plausible would be putting words in their mouth.
+     */
+    signUp = {
+      status: "missing_requirements",
+      missingFields: ["first_name"],
+      createdSessionId: null,
+      emailAddress: "maya@northstarlabs.io",
+      update,
+    };
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+    await navigate("https://touching-locust-18.accounts.dev/sign-up/continue");
+
+    expect(update).not.toHaveBeenCalled();
+    // And still not left on somebody else's domain.
+    expect(replace).toHaveBeenCalledWith("/sign-up");
+  });
+
+  it("falls back to Reverie's own form when the fill does not finish it", async () => {
+    needsUsername({
+      status: "missing_requirements",
+      missingFields: ["phone_number"],
+      createdSessionId: null,
+    });
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+    await navigate("https://touching-locust-18.accounts.dev/sign-up/continue");
+
+    expect(setActive).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/sign-up");
+  });
+
+  it("tells Clerk where a half-finished sign-up goes, as a backstop", async () => {
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const [params] = handleRedirectCallback.mock.calls[0];
+
+    // Without it Clerk uses its own hosted page, which is the reported URL.
+    expect(params.continueSignUpUrl).toBe("/sign-up");
+  });
+
+  it("leaves a completed sign-in alone", async () => {
+    // Nothing in flight: the ordinary success path must not be touched.
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+    await navigate("/home");
+
+    expect(update).not.toHaveBeenCalled();
+    expect(setActive).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith("/home");
   });
 });

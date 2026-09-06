@@ -42,6 +42,18 @@ describe("where the callback is allowed to send somebody", () => {
     expect(inApp("https://touching-locust-18.accounts.dev/sign-in", OURS)).toBe("/sign-in");
   });
 
+  it("folds the hosted continue-sign-up page back into the product", () => {
+    /*
+     * Reported: signing up with Google landed on
+     * accounts.dev/sign-up/continue — "Fill in missing fields", asking for a
+     * username Reverie does not collect. The sign-up is normally finished
+     * before anybody gets here; this is the backstop for when it cannot be.
+     */
+    expect(inApp("https://touching-locust-18.accounts.dev/sign-up/continue", OURS)).toBe(
+      "/sign-up",
+    );
+  });
+
   it("folds Clerk's sub-steps onto the one screen this app draws", () => {
     // Clerk routes these beneath the form; Reverie has a single sign-in screen
     // that handles its own stages.

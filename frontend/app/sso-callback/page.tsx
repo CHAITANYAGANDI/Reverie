@@ -52,8 +52,41 @@ import { useClerk } from "@clerk/nextjs";
 import { Lockup } from "@/components/v2/lockup";
 import { HOME, SIGN_IN, SIGN_UP, WELCOME } from "@/lib/routes";
 import { inApp, refusalFrom } from "@/lib/sso-return";
+import { completedSession, fillableFields } from "@/lib/clerk-signup";
 
 type Phase = { state: "working" } | { state: "stopped"; message: string };
+
+/**
+ * Finish a sign-up that is only missing something Reverie will answer itself.
+ *
+ * @returns whether the account now exists and is signed in
+ */
+async function fillMissing(sdk: ReturnType<typeof useClerk>): Promise<boolean> {
+  const signUp = sdk.client?.signUp;
+  if (!signUp || signUp.status !== "missing_requirements") return false;
+
+  const fill = fillableFields(
+    { status: signUp.status, missingFields: signUp.missingFields, createdSessionId: signUp.createdSessionId },
+    signUp.emailAddress ?? "",
+  );
+  if (!fill) return false;
+
+  try {
+    const updated = await signUp.update(fill);
+    const session = completedSession({
+      status: updated.status,
+      missingFields: updated.missingFields,
+      createdSessionId: updated.createdSessionId,
+    });
+    if (!session) return false;
+    await sdk.setActive({ session });
+    return true;
+  } catch {
+    /* Left to the ordinary navigation, which now points at Reverie's own
+       sign-up rather than a hosted page. */
+    return false;
+  }
+}
 
 export default function SsoCallbackPage() {
   const clerk = useClerk();
@@ -107,6 +140,12 @@ export default function SsoCallbackPage() {
                sign-in Clerk has decided is really a sign-up. */
             signInUrl: SIGN_IN,
             signUpUrl: SIGN_UP,
+            /* And where a half-finished sign-up goes. Without it Clerk uses its
+               own hosted "Fill in missing fields" page on accounts.dev — which
+               asked for a username, which Reverie does not collect. The fill
+               below normally means nobody gets here at all; this is the
+               backstop for when it cannot. */
+            continueSignUpUrl: SIGN_UP,
             /*
              * Where to go when the flow did not say, and the two roads differ
              * again. A returning sign-in goes to Now; a brand-new account goes
@@ -120,6 +159,31 @@ export default function SsoCallbackPage() {
           },
           async (to) => {
             if (done) return;
+
+            /*
+             * A SIGN-UP THAT ONLY NEEDS SOMETHING REVERIE CAN ANSWER ITSELF.
+             *
+             * <p>Clerk's sign-up is progressive: the OAuth exchange opens the
+             * attempt, and it becomes an account only once every field the
+             * instance requires is present. This instance requires a username.
+             * Reverie does not collect one — there is no profile, no @mention
+             * and no sharing, so it is a value nobody reads — and the email
+             * form has always filled it from the address rather than asking.
+             * The Google road never did, so it stopped one field short and
+             * Clerk sent people to its own hosted page to type a username into.
+             *
+             * <p>Same helper, same rule, now on both roads. Only fields Reverie
+             * will answer on somebody's behalf are filled; a first name is not
+             * one of them, because that is a real answer about a real person
+             * and inventing it would be putting words in their mouth.
+             */
+            const filled = await fillMissing(sdk);
+            if (filled) {
+              done = true;
+              nav.replace(WELCOME);
+              return;
+            }
+
             done = true;
             nav.replace(inApp(to, window.location.origin));
           },
