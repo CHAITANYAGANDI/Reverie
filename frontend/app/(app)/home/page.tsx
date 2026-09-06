@@ -291,8 +291,16 @@ export default function HomePage() {
        * level with the first heading in the measure.
        */}
         {showing && (
-          <div className="mt-10 min-w-0 lg:mt-0">
-            <div aria-hidden className="hidden h-[186px] lg:block" />
+          <div className="mt-10 min-w-0 min-[1160px]:mt-0">
+            {/*
+              1160px, not `lg`. The spacer drops the first margin heading onto
+              the same baseline as the first heading in the measure, which is
+              only somewhere to be while the spread has two columns -- and
+              `.v2-spread` splits at 1160px where `lg` is 1024. Keyed on `lg` it
+              left a 186px hole above the stacked action items for every width
+              in between. Same correction as Library's margin.
+            */}
+            <div aria-hidden className="hidden h-[186px] min-[1160px]:block" />
             <NowActionItems />
           </div>
         )}
