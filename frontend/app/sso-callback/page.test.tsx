@@ -70,8 +70,14 @@ describe("while the exchange is running", () => {
      */
     expect(params.signInUrl).toBe("/sign-in");
     expect(params.signUpUrl).toBe("/sign-up");
+    /*
+     * The two roads differ. A returning sign-in goes to Now; a brand-new
+     * account goes to the two onboarding questions first — including the case
+     * that makes it matter, which is the same Google account returning after a
+     * full deletion. That is a new identity, so Clerk calls it a sign-up.
+     */
     expect(params.signInFallbackRedirectUrl).toBe("/home");
-    expect(params.signUpFallbackRedirectUrl).toBe("/home");
+    expect(params.signUpFallbackRedirectUrl).toBe("/welcome");
   });
 
   it("keeps every navigation Clerk asks for inside the product", async () => {

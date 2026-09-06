@@ -649,7 +649,7 @@ function Dial({
  * empty body. The point is that it cannot be produced by a stray click.
  */
 function CloseAccountSection() {
-  const { signOut } = useAuth();
+  const { signOut, deleteIdentity, mode } = useAuth();
   const [close, { isLoading }] = useCloseAccountMutation();
   const [typed, setTyped] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -663,6 +663,35 @@ function CloseAccountSection() {
       );
       setOpen(false);
       setTyped("");
+
+      /*
+       * AND THE SIGN-IN ITSELF, which is the half that was missing.
+       *
+       * <p>Closing an account erased Reverie's data and left the credential
+       * alone, so signing in again with the same Google account walked straight
+       * back into an empty product — the row is simply re-provisioned. Deleting
+       * the identity is what makes "delete my account" mean it, and it is also
+       * what makes the same person coming back a genuinely new account with
+       * onboarding ahead of it.
+       *
+       * <p>This order and not the other one: Reverie's data goes first because
+       * erasing it needs a live session token, and destroying the identity ends
+       * the session.
+       *
+       * <p>Only in clerk mode — dev mode has no identity to destroy and says so
+       * by answering false, which is not a failure worth reporting.
+       */
+      const gone = (await deleteIdentity?.()) ?? false;
+      if (mode === "clerk" && !gone) {
+        /*
+         * Said out loud rather than swallowed. The instance can refuse — self
+         * service deletion is a dashboard setting — and somebody who is told
+         * their sign-in was destroyed when it was not will find out by signing
+         * in successfully, which is the worst way to learn it.
+         */
+        toast.error("Your data is deleted. The sign-in itself could not be removed.");
+      }
+
       /*
        * Out to the front door, not to the sign-in form. Signing out ordinarily
        * means "I will be back" and lands on the form; this account has just

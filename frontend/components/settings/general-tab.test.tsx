@@ -25,12 +25,13 @@ import type { PreferencesResponse, PrivacyOverview } from "@/lib/types";
  * Reverie ships no terms of service of its own.
  */
 const {
-  update, setRetention, closeAccount, signOut, toastError,
+  update, setRetention, closeAccount, signOut, deleteIdentity, toastError,
 } = vi.hoisted(() => ({
   update: vi.fn(),
   setRetention: vi.fn(),
   closeAccount: vi.fn(),
   signOut: vi.fn(),
+  deleteIdentity: vi.fn(),
   toastError: vi.fn(),
 }));
 
@@ -46,7 +47,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/settings" }));
 vi.mock("@/lib/auth", () => ({
   // `profile` carries how this person signed in, which is what decides whether
   // the name, the address and the password are theirs to change here.
-  useAuth: () => ({ userId: "usr_dev", mode, signOut, profile: identity }),
+  useAuth: () => ({ userId: "usr_dev", mode, signOut, deleteIdentity, profile: identity }),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -483,6 +484,55 @@ describe("closing the account", () => {
      * product not having noticed.
      */
     await waitFor(() => expect(signOut).toHaveBeenCalledWith("/"));
+  });
+
+  it("destroys the sign-in as well as the data", async () => {
+    /*
+     * The half that was missing. Closing an account erased Reverie's data and
+     * left the credential alone, so signing in again with the same Google
+     * account walked straight back into an empty product — the row is simply
+     * re-provisioned. Deleting the identity is what makes "delete my account"
+     * mean it, and what makes the same person returning a genuinely new account
+     * with onboarding ahead of it.
+     */
+    mode = "clerk";
+    deleteIdentity.mockResolvedValue(true);
+    render(<GeneralTab />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete account" }));
+    await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
+    await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
+
+    await waitFor(() => expect(deleteIdentity).toHaveBeenCalled());
+    // Data first: erasing it needs a live session token, and destroying the
+    // identity ends the session.
+    expect(closeAccount).toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("says so when the sign-in could not be removed", async () => {
+    /*
+     * Self-service deletion is a dashboard setting and the instance can refuse.
+     * Somebody told their sign-in was destroyed when it was not finds out by
+     * signing in successfully, which is the worst way to learn it.
+     */
+    // Clerk mode: dev mode has no identity to destroy, and answering "not
+    // deleted" there is a fact rather than a failure worth reporting.
+    mode = "clerk";
+    deleteIdentity.mockResolvedValue(false);
+    render(<GeneralTab />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete account" }));
+    await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
+    await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Your data is deleted. The sign-in itself could not be removed.",
+      ),
+    );
+    // And still out, because the data really is gone.
+    expect(signOut).toHaveBeenCalledWith("/");
   });
 
   it("backs out and forgets what was typed", async () => {

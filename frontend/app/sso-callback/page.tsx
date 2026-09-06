@@ -50,7 +50,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { Lockup } from "@/components/v2/lockup";
-import { HOME, SIGN_IN, SIGN_UP } from "@/lib/routes";
+import { HOME, SIGN_IN, SIGN_UP, WELCOME } from "@/lib/routes";
 import { inApp, refusalFrom } from "@/lib/sso-return";
 
 type Phase = { state: "working" } | { state: "stopped"; message: string };
@@ -107,10 +107,16 @@ export default function SsoCallbackPage() {
                sign-in Clerk has decided is really a sign-up. */
             signInUrl: SIGN_IN,
             signUpUrl: SIGN_UP,
-            /* Where to go when the flow did not say. Both roads end in the
-               same place now that there is nothing between them. */
+            /*
+             * Where to go when the flow did not say, and the two roads differ
+             * again. A returning sign-in goes to Now; a brand-new account goes
+             * to the two questions first — including the case that makes this
+             * matter, which is the same Google account coming back after a full
+             * deletion. That is a new identity, so Clerk calls it a sign-up,
+             * and it should be asked again.
+             */
             signInFallbackRedirectUrl: HOME,
-            signUpFallbackRedirectUrl: HOME,
+            signUpFallbackRedirectUrl: WELCOME,
           },
           async (to) => {
             if (done) return;

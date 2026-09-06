@@ -17,6 +17,17 @@
 export const HOME = "/home";
 
 /**
+ * The two questions a new account is asked, before Now.
+ *
+ * <p>Written by the sign-up form and by the SSO callback's *sign-up* fallback,
+ * and read by the screen itself — which is exactly the shape of thing this file
+ * exists for. Only the sign-up roads point here: a sign-in goes straight to
+ * Now, and the screen sends anybody whose onboarding is already recorded
+ * onwards, so neither road can ask twice.
+ */
+export const WELCOME = "/welcome";
+
+/**
  * The two screens Reverie hosts itself, and the reason they are constants.
  *
  * <p>These are read back by Clerk in three separate places — the provider, the

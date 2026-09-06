@@ -57,7 +57,7 @@ import {
 } from "@/components/auth/auth-form";
 import { authErrorMessage, isAlreadySignedIn, isAlreadyVerified } from "@/lib/clerk-errors";
 import { blockedMessage, completedSession, fillableFields, type SignUpState } from "@/lib/clerk-signup";
-import { HOME } from "@/lib/routes";
+import { WELCOME } from "@/lib/routes";
 
 /*
  * Clerk's own types, reached through the hook rather than through an import.
@@ -80,7 +80,7 @@ export default function SignUpPage() {
 
   function fail(cause: unknown) {
     if (isAlreadySignedIn(cause)) {
-      router.push(HOME);
+      router.push(WELCOME);
       return;
     }
     setError(authErrorMessage(cause));
@@ -92,7 +92,7 @@ export default function SignUpPage() {
     const session = completedSession(state);
     if (!session || !setActive) return false;
     await setActive({ session });
-    router.push(HOME);
+    router.push(WELCOME);
     return true;
   }
 
@@ -147,10 +147,11 @@ export default function SignUpPage() {
       await signUp.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
-        // Straight into the product. Somebody who already had an account and
-        // pressed the wrong button lands there too, which is better than being
-        // told off.
-        redirectUrlComplete: HOME,
+        // Into the two questions, then the product. Somebody who already had
+        // an account and pressed the wrong button lands there too and is sent
+        // straight on, because the screen reads the completion flag — which is
+        // better than being told off.
+        redirectUrlComplete: WELCOME,
       });
     } catch (cause) {
       fail(cause);
@@ -222,10 +223,11 @@ export default function SignUpPage() {
       /*
        * "Step 1 of 2", not "of 3".
        *
-       * The approved artifact says "Step 2 of 3", counting an onboarding flow
-       * as the third. There is no third: that flow has been removed, and a
-       * finished sign-up now goes straight into the product. This form has two
-       * steps and says so.
+       * The approved artifact says "Step 2 of 3", counting onboarding as the
+       * third. Onboarding numbers its own steps and has either one or two of
+       * them depending on whether the provider owns the name, so "of 3" here
+       * would be a number nothing backs and would be contradicted by the very
+       * next screen. This form has two steps and says so.
        */
       eyebrow={stage === "details" ? "Step 1 of 2" : "Step 2 of 2"}
       title={stage === "details" ? "Start with Reverie." : "Check your email."}

@@ -164,7 +164,7 @@ describe("creating the account", () => {
     await enterTheCode();
 
     await waitFor(() => expect(clerk.setActive).toHaveBeenCalledWith({ session: "sess_new" }));
-    expect(nav.push).toHaveBeenCalledWith("/home");
+    expect(nav.push).toHaveBeenCalledWith("/welcome");
   });
 
   it("says an address is taken, and where to go instead", async () => {
@@ -261,7 +261,7 @@ describe("a code that worked but did not finish the sign-up", () => {
     await enterTheCode();
 
     await waitFor(() => expect(clerk.setActive).toHaveBeenCalledWith({ session: "sess_new" }));
-    expect(nav.push).toHaveBeenCalledWith("/home");
+    expect(nav.push).toHaveBeenCalledWith("/welcome");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -376,7 +376,7 @@ describe("Google", () => {
     expect(clerk.authenticateWithRedirect).toHaveBeenCalledWith({
       strategy: "oauth_google",
       redirectUrl: "/sso-callback",
-      redirectUrlComplete: "/home",
+      redirectUrlComplete: "/welcome",
     });
   });
 });

@@ -17,6 +17,7 @@ import { clearPreferences } from "@/lib/preference-store";
 import { normalizeProvider } from "@/lib/identity-owner";
 import type { AuthContextValue, UserProfile } from "@/lib/auth";
 import { SIGN_IN, SIGN_UP } from "@/lib/routes";
+import { ONBOARDING_FLAG, onboardingCompleted } from "@/lib/onboarding";
 
 type Ctx = React.Context<AuthContextValue | null>;
 
@@ -152,6 +153,55 @@ function ClerkBridge({
     [user],
   );
 
+  /*
+   * THE FLAG LIVES ON THE IDENTITY, and that is the whole of why the lifecycle
+   * works.
+   *
+   * <p>`unsafeMetadata` is the one part of a Clerk user the browser may write,
+   * which is right for this: it is a preference the person themselves just
+   * set, not a claim about them that the server should be the source of.
+   *
+   * <p>Putting it here rather than in Reverie's own preferences means
+   * destroying the identity destroys the flag with it. Closing an account and
+   * then signing in again with the same Google account produces a *new* Clerk
+   * user carrying nothing, so onboarding runs again — which is the required
+   * behaviour, and it falls out rather than being arranged. It also needs no
+   * backend change: `PreferencesResponse` has no field for this and adding one
+   * is a migration.
+   */
+  const completed = onboardingCompleted(user?.unsafeMetadata);
+
+  const completeOnboarding = React.useCallback(async () => {
+    if (!user) return;
+    /*
+     * Merged, not replaced. `unsafeMetadata` is a single object shared with
+     * anything else that ever writes to it, and `update` takes the whole value
+     * — so assigning a fresh object here would silently drop the rest.
+     */
+    await user.update({
+      unsafeMetadata: { ...user.unsafeMetadata, [ONBOARDING_FLAG]: true },
+    });
+  }, [user]);
+
+  /**
+   * Destroy the sign-in itself.
+   *
+   * <p>The instance can refuse — self-service deletion is a dashboard setting —
+   * so this reports whether the identity is actually gone instead of assuming.
+   * Telling somebody their sign-in was destroyed when it was not is worse than
+   * telling them it could not be, because the next thing they do is try to sign
+   * in and succeed.
+   */
+  const deleteIdentity = React.useCallback(async () => {
+    if (!user) return false;
+    try {
+      await user.delete();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [user]);
+
   const value: AuthContextValue = {
     mode: "clerk",
     userId: userId ?? "",
@@ -164,6 +214,11 @@ function ClerkBridge({
     sessionKey: isLoaded ? sessionId ?? "" : "",
     isSignedIn: Boolean(isSignedIn),
     isLoaded,
+    // Not known until the identity has arrived, and not-known is treated as
+    // not-done: the cost is two skippable questions.
+    onboardingCompleted: isLoaded ? completed : false,
+    completeOnboarding,
+    deleteIdentity,
     profile,
     signOut: (to?: string) => {
       // Belt to the session key's braces, and the part that runs even when the
