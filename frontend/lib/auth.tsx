@@ -10,6 +10,7 @@ import {
   publishAuthState,
 } from "@/lib/auth-store";
 import { clearPreferences } from "@/lib/preference-store";
+import { SIGN_IN } from "@/lib/routes";
 
 interface AuthContextValue {
   mode: "dev" | "clerk";
@@ -32,7 +33,16 @@ interface AuthContextValue {
   sessionKey: string;
   isSignedIn: boolean;
   isLoaded: boolean;
-  signOut?: () => void;
+  /**
+   * End the session and leave.
+   *
+   * <p>Lands on the sign-in form by default, because the ordinary reason to
+   * sign out is to stop — and a marketing page is not what somebody who has
+   * just left their own account came for. `to` is for the one case where that
+   * is wrong: closing an account, where a form for an account that no longer
+   * exists would be a poor way to say goodbye.
+   */
+  signOut?: (to?: string) => void;
   /**
    * Who the person is, as the identity provider knows them.
    *
@@ -144,7 +154,7 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
    * deleted, re-provisioning that id on the next request. Forgetting the stored
    * id and reloading drops the cached data with it.
    */
-  const signOut = React.useCallback(() => {
+  const signOut = React.useCallback((to?: string) => {
     try {
       window.localStorage.removeItem(DEV_USER_KEY);
     } catch {
@@ -154,7 +164,7 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
     // notice this happened. See lib/preference-store.ts.
     clearPreferences();
     authStore.devUserId = DEFAULT_DEV_USER;
-    window.location.href = "/";
+    window.location.href = to ?? SIGN_IN;
   }, []);
 
   const value: AuthContextValue = {

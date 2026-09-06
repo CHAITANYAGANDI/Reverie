@@ -663,7 +663,13 @@ function CloseAccountSection() {
       );
       setOpen(false);
       setTyped("");
-      signOut?.();
+      /*
+       * Out to the front door, not to the sign-in form. Signing out ordinarily
+       * means "I will be back" and lands on the form; this account has just
+       * been deleted, and offering to sign into it would be the product not
+       * having noticed.
+       */
+      signOut?.("/");
     } catch (err) {
       toast.error(settingsError(err));
     }

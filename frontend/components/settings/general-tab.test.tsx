@@ -476,7 +476,13 @@ describe("closing the account", () => {
     await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
     await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
 
-    await waitFor(() => expect(signOut).toHaveBeenCalled());
+    /*
+     * Out to the front door, not to the sign-in form. An ordinary sign-out
+     * lands on the form because the usual reason to leave is to come back;
+     * this account no longer exists, and offering to sign into it would be the
+     * product not having noticed.
+     */
+    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/"));
   });
 
   it("backs out and forgets what was typed", async () => {

@@ -165,11 +165,14 @@ function ClerkBridge({
     isSignedIn: Boolean(isSignedIn),
     isLoaded,
     profile,
-    signOut: () => {
+    signOut: (to?: string) => {
       // Belt to the session key's braces, and the part that runs even when the
       // next person to sign in on this browser is somebody else.
       clearPreferences();
-      void signOut();
+      // Given per call rather than left to `afterSignOutUrl`, so closing an
+      // account can leave by a different door. The provider default below is
+      // what an ordinary sign-out gets.
+      void signOut({ redirectUrl: to ?? SIGN_IN });
     },
   };
 
@@ -190,14 +193,19 @@ export function ClerkAuthProvider({
      * at its own hosted pages. Reverie hosts the two screens itself — see
      * app/sign-in and app/sign-up — so a default that sent people to
      * accounts.clerk.dev would take them out of the product to come back into
-     * it, and `afterSignOutUrl` is what stops signing out landing on a
-     * protected route that immediately bounces you to sign in again.
+     * it.
+     *
+     * `afterSignOutUrl` is the sign-in form rather than the landing page. It
+     * has to be a public route — a protected one would bounce straight back to
+     * sign-in anyway — and of the two public ones, the form is where somebody
+     * who just signed out is going next. The landing page is for people who
+     * have not decided yet.
      */
     <ClerkProvider
       publishableKey={publishableKey}
       signInUrl={SIGN_IN}
       signUpUrl={SIGN_UP}
-      afterSignOutUrl="/"
+      afterSignOutUrl={SIGN_IN}
     >
       <ClerkBridge AuthContext={AuthContext}>{children}</ClerkBridge>
     </ClerkProvider>

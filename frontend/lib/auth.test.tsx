@@ -46,8 +46,26 @@ function Probe() {
     <div>
       <span data-testid="session">{isLoaded ? sessionKey : "…"}</span>
       <button onClick={() => signOut?.()}>Sign out</button>
+      <button onClick={() => signOut?.("/")}>Close account</button>
     </div>
   );
+}
+
+/**
+ * Somewhere to record the navigation jsdom will not perform.
+ *
+ * <p>Assigning `window.location.href` in jsdom is a no-op that logs "not
+ * implemented", so the destination cannot be read back off the real object.
+ * This replaces it with something that simply remembers.
+ */
+function watchNavigation() {
+  const spot = { href: "" };
+  Object.defineProperty(window, "location", {
+    value: spot,
+    writable: true,
+    configurable: true,
+  });
+  return spot;
 }
 
 beforeEach(() => {
@@ -90,6 +108,53 @@ describe("signing out of dev mode", () => {
     // Signing back in as the same dev user produces the same stamp, so nothing
     // but this would put the filter back to its default.
     expect(readPreferences("usr_dev")).toEqual({});
+  });
+});
+
+/**
+ * Where it leaves you.
+ *
+ * <p>Signing out used to land on the public landing page, which is the screen
+ * for somebody who has not decided yet — not for somebody who has just left
+ * their own account. It goes to the sign-in form.
+ *
+ * <p>Closing an account is the exception, and it shares this function, so it is
+ * pinned beside it: offering to sign into an account that has just been deleted
+ * would be the product not having noticed.
+ */
+describe("where signing out lands", () => {
+  it("goes to the sign-in form rather than the landing page", async () => {
+    const spot = watchNavigation();
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Sign out" }).click();
+    });
+
+    expect(spot.href).toBe("/sign-in");
+  });
+
+  it("goes where it is told, which is how closing an account leaves", async () => {
+    const spot = watchNavigation();
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Close account" }).click();
+    });
+
+    expect(spot.href).toBe("/");
   });
 });
 
