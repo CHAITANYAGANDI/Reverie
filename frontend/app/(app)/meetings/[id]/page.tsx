@@ -22,6 +22,7 @@ import {
   Bookmark,
   Highlighter,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ShieldCheck,
   ClipboardCopy,
@@ -36,6 +37,7 @@ import {
   useGetMeetingActionItemsQuery,
   useDeleteMeetingMutation,
   useGetChatQuery,
+  useGetProjectQuery,
   useAskChatMutation,
   useGetChatModesQuery,
   useTranslateMeetingMutation,
@@ -109,12 +111,13 @@ import { TranslatedTranscript } from "@/components/translated-transcript";
 import { AudioPlayer, useAudioController } from "@/components/audio-player";
 import { MeetingTitle, MeetingTags } from "@/components/meeting-title";
 import { OutlineNav } from "@/components/outline-nav";
+import { Facts } from "@/components/v2/group";
 import { MeetingMenu } from "@/components/meeting-menu";
 import { InsightsPanel } from "@/components/insights-panel";
 import { ExportDialog } from "@/components/export-dialog";
 import { copySummary, copyTranscript } from "@/lib/minutes";
 import { subscribeMeetingStatus } from "@/lib/ws";
-import { HOME } from "@/lib/routes";
+import { HOME, LIBRARY, folderHref } from "@/lib/routes";
 import {
   formatDate,
   formatDateTime,
@@ -360,7 +363,7 @@ export default function MeetingDetailPage() {
    * Play from a moment, wherever the ask came from.
    *
    * <p>The player only exists on the transcript now, so every other caller — a
-   * quotation in the brief, an action item's source, a `?t=` deep link — is
+   * quotation in the summary, an action item's source, a `?t=` deep link — is
    * asking to hear something while looking at a tab that has nothing to play
    * it. Each of those used to call `seekTo` straight, and would now silently
    * do nothing.
@@ -502,7 +505,7 @@ export default function MeetingDetailPage() {
    * What language the meeting is being read in.
    *
    * Held here rather than in a panel because it applies to all three tabs: the
-   * brief, the tasks and the transcript are one meeting, and translating the
+   * summary, the tasks and the transcript are one meeting, and translating the
    * summary while the transcript beside it stays in the source language is the
    * behaviour this replaced.
    *
@@ -568,6 +571,32 @@ export default function MeetingDetailPage() {
     };
   }
 
+  /**
+   * The folder this meeting is filed in, for the back link, or undefined.
+   *
+   * <p>Skipped when it is filed nowhere, so an unfiled meeting costs no
+   * request. Where it is filed, the folder page and the Library margin have
+   * usually already fetched this, so RTK Query serves it from cache.
+   */
+  const folderQuery = useGetProjectQuery(meeting.data?.projectId ?? "", {
+    skip: !meeting.data?.projectId,
+  });
+  const folder = folderQuery.data;
+
+  /*
+   * The people this meeting has, named — real diarization output, ordered by
+   * who spoke most, and empty for a document or a transcript that does not
+   * exist yet. Nothing is invented when it is empty; the masthead simply has
+   * one fewer fact. See the note where it is rendered.
+   */
+  const voices = React.useMemo(
+    () =>
+      (transcript.data?.speakers ?? [])
+        .map((s) => s.speaker)
+        .filter((name): name is string => Boolean(name)),
+    [transcript.data],
+  );
+
   async function onCopySummary() {
     if (!meeting.data) return;
     const ok = await copySummary(minutesInput());
@@ -582,7 +611,7 @@ export default function MeetingDetailPage() {
   }
 
   /**
-   * Write the brief again, under the template it already uses.
+   * Write the summary again, under the template it already uses.
    *
    * The same call the template picker makes, with the current slug rather than
    * a new one — which is what "regenerate" means. Worth having separately from
@@ -744,41 +773,74 @@ export default function MeetingDetailPage() {
           {/* No "All meetings" link. The band always says where everything is;
               a second way back, drawn above the title, pushed the one thing
               this page is about down the screen. */}
+          {/*
+            THE WAY BACK UP, which this page did not have.
+            <p>It was left out deliberately once — "the band always says where
+            everything is" — and the references put it back for a reason the
+            band cannot serve: the band says which *place* you are in, and this
+            says which *folder* this meeting is filed in, which is a fact about
+            the document. Library and both folder screens now open with the
+            same chevron, so a meeting without one was the odd page out.
+            <p>Named after the folder when it is in one. `useGetProjectQuery`
+            is skipped otherwise, and while it resolves the link still works and
+            reads "Library" — a back link that flickers its own destination is
+            worse than one that names the general case for a moment.
+          */}
+          <Link
+            href={folder ? folderHref(folder.id) : LIBRARY}
+            className="mb-3.5 -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-foot text-ink-3 transition-colors duration-press ease-soft hover:text-ink-2"
+          >
+            <ChevronLeft className="h-[13px] w-[13px]" aria-hidden />
+            {folder?.name ?? "Library"}
+          </Link>
+
           <MeetingTitle id={id} title={m.title} />
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-cap uppercase text-ink-3">
-            {/* No status here. Anything other than READY is already announced
-                below, and far louder — a progress card while it works, a
-                destructive card with the provider's own message when it
-                fails. A badge reading READY beside a meeting you are plainly
-                reading is a label for the only state that needs none. */}
-            {/* A document has no runtime, so a duration would be meaningless. */}
-            {!isDocument && (
-              <>
-                <span className="tabular inline-flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5" /> {formatDuration(m.durationSeconds)}
-                </span>
-                <span className="text-ink-5" aria-hidden>/</span>
-              </>
-            )}
-            <span className="tabular">{formatDateTime(m.createdAt)}</span>
-            {/* Only worth showing when it isn't the default — an "English"
-                badge on every meeting is noise. */}
-            {m.language && m.language.slice(0, 2).toLowerCase() !== "en" && (
-              <>
-                <span className="text-ink-5" aria-hidden>/</span>
-                <span>{languageName(m.language)}</span>
-              </>
-            )}
-            {isDocument && (
-              <>
-                <span className="text-ink-5" aria-hidden>/</span>
-                <span>Document</span>
-              </>
-            )}
-            {m.sourceType === "YOUTUBE" && m.sourceUrl && (
-              <>
-                <span className="text-ink-5" aria-hidden>/</span>
+          {/*
+            THE FACTS, AND THEN THE CONTROLS — two lines rather than one.
+            <p>`design-demo/final/18-meeting-brief.html` sets the masthead as
+            `date · duration · the people named`, and its own comment says why:
+            the shipped masthead carried the title, date, duration, folder,
+            source, status, four speaker chips WITH talk-time percentages and up
+            to five buttons, so the first sentence of the summary began about
+            350px down the page.
+            <p>This was one row mixing all of it — facts and buttons, in
+            uppercase mono, separated by slashes. The facts are a sentence about
+            one document now, in the product's own separator; the controls keep
+            every behaviour they had and sit under them, where they cannot be
+            read as another fact about the meeting.
+          */}
+          <div className="mt-2.5 flex flex-wrap items-center text-foot text-ink-3">
+            <Facts>
+              {/* Date first, as the reference reads it: the question is "which
+                  meeting was this", and the day answers it. */}
+              <span key="when" className="tabular">{formatDateTime(m.createdAt)}</span>
+              {/* A document has no runtime, so a duration would be meaningless. */}
+              {isDocument ? null : (
+                <span key="dur" className="tabular">{formatDuration(m.durationSeconds)}</span>
+              )}
+              {/*
+                WHO SPOKE, NAMED — and never invented.
+                <p>`TranscriptResponse.speakers` ordered by who spoke most, which
+                is real diarization output and empty for a document or a
+                transcript that has not been made yet. Where it is empty this
+                renders nothing at all rather than a count or a placeholder:
+                the reference names four people because its fixture has four,
+                not because a masthead needs a third fact.
+                <p>Names only. Talk-time percentages are deleted from the
+                product — they appeared in three places and changed no
+                decisions. The speaker strip on the transcript still carries
+                the real stats, where they are being read against the words.
+              */}
+              {voices.length > 0 ? <span key="who">{voices.join(", ")}</span> : null}
+              {/* Only worth showing when it isn't the default — an "English"
+                  label on every meeting is noise. */}
+              {m.language && m.language.slice(0, 2).toLowerCase() !== "en" ? (
+                <span key="lang">{languageName(m.language)}</span>
+              ) : null}
+              {isDocument ? <span key="doc">Document</span> : null}
+              {m.sourceType === "YOUTUBE" && m.sourceUrl ? (
                 <a
+                  key="yt"
                   href={m.sourceUrl}
                   target="_blank"
                   rel="noreferrer noopener"
@@ -786,30 +848,38 @@ export default function MeetingDetailPage() {
                 >
                   <Youtube className="h-3.5 w-3.5" /> YouTube
                 </a>
-              </>
-            )}
-            {/* Not while it is still working. Tagging a meeting you cannot
-                read yet is filing a document you have not seen, and the spec
-                line is better off short on the one screen that is otherwise a
-                title and a progress bar. It comes back with the transcript. */}
+              ) : null}
+            </Facts>
+          </div>
+
+          {/*
+            The controls that used to sit inside that line. Every one of them
+            is unchanged; only the row is new.
+            <p>No status among them. Anything other than READY is already
+            announced below, and far louder — a progress card while it works, a
+            destructive card with the provider's own message when it fails. A
+            badge reading READY beside a meeting you are plainly reading is a
+            label for the only state that needs none.
+          */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-foot text-ink-3">
+            {/* Not while it is still working. Tagging a meeting you cannot read
+                yet is filing a document you have not seen. It comes back with
+                the transcript. */}
             {terminal && <MeetingTags id={id} tags={m.tags ?? []} />}
-            {/* In the spec line, beside the facts, rather than only inside the
-                Export menu. Copying the summary is the single commonest thing
-                anybody does with one — it goes into a reply or a doc — and it
-                was two clicks behind a menu named after downloading files,
-                which is the rarer thing. It stays in the menu too, for whoever
-                already knows where it is. */}
+            {/* Beside the facts rather than only inside the Export menu.
+                Copying the summary is the single commonest thing anybody does
+                with one — it goes into a reply or a doc — and it was two clicks
+                behind a menu named after downloading files, which is the rarer
+                thing. It stays in the menu too, for whoever already knows where
+                it is. */}
             {ready && (
-              <>
-                <span className="text-ink-5" aria-hidden>/</span>
-                <button
-                  type="button"
-                  onClick={() => void onCopySummary()}
-                  className="no-print inline-flex items-center gap-1.5 uppercase transition-colors hover:text-ink"
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5" /> Copy summary
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => void onCopySummary()}
+                className="no-print inline-flex items-center gap-1.5 transition-colors hover:text-ink"
+              >
+                <ClipboardCopy className="h-3.5 w-3.5" /> Copy summary
+              </button>
             )}
             {/* Only ever rendered while a translation is on screen. The picker
                 is behind the ⋯ menu now, so this is the one thing telling a
@@ -921,7 +991,7 @@ export default function MeetingDetailPage() {
           scrubber is banded by who is speaking, the jumps are speaker jumps,
           and the highlighted line follows the clock. Over a summary it drove
           something not on screen while taking a band of the page on every
-          visit, and most visits to a brief never play anything.
+          visit, and most visits to a summary never play anything.
 
           Docked rather than in the flow so it stays put while the transcript
           scrolls under it, which is the whole reason to have it there: reading
@@ -1033,11 +1103,11 @@ export default function MeetingDetailPage() {
 
             {/* On the tab row rather than inside the summary card, because it
                 governs the whole document below it rather than any one section
-                of it. Only on Summary: it rewrites the brief, and offering it
+                of it. Only on Summary: it rewrites the summary, and offering it
                 over a transcript it cannot change would be a control that does
                 nothing to what is on screen. */}
             {/* Only once there is a summary to rewrite. Offering a template
-                picker over a brief that does not exist yet is a control that
+                picker over a summary that does not exist yet is a control that
                 cannot do anything. */}
             {tab === "summary" && hasSummary && (
               <TemplatePicker meetingId={id} current={summary.data?.templateSlug ?? "general"} />
@@ -1053,7 +1123,25 @@ export default function MeetingDetailPage() {
                 overwritten the next time the translation was refreshed. */}
             {tab === "transcript" && !showing && (transcript.data?.segments?.length ?? 0) > 0 && (
               editingTranscript ? (
-                <div className="flex items-center gap-1">
+                /*
+                 * THE MODE, SAID OUT LOUD.
+                 *
+                 * <p>`design-demo/final/21-transcript-editing.html` heads the
+                 * document "Correcting the transcript" with one Done beside it.
+                 * This row carried two unlabelled buttons and nothing naming
+                 * the state, so the only thing telling a reader the transcript
+                 * had become editable was that the paragraphs had.
+                 *
+                 * <p>`role="status"` because it appears without anybody looking
+                 * at this corner, and it is the answer to "why can I type in
+                 * this". Cancel stays: Done keeps what was typed and Cancel is
+                 * the way to abandon it, and the confirmation behind both is
+                 * unchanged — see the editor.
+                 */
+                <div className="flex items-center gap-2.5">
+                  <span role="status" className="text-foot text-ink-3">
+                    Correcting the transcript
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1073,12 +1161,18 @@ export default function MeetingDetailPage() {
                       <Check className="h-4 w-4" />
                     )}
                     Done
+                    {/* The count is the point: Done over three unsaved
+                        paragraphs and Done over none are different presses. */}
                     {editStatus.dirty > 0 ? ` (${editStatus.dirty})` : ""}
                   </Button>
                 </div>
               ) : (
                 <Button variant="ghost" size="sm" onClick={() => setEditingTranscript(true)}>
-                  <Pencil className="h-4 w-4" /> Edit Transcript
+                  {/* Sentence case, and the same verb as the mode it turns
+                      on: "Correct the transcript" then "Correcting the
+                      transcript". Title Case was the last of the old header's
+                      capitalisation left on this page. */}
+                  <Pencil className="h-4 w-4" /> Correct the transcript
                 </Button>
               )
             )}
@@ -1089,7 +1183,7 @@ export default function MeetingDetailPage() {
            *
            * <p>680px, which is about 74 characters at the reading size, and the
            * measurement the whole V2 layout is built to protect. It is applied
-           * here rather than inside each panel so a brief and a transcript are
+           * here rather than inside each panel so a summary and a transcript are
            * set in the *same* column — moving between the two reading modes is
            * a change of content, not of reading posture, and two panels each
            * choosing their own width is how that stops being true.
@@ -1114,7 +1208,7 @@ export default function MeetingDetailPage() {
               translation={showing}
               onSeek={playFrom}
             />
-            {/* Directly under the brief, and above Decisions and Risks.
+            {/* Directly under the summary, and above Decisions and Risks.
                 What a meeting asks of you is the part with consequences, and
                 it was sitting third — below two cards that are commentary on
                 what happened. Somebody scanning a summary for what they now
@@ -1122,7 +1216,7 @@ export default function MeetingDetailPage() {
 
                 Titled, because it is now one section of a document rather than
                 the only card on the page without a name. */}
-            {/* A section of the brief, not a card on top of it. What a
+            {/* A section of the summary, not a card on top of it. What a
                 meeting asks of you is part of the same document as what it
                 said, and a bordered box around it is what made it read as a
                 widget parked below the summary. */}
@@ -1195,7 +1289,7 @@ export default function MeetingDetailPage() {
             </section>
 
             {/* Last, and still below the summary rather than above it: these
-                rows are read out of the brief, and putting them first would
+                rows are read out of the summary, and putting them first would
                 suggest they were the source rather than the reading. */}
             <InsightsPanel meetingId={id} />
             </div>
@@ -1322,7 +1416,7 @@ export default function MeetingDetailPage() {
             composed={composed}
             // Through the switch, not straight to the player: this rail is
             // beside both tabs, so a chat citation can be clicked while the
-            // brief is on screen and the player does not exist yet.
+            // summary is on screen and the player does not exist yet.
             onSeek={playFrom}
           />
           )}
@@ -1431,7 +1525,7 @@ function TemplatePicker({ meetingId, current }: { meetingId: string; current: st
   const { data: templates } = useGetSummaryTemplatesQuery();
   // Shared with the menu and the banner — see the page's own call. A rewrite
   // started anywhere shows as "Rewriting…" here, which is where a reader looks
-  // to find out what the brief in front of them is.
+  // to find out what the summary in front of them is.
   const [resummarize, { isLoading: rewriting }] = useResummarizeMutation({
     fixedCacheKey: `resummarize:${meetingId}`,
   });
@@ -1504,7 +1598,7 @@ function TemplatePicker({ meetingId, current }: { meetingId: string; current: st
  *
  * <h2>Set as a document, not as a card</h2>
  *
- * <p>A brief is part of the page rather than an object on it, so it has no
+ * <p>A summary is part of the page rather than an object on it, so it has no
  * fill, no border and no radius — rounding a body of text is the most reliable
  * way to make a product look like a deck of cards. What separates one section
  * from the next is space and a heading in a heavier weight, which is what has
@@ -1632,7 +1726,7 @@ function SummaryPanel({
   onRetry: () => void;
   retrying: boolean;
   summary?: SummaryResponse;
-  /** The brief in the reading language, when one has been chosen. */
+  /** The summary in the reading language, when one has been chosen. */
   translation?: MeetingTranslation;
   /** Plays from a quotation's moment. Shared with the transcript and chat. */
   onSeek: (seconds: number) => void;
@@ -1658,7 +1752,7 @@ function SummaryPanel({
   }
 
   const view = translated ?? summary;
-  // The translation carries the sections too, so the translated brief is the
+  // The translation carries the sections too, so the translated summary is the
   // same document in another language rather than a thinner one — which is
   // what it used to be, and what made switching language quietly show the
   // reader less of the meeting than staying in English did.
@@ -1701,7 +1795,7 @@ function SummaryPanel({
     /*
      * A document, not a card.
      *
-     * <p>This was `<Card><CardContent>`. A brief is the thing the page is
+     * <p>This was `<Card><CardContent>`. A summary is the thing the page is
      * about: it is PART of the page rather than an object on it, and a fill and
      * a 10px radius around a body of text are what make a product look like a
      * deck of cards. What is left is the measure it is set in and the space
@@ -1729,7 +1823,7 @@ function SummaryPanel({
               >
                 {/* A margin note, not a tinted box. The 1px rule in the warning
                     hue does the work a filled panel would do, and it does not
-                    put a coloured slab above the first line of the brief. */}
+                    put a coloured slab above the first line of the summary. */}
                 <span className="flex items-center gap-2 text-ink-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
                   The transcript changed after this summary was written.
@@ -1758,6 +1852,24 @@ function SummaryPanel({
 
             {sections.length > 0 ? (
               <div className="space-y-6">
+                {/*
+                  THE LEAD, which the sectioned summary used to drop.
+                  <p>`design-demo/final/18-meeting-brief.html` opens with one
+                  paragraph set larger than the rest, before anything else:
+                  what happened, in a form somebody can paste into a reply.
+                  `shortSummary` is exactly that paragraph and it was rendered
+                  only when there were NO sections — so the richer the summary
+                  got, the more certain it was to lose its opening.
+                  <p>Same treatment as the sectionless branch below uses, so
+                  the two are one paragraph in one size rather than two
+                  answers. Nothing is manufactured to fill it: where the field
+                  is empty the document simply starts at its first section.
+                */}
+                {view.shortSummary?.trim() && (
+                  <p className="v2-read text-[1.1875rem] leading-[1.55] text-ink">
+                    {view.shortSummary}
+                  </p>
+                )}
                 {/* What was covered, at a glance.
                     Derived from the outline's headings rather than generated
                     separately. Asking the model for a second list of topics
@@ -1791,7 +1903,7 @@ function SummaryPanel({
                 ))}
                 {/* Rendered from its own field rather than as a section: these
                     carry a speaker and a timestamp, which the section shapes
-                    cannot express, and they are the one part of a brief that
+                    cannot express, and they are the one part of a summary that
                     claims to be exact — so they are shown as evidence, playable
                     at the moment they were said. Hidden entirely when nothing
                     verified, which is a normal outcome rather than a failure. */}
@@ -1808,7 +1920,7 @@ function SummaryPanel({
                         one idea rather than two.
 
                         The quotation itself is in the reading serif because it
-                        is the one part of a brief that is verbatim speech. */}
+                        is the one part of a summary that is verbatim speech. */}
                     <div className="space-y-3">
                       {quotes.map((q, i) => (
                         <button
@@ -1845,7 +1957,7 @@ function SummaryPanel({
                   <div>
                     <h3 className="mb-2 text-title-3 font-headline text-ink">Key points</h3>
                     {/* A hang, not a tab stop, and the same bullet as every
-                        other list in a brief -- `list-disc` drew a different
+                        other list in a summary -- `list-disc` drew a different
                         one here from the sections above. */}
                     <ul className="space-y-2">
                       {view.keyPoints.map((k, i) => (
@@ -1872,7 +1984,7 @@ function SummaryPanel({
         ) : state === "waiting" || state === "generating" ? (
           <ProcessingSummary stage={state} />
         ) : state === "loading" ? (
-          // The shape of a brief rather than one grey block, so the column does
+          // The shape of a summary rather than one grey block, so the column does
           // not collapse and then jump when the real one lands.
           <div className="space-y-3" aria-busy>
             <Skeleton className="h-4 w-full" />

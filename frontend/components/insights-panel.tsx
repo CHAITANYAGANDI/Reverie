@@ -47,7 +47,7 @@ import { cn } from "@/lib/utils";
  *
  * And no invitation in its place. A first pass at this left a pair of "Add a
  * decision" / "Add a risk" links where the cards had been, reasoning that a
- * decision the brief missed is worth recording by hand. That is not how these
+ * decision the summary missed is worth recording by hand. That is not how these
  * get used. The rows are a *reading* of the summary, and somebody who thinks
  * the summary is wrong fixes the row that is wrong or rewrites with another
  * template — nobody types a decision into an empty page to keep a card
@@ -103,7 +103,7 @@ export function InsightsPanel({ meetingId }: { meetingId: string }) {
      * narrow for a sentence about what was decided — and the special case
      * disappears with the grid rather than needing to be handled.
      *
-     * <p>They are sections of the brief now, in the same shape as its own:
+     * <p>They are sections of the summary now, in the same shape as its own:
      * a heading, a count, and rows.
      */
     <div className="space-y-7">
@@ -262,7 +262,7 @@ function InsightRow({ item, meetingId }: { item: Insight; meetingId: string }) {
 
   return (
     /* A rule and text, not a bordered box. Each of these is one sentence read
-       out of the brief above it, so a card around every one turns a short list
+       out of the summary above it, so a card around every one turns a short list
        into a stack of objects. */
     <div className="group v2-note flex items-start gap-2" data-tone="quiet">
       <span className="v2-read min-w-0 flex-1">

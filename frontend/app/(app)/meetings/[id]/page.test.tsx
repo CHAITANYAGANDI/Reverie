@@ -17,7 +17,7 @@ import type {
  * <p>This is the largest screen in the product and it had **no tests at all**.
  * That was survivable while it was being edited a panel at a time; it is not
  * survivable through a redesign that moves the column every panel is set in.
- * Everything under it — the brief, the transcript, the action items — is
+ * Everything under it — the summary, the transcript, the action items — is
  * covered by its own component's tests, and every one of those passes just as
  * well when the page renders them at the wrong width, in the wrong tab, or not
  * at all.
@@ -29,7 +29,7 @@ import type {
  * would make this a test of forty components that fails for thirty-nine reasons
  * that are not this page's fault.
  *
- * <p>It is written to be extended. Phases 7, 8 and 9 rebuild the brief, the
+ * <p>It is written to be extended. Phases 7, 8 and 9 rebuild the summary, the
  * transcript and the action items, and each will add to the mocks below rather
  * than standing up a second harness.
  */
@@ -75,6 +75,16 @@ let templates: { slug: string; name: string }[];
 let transcriptQuery: "ok" | "error" | "absent";
 /** The flat body a document import has instead of utterances. */
 let transcriptText: string | undefined;
+/** The folder the meeting is filed in, for the masthead's back link. */
+let folder: { id: string; name: string } | undefined;
+/**
+ * Real diarization output, ordered by who spoke most.
+ *
+ * <p>Empty by default, which is the honest default: a document has no
+ * speakers and a transcript that has not been made yet has none either. The
+ * masthead must name people only when there are people to name.
+ */
+let speakers: { speaker: string; speakingSeconds: number; percentage: number; segmentCount: number; wordCount: number }[];
 let actionItems: ActionItemResponse[];
 /** How the action-items request is going. */
 let actionsQuery: "ok" | "error";
@@ -91,8 +101,15 @@ vi.mock("@/lib/api", () => ({
   // is elsewhere. See `meetingPanels`.
   isNotFoundError: () => summaryQuery === "absent",
   useGetMeetingQuery: () => ok(meeting),
+  /*
+   * The folder the masthead's back link is named after. Skipped when the
+   * meeting is filed nowhere, which is the default here -- so the link reads
+   * "Library" unless a test gives the meeting a `projectId`.
+   */
+  useGetProjectQuery: (_id: string, opts?: { skip?: boolean }) =>
+    opts?.skip ? ok(undefined) : ok(folder),
   // The one query with more than one interesting state, so it goes through a
-  // switch rather than a fixture. Every branch below is a screen the brief can
+  // switch rather than a fixture. Every branch below is a screen the summary can
   // legitimately be, and three of them used to be the same screen.
   useGetSummaryQuery: () => {
     if (summaryQuery === "loading") {
@@ -121,7 +138,7 @@ vi.mock("@/lib/api", () => ({
       };
     }
     if (transcriptQuery === "absent") return { ...ok(undefined), isSuccess: false };
-    return ok({ segments, speakers: [], transcript: transcriptText });
+    return ok({ segments, speakers, transcript: transcriptText });
   },
   // A bare array here, not a page: this endpoint answers one meeting.
   useGetMeetingActionItemsQuery: () => {
@@ -319,6 +336,8 @@ beforeEach(() => {
   transcriptText = undefined;
   actionItems = [];
   actionsQuery = "ok";
+  folder = undefined;
+  speakers = [];
 });
 
 /**
@@ -388,6 +407,70 @@ describe("the masthead", () => {
  * them tabs meant the two things you do *while* reading were both somewhere the
  * reading was not.
  */
+describe("the way back up", () => {
+  it("names the folder this meeting is filed in", () => {
+    /*
+     * This page had no back link at all, on the reasoning that the band always
+     * says where everything is. The band says which *place* you are in; this
+     * says which *folder* the document is filed in, which is a fact about the
+     * document — and Library, /folders and a folder all open with the same
+     * chevron now, so a meeting without one was the odd page out.
+     */
+    meeting = { ...meeting, projectId: "prj_1" };
+    folder = { id: "prj_1", name: "Beta Launch" };
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByRole("link", { name: /Beta Launch/ })).toHaveAttribute(
+      "href",
+      "/folder/prj_1",
+    );
+  });
+
+  it("goes to Library when it is filed nowhere", () => {
+    // And asks for no folder: `useGetProjectQuery` is skipped, so an unfiled
+    // meeting costs no request for a link that would have no name.
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByRole("link", { name: /Library/ })).toHaveAttribute("href", "/library");
+  });
+});
+
+describe("who spoke", () => {
+  it("names them, in the masthead, from real diarization", () => {
+    speakers = [
+      { speaker: "Maya Chen", speakingSeconds: 900, percentage: 52, segmentCount: 40, wordCount: 900 },
+      { speaker: "Alex Morgan", speakingSeconds: 700, percentage: 48, segmentCount: 30, wordCount: 700 },
+    ];
+    render(<MeetingDetailPage />);
+
+    // Ordered by who spoke most, which is the order the endpoint returns.
+    expect(screen.getByText("Maya Chen, Alex Morgan")).toBeInTheDocument();
+  });
+
+  it("carries no talk-time percentages", () => {
+    /*
+     * Deleted from the product. They appeared in three places and changed no
+     * decisions; the transcript's own speaker strip still has the real stats,
+     * where they are read against the words.
+     */
+    speakers = [
+      { speaker: "Maya Chen", speakingSeconds: 900, percentage: 52, segmentCount: 40, wordCount: 900 },
+    ];
+    render(<MeetingDetailPage />);
+
+    const masthead = screen.getByRole("heading", { level: 1 }).parentElement?.parentElement;
+    expect(masthead?.textContent ?? "").not.toMatch(/52%/);
+  });
+
+  it("names nobody when diarization has produced nobody", () => {
+    // No count, no placeholder, no "Unknown speaker" -- one fewer fact.
+    speakers = [];
+    render(<MeetingDetailPage />);
+
+    expect(screen.queryByText(/speakers?$/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("the reading modes", () => {
   it("offers exactly Summary and Transcript", () => {
     render(<MeetingDetailPage />);
@@ -421,11 +504,75 @@ describe("the reading modes", () => {
  * The column the document is set in.
  *
  * <p>680px, which is about 74 characters at the reading size. The point of
- * asserting it on the page rather than in each panel is that a brief and a
+ * asserting it on the page rather than in each panel is that a summary and a
  * transcript must be set in the *same* column: moving between the two reading
  * modes is a change of content, not of reading posture, and two panels each
  * choosing their own width is how that stops being true.
  */
+describe("what this page must never say", () => {
+  /*
+   * The four references this page was rebuilt against sell a cross-meeting
+   * memory system: a Memory reading mode, "What this meeting changed", a
+   * decision that reverses one from 12 August, promises kept and slipped, a
+   * risk carried in from another call, topics in instalments. None of it
+   * exists — the migrations dropped `meeting_decisions`, `decision_links`,
+   * `commitments` and `commitment_evidence`, and nothing replaced them.
+   *
+   * <p>Only the composition was taken from those files. These assert the rest
+   * of them stayed out, because a redesign is exactly when unsupported copy
+   * gets typed in from a picture.
+   */
+  it("offers no third reading mode", () => {
+    /*
+     * Scoped to the tablist the reading modes live in. The meeting rail has
+     * tabs of its own -- the chat and the outline -- which are legitimately
+     * tabs and are portalled into the shell's side pane, so an unscoped
+     * `getAllByRole("tab")` passes under jsdom and says nothing about a
+     * browser. What must never grow a third member is this list.
+     */
+    render(<MeetingDetailPage />);
+
+    const modes = screen.getAllByRole("tablist")[0];
+    const tabs = Array.from(modes.querySelectorAll('[role="tab"]')).map((t) =>
+      t.textContent?.trim(),
+    );
+    expect(tabs).toEqual(["Summary", "Transcript"]);
+    expect(tabs).not.toContain("Memory");
+  });
+
+  it("uses none of the vocabulary of a memory it does not have", () => {
+    render(<MeetingDetailPage />);
+
+    const text = document.body.textContent ?? "";
+    for (const invented of [
+      /\bMemory\b/,
+      /What this meeting changed/i,
+      /Decision Drift/i,
+      /Promise Journey/i,
+      /Commitment Ledger/i,
+      /Promise slipped/i,
+      /Promise kept/i,
+      /Reverses \d/i,
+      /instalment/i,
+      /Open the thread/i,
+      /carried in/i,
+    ]) {
+      expect(text).not.toMatch(invented);
+    }
+  });
+
+  it("calls the summary a summary, never a brief", () => {
+    /*
+     * The references say "Brief". Production says Summary everywhere a reader
+     * can see it -- and the API already says summary, so nothing was renamed
+     * underneath to achieve it.
+     */
+    render(<MeetingDetailPage />);
+
+    expect(document.body.textContent ?? "").not.toMatch(/\bbriefs?\b/i);
+  });
+});
+
 describe("the measure", () => {
   it("sets the summary in it", () => {
     const { container } = render(<MeetingDetailPage />);
@@ -567,7 +714,7 @@ describe("the page's own controls", () => {
  * <p>Phase 7 replaced the presentation of all of it. Each case below is one of
  * the capabilities inventoried before a line changed.
  */
-describe("the brief", () => {
+describe("the summary", () => {
   it("reads a summary that pre-dates templates from its flat fields", () => {
     // No sections, so the lead, the key points and the long form are the
     // document. Still rendered — a redesign that handles only the new shape
@@ -741,7 +888,51 @@ describe("the brief", () => {
  * page draws the right screen for each — which is the half that was wrong in
  * production.
  */
-describe("the brief's states", () => {
+describe("the summary's opening paragraph", () => {
+  it("leads with it, even when the summary has sections", () => {
+    /*
+     * `18-meeting-brief.html` opens with one paragraph set larger than the
+     * rest. `shortSummary` is that paragraph, and it was rendered only when
+     * there were NO sections -- so the richer the summary got, the more
+     * certain it was to lose its opening.
+     */
+    summary = {
+      ...summary!,
+      shortSummary: "The date holds for some accounts and moves for others.",
+      sections: [
+        { key: "a", title: "What was decided", kind: "prose", text: "Beta ships on the twelfth.", bullets: [], groups: [] },
+      ],
+    };
+    render(<MeetingDetailPage />);
+
+    const paragraph = screen.getByText(
+      "The date holds for some accounts and moves for others.",
+    );
+    const heading = screen.getByText("What was decided");
+    // Before the first section, which is where a lead is a lead.
+    expect(paragraph.compareDocumentPosition(heading)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("manufactures nothing when there is no lead to show", () => {
+    // An empty field means the document starts at its first section, not that
+    // a paragraph gets assembled out of the sections to fill the space.
+    summary = {
+      ...summary!,
+      shortSummary: "",
+      sections: [
+        { key: "a", title: "What was decided", kind: "prose", text: "Beta ships on the twelfth.", bullets: [], groups: [] },
+      ],
+    };
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByText("What was decided")).toBeInTheDocument();
+    expect(screen.queryByText(/^\s*$/, { selector: "p.v2-read" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the summary's states", () => {
   it("shows a skeleton before the first answer, not an absence", () => {
     summaryQuery = "loading";
     const { container } = render(<MeetingDetailPage />);
@@ -832,7 +1023,7 @@ describe("the brief's states", () => {
  * mode row, and the "the transcript changed" notice inside the document. Both
  * spend a model call, so both answer to the allowance.
  */
-describe("rewriting the brief", () => {
+describe("rewriting the summary", () => {
   it("offers the template picker only once there is a brief to rewrite", () => {
     templates = [
       { slug: "general", name: "General" },
@@ -1049,7 +1240,7 @@ describe("the transcript", () => {
   it("hands the whole transcript to the editor when that mode is chosen", async () => {
     await readTranscript();
 
-    await userEvent.click(screen.getByRole("button", { name: /Edit Transcript/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
 
     expect(screen.getByTestId("transcript-editor")).toBeInTheDocument();
   });
@@ -1062,6 +1253,39 @@ describe("the transcript", () => {
  * "Transcript unavailable." printed over a transcript that was in the database
  * the whole time.
  */
+describe("correcting the transcript", () => {
+  it("says which mode it is in, rather than leaving it to be inferred", async () => {
+    /*
+     * `21-transcript-editing.html` heads the document "Correcting the
+     * transcript" with one Done beside it. This row carried two unlabelled
+     * buttons and nothing naming the state, so the only thing telling a reader
+     * the transcript had become editable was that the paragraphs had.
+     */
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Correcting the transcript");
+  });
+
+  it("keeps both ways out of it", async () => {
+    // Done keeps what was typed; Cancel abandons it. The confirmation behind
+    // either is the editor's and is unchanged.
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
+
+    expect(screen.getByRole("button", { name: /Done/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("says nothing about a mode nobody is in", () => {
+    render(<MeetingDetailPage />);
+
+    expect(screen.queryByText("Correcting the transcript")).not.toBeInTheDocument();
+  });
+});
+
 describe("the transcript's states", () => {
   async function readTranscript() {
     const view = render(<MeetingDetailPage />);
