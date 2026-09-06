@@ -93,7 +93,13 @@ export default function LandingPage() {
           one place on the page where that API is the correct tool. */}
       <noscript
         dangerouslySetInnerHTML={{
-          __html: "<style>[data-reveal]{opacity:1!important;transform:none!important}</style>",
+          /* `[data-word]` and `[data-utterance]` are the capture
+             demonstration's transcript, which is rendered in full from the
+             first frame and revealed by opacity. Without JavaScript nothing
+             ever reveals it, so the illustration would show a recording with no
+             words in it. Same rule, same reason. */
+          __html:
+            "<style>[data-reveal],[data-word],[data-utterance]{opacity:1!important;transform:none!important}</style>",
         }}
       />
 

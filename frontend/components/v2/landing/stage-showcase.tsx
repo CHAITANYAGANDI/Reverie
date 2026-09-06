@@ -66,25 +66,30 @@ const STAGES: Stage[] = [
 /**
  * The capture demonstration, as a fixed number of ticks.
  *
- * <p>Four seconds and then nothing. Everything the frame shows — the clock, the
- * level, how many live lines have arrived — is derived from one counter, so
- * there is one timer to start, one to stop, and no way for the three to
- * disagree about whether the demonstration is over.
+ * <p>Six seconds and then nothing. Everything the frame shows — the clock, the
+ * level, which words have arrived — is derived from one counter, so there is
+ * one timer to start, one to stop, and no way for the three to drift apart or
+ * to disagree about whether the demonstration is over.
  */
 export const CAPTURE = {
-  /** 00:38 when it begins, 00:42 when it stops. */
+  /** 00:38 when it begins, 00:44 when it stops. */
   startSeconds: 38,
   /** The demonstration's whole resolution. Ten of these make a clock second. */
   tickMs: 100,
-  /** Forty of them: four seconds. */
-  ticks: 40,
-  /** Ticks between one live line arriving and the next — about 1.1s. */
-  ticksPerLine: 11,
+  /** Sixty of them: six seconds, and then nothing. */
+  ticks: 60,
+  /** The tick the first word arrives on. */
+  firstWord: 10,
+  /** Ticks of quiet between one speaker and the next. */
+  betweenLines: 3,
+  /** When the level meter starts, and how long it runs, in seconds. */
+  waveDelay: 0.7,
+  waveSeconds: 4.8,
 } as const;
 
 /**
  * <p>`waiting` — on the page but not yet reached; the first frame, no timer.
- * <p>`playing` — the four seconds.
+ * <p>`playing` — the six seconds.
  * <p>`settled` — the last frame, held still, no timer.
  */
 export type CapturePhase = "waiting" | "playing" | "settled";
@@ -331,11 +336,82 @@ function Window({
   );
 }
 
-const LINES = [
+/* --------------------- the demonstration's fixed shape -------------------- */
+
+/**
+ * What is said, as words rather than as sentences.
+ *
+ * <p>Split once, here, and never in render. The transcript below renders every
+ * one of these from the first frame and reveals them in place — which is the
+ * whole reason nothing moves while they arrive.
+ */
+const SAID = [
   { who: "Priya", at: "0:04", text: "Let us start with pricing, because that is the one that has been open longest." },
   { who: "Dev", at: "0:19", text: "I would hold the price and move the annual discount instead." },
   { who: "Priya", at: "0:31", text: "Fifteen per cent on annual. Can you note the invoice copy?" },
 ];
+
+const LINES = SAID.map((line) => ({ ...line, words: line.text.split(" ") }));
+
+/** How many words precede each line, so a word has one index across all three. */
+const OFFSET = LINES.reduce<number[]>((acc, line, i) => {
+  acc.push(i === 0 ? 0 : acc[i - 1] + LINES[i - 1].words.length);
+  return acc;
+}, []);
+
+const TOTAL_WORDS = LINES.reduce((n, line) => n + line.words.length, 0);
+
+/** The tick each word arrives on, in one ascending list. */
+const WORD_TICK: number[] = (() => {
+  const out: number[] = [];
+  let t = CAPTURE.firstWord;
+  LINES.forEach((line, i) => {
+    if (i > 0) t += CAPTURE.betweenLines;
+    line.words.forEach(() => out.push(t++));
+  });
+  return out;
+})();
+
+/** How many words have arrived by `tick`. */
+function wordsBy(tick: number): number {
+  let n = 0;
+  while (n < WORD_TICK.length && tick >= WORD_TICK[n]) n++;
+  return n;
+}
+
+const BARS = 28;
+const BEATS = 8;
+
+/**
+ * THE LEVEL METER'S SHAPE, COMPUTED ONCE.
+ *
+ * <p>At module scope, so it is the same array for the life of the page: not
+ * regenerated per render, per tick, or per mount, and containing no
+ * `Math.random`. A meter whose geometry is rebuilt whenever state changes is
+ * not a level meter, it is noise, and noise is what reads as flicker.
+ *
+ * <p>Two sine components at different spatial frequencies, so neighbouring bars
+ * move together the way a real meter does rather than independently the way
+ * static does. The swell is loud through the middle of the sentence and calm at
+ * both ends, so the last beat is somewhere to stop rather than wherever the
+ * animation happened to be.
+ */
+const WAVE: number[][] = Array.from({ length: BARS }, (_, i) =>
+  Array.from({ length: BEATS }, (_, b) => {
+    const shape = Math.sin(i * 0.42 + b * 0.95) * 0.62 + Math.sin(i * 0.17 - b * 1.6) * 0.38;
+    const swell = b === 0 ? 0.45 : b === BEATS - 1 ? 0.4 : 0.7 + 0.3 * Math.sin(b * 1.2);
+    const v = 0.14 + 0.86 * Math.abs(shape) * swell;
+    return Math.round(Math.min(1, Math.max(0.12, v)) * 1000) / 1000;
+  }),
+);
+
+/** Where every bar comes to rest. */
+const WAVE_REST = WAVE.map((beats) => beats[BEATS - 1]);
+/** Where every bar starts, before anybody has reached it. */
+const WAVE_START = WAVE.map((beats) => beats[0]);
+
+const mmss = (s: number) =>
+  `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
 /**
  * The live pass: a clock, a level, and words arriving as they are said.
@@ -346,41 +422,37 @@ const LINES = [
  */
 function Capturing({ clock }: { clock: CaptureClock }) {
   const { tick, phase } = clock;
-  const settled = phase === "settled";
 
-  /* Ten ticks to the second, so 00:38 becomes 00:42 and stays there. */
+  /* Ten ticks to the second, so 00:38 becomes 00:44 and stays there. */
   const seconds = CAPTURE.startSeconds + Math.floor(tick / (1000 / CAPTURE.tickMs));
-  const shown = Math.min(LINES.length, 1 + Math.floor(tick / CAPTURE.ticksPerLine));
+  const revealed = phase === "settled" ? TOTAL_WORDS : wordsBy(tick);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-baseline gap-3">
+      {/*
+       * `items-center`, and that is the whole transcript-jitter bug.
+       *
+       * <p>This row was `items-baseline`. The level meter beside the clock is
+       * itself a flex container, so its baseline is taken from its first flex
+       * item — a bar with no text in it, whose baseline is therefore its bottom
+       * margin edge. That edge moved every time the bar's height changed, which
+       * re-aligned the meter inside this row, which changed the row's height
+       * between 17px and 21px, which pushed the entire transcript underneath it
+       * up and down. Measured: the first line's top took thirty distinct values
+       * and travelled 50px over one four-second demonstration.
+       *
+       * <p>Two things fix it and both are here: the bars no longer change
+       * layout height at all, and this row no longer aligns itself against
+       * them.
+       */}
+      <div className="flex items-center gap-3">
         <span data-clock className="tabular font-mono text-title-2 leading-none text-ink">
-          {`${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`}
+          {mmss(seconds)}
         </span>
-        <Level frame={tick} />
+        <Level phase={phase} />
       </div>
 
-      <div className="mt-5 space-y-4">
-        {LINES.slice(0, shown).map((line, i) => (
-          <m.div
-            key={line.at}
-            initial={phase === "playing" ? { opacity: 0, y: 6 } : false}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: LANDING_EASE }}
-            /* The newest line is dim while it is still provisional. Once the
-               demonstration settles they are all full strength — a line left
-               permanently at 70% reads as a rendering fault, not as a caveat. */
-            className={cn(i === shown - 1 && !settled && "opacity-70")}
-          >
-            <span className="text-cap text-ink-4">
-              {line.who} <span className="text-ink-5">·</span>{" "}
-              <span className="tabular font-mono">{line.at}</span>
-            </span>
-            <p className="v2-read mt-0.5">{line.text}</p>
-          </m.div>
-        ))}
-      </div>
+      <LiveWords revealed={revealed} />
 
       <p className="mt-auto text-foot text-ink-4">
         Live text while it runs. The full transcript is written from the
@@ -389,6 +461,73 @@ function Capturing({ clock }: { clock: CaptureClock }) {
     </div>
   );
 }
+
+/**
+ * THE TRANSCRIPT, WHOSE GEOMETRY NEVER CHANGES.
+ *
+ * <h2>The rule</h2>
+ *
+ * <p><b>The final text geometry exists from frame one.</b> Every word of all
+ * three utterances is in the DOM from the first render, in its final position,
+ * with its final metrics. Arriving is a change of `opacity` and nothing else —
+ * so a word appearing cannot rewrap a line, cannot resize its paragraph, and
+ * cannot move a word that arrived before it. There is nothing to reflow because
+ * nothing is added.
+ *
+ * <p>Which is why pending words are transparent rather than `display: none` or
+ * absent: both of those would take the word out of the flow, and putting it
+ * back is exactly the reflow this exists to prevent.
+ *
+ * <h2>What it deliberately does not do</h2>
+ *
+ * <p>No `layout`, no `layoutId`, no FLIP. No per-word `y` — thirty-six spans
+ * each sliding 4px is shimmer, not transcription. No Framer component at all,
+ * in fact: a CSS opacity transition is finite by construction, costs nothing,
+ * and cannot be restarted by a parent re-render the way a keyed motion
+ * component can.
+ *
+ * <p>Memoised on `revealed` rather than on the tick, so the clock ticking over
+ * a second does not re-render thirty-six spans to produce identical markup.
+ */
+const LiveWords = React.memo(function LiveWords({ revealed }: { revealed: number }) {
+  return (
+    <div className="mt-5 space-y-4">
+      {LINES.map((line, li) => (
+        <div
+          key={line.at}
+          data-utterance={OFFSET[li] < revealed ? "said" : "pending"}
+          className={cn(
+            "transition-opacity duration-500",
+            OFFSET[li] < revealed ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <span className="text-cap text-ink-4">
+            {line.who} <span className="text-ink-5">·</span>{" "}
+            <span className="tabular font-mono">{line.at}</span>
+          </span>
+          <p className="v2-read mt-0.5">
+            {line.words.map((word, wi) => (
+              <span
+                key={wi}
+                /* The state is an attribute as well as a class so a test can
+                   ask whether a word has arrived without asserting on a
+                   Tailwind string, and so the noscript rule has something
+                   stable to target. */
+                data-word={OFFSET[li] + wi < revealed ? "said" : "pending"}
+                className={cn(
+                  "transition-opacity duration-300",
+                  OFFSET[li] + wi < revealed ? "opacity-100" : "opacity-0",
+                )}
+              >
+                {word}{" "}
+              </span>
+            ))}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+});
 
 /** Turns, with the names and timecodes the product actually renders. */
 function Transcript() {
@@ -496,7 +635,7 @@ function Brief() {
  *
  * <h2>What it is now</h2>
  *
- * <p>One counter, forty ticks, four seconds. The effect schedules the next tick
+ * <p>One counter, sixty ticks, six seconds. The effect schedules the next tick
  * only while there is one left to schedule — so on the last frame it returns
  * early and <b>nothing is queued at all</b>. The timer is not left running
  * against a frozen display; there is no timer.
@@ -513,7 +652,7 @@ function Brief() {
  * </ul>
  *
  * <p>And it runs <b>once per page lifecycle</b>. `settled` is terminal: coming
- * back to Capture shows the finished frame rather than replaying four seconds
+ * back to Capture shows the finished frame rather than replaying six seconds
  * of fake recording at every reader who scrolls up.
  *
  * <h2>Reduced motion</h2>
@@ -562,46 +701,72 @@ export function useCaptureDemo(active: boolean, moving: boolean): CaptureClock {
 /**
  * The level meter, as the docked bar draws it.
  *
- * <p>Ink for sound and a hairline for silence — the recording bar's own
- * decision, for the reason recorded there: full-strength red across a whole
- * card turns a level meter into an alarm, and the thing that is genuinely
- * urgent is the lamp, not the level.
+ * <p>Ink rather than red — the recording bar's own decision, for the reason
+ * recorded there: full-strength red across a whole card turns a level meter
+ * into an alarm, and the thing that is genuinely urgent is the lamp, not the
+ * level. Loudness is carried by `opacity` alongside the scale, which is how the
+ * old height-driven "ink for sound, hairline for silence" reading survives
+ * without a layout property being animated to get it.
+ *
+ * <p>Memoised on the phase, so it re-renders twice in the life of the page
+ * rather than sixty times: a clock tick must not be able to restart a
+ * four-and-a-half second keyframe animation.
  */
-function Level({ frame }: { frame: number }) {
-  const BARS = 28;
-
-  /*
-   * The tail eases the amplitude down over the last quarter of the
-   * demonstration, so the meter *settles* rather than stopping dead on
-   * whatever the last frame happened to be. It settles low but not flat: a flat
-   * hairline is what this draws for silence, and a silent meter under a red
-   * Recording chip is a contradiction.
-   */
-  const progress = Math.min(1, frame / CAPTURE.ticks);
-  const envelope = progress < 0.75 ? 1 : 1 - ((progress - 0.75) / 0.25) * 0.6;
+const Level = React.memo(function Level({ phase }: { phase: CapturePhase }) {
+  const playing = phase === "playing";
 
   return (
     <span aria-hidden data-level className="flex h-4 items-center gap-[3px]">
-      {Array.from({ length: BARS }).map((_, i) => {
-        /* Deterministic rather than random: a fresh Math.random() per render
-           would differ between the server pass and the first client pass, which
-           is a hydration mismatch reported as a React error. It is also what
-           lets the settled frame be a fixed picture rather than wherever an
-           interval happened to leave it. */
-        const wave =
-          Math.abs(Math.sin((i + frame) * 0.7)) * Math.abs(Math.cos(i * 0.31 + frame * 0.2));
-        const height = Math.max(2, Math.round(wave * 15 * envelope));
-        return (
-          <span
-            key={i}
-            className={cn(
-              "w-[2px] rounded-full transition-[height] duration-100",
-              height > 3 ? "bg-ink-2" : "bg-line-strong",
-            )}
-            style={{ height }}
-          />
-        );
-      })}
+      {WAVE.map((beats, i) => (
+        <m.span
+          key={i}
+          data-bar
+          /*
+           * A FIXED-HEIGHT BAR THAT IS SCALED, NOT A BAR WHOSE HEIGHT CHANGES.
+           *
+           * This drew `style={{ height }}` and re-derived it from a product of
+           * two trig functions on every one of the ten ticks a second. Three
+           * things were wrong with that. The value jumped around chaotically,
+           * which is what read as flicker rather than as a level. `height` is a
+           * layout property, so twenty-eight of them changing ten times a
+           * second meant twenty-eight layouts a tick. And because the bar had
+           * no text, its varying height dragged the baseline of the row it sat
+           * in, which is what moved the transcript.
+           *
+           * `scaleY` and `opacity` are the two properties a compositor can
+           * animate without consulting layout at all, and a bar whose box never
+           * changes size cannot move anything around it.
+           */
+          className="h-4 w-[2px] origin-center rounded-full bg-ink-2"
+          /* No mount animation: it starts wherever the phase says it starts,
+             which is also what the server renders. */
+          initial={false}
+          animate={
+            playing
+              ? { scaleY: beats, opacity: beats.map((v) => 0.3 + 0.7 * v) }
+              : {
+                  scaleY: phase === "settled" ? WAVE_REST[i] : WAVE_START[i],
+                  opacity: 0.3 + 0.7 * (phase === "settled" ? WAVE_REST[i] : WAVE_START[i]),
+                }
+          }
+          transition={
+            playing
+              ? {
+                  duration: CAPTURE.waveSeconds,
+                  /* A small offset per bar so they do not all turn at the same
+                     instant, which reads as mechanical. Five values, so the
+                     spread never pushes the finish past the sequence. */
+                  delay: CAPTURE.waveDelay + (i % 5) * 0.02,
+                  ease: "easeInOut",
+                  /* Said out loud because it is the thing that must never
+                     change: this plays through its beats once and holds the
+                     last one. No `repeat`, no `repeatType`, no loop. */
+                  repeat: 0,
+                }
+              : { duration: 0 }
+          }
+        />
+      ))}
     </span>
   );
-}
+});

@@ -19,10 +19,19 @@ import { LandingMotion } from "@/components/v2/landing/motion-provider";
  * a meeting that was being recorded, and burned a timer and a React render ten
  * times a second to do it.
  *
- * <p>It is now forty ticks and then nothing. These tests pin both halves of
- * that: the demonstration reaches its last frame, and <b>no timer survives it</b>
- * — which is the half that would rot silently, because a frozen display looks
- * identical whether the interval behind it was stopped or merely ignored.
+ * <p>Two more faults sat on top of that one. The meter carried an inline
+ * `height` recomputed ten times a second from a chaotic pair of trig functions,
+ * which is what read as flicker — and because a bar has no text in it, its
+ * varying height dragged the baseline of the flex row it sat in, changing that
+ * row's height between 17px and 21px and shoving the whole transcript up and
+ * down. Measured before the fix: the first line's top took thirty distinct
+ * values and travelled 50px in one sequence.
+ *
+ * <p>It is now sixty ticks and then nothing; the bars are a fixed size and only
+ * scale; and every word of the transcript exists from the first frame. These
+ * tests pin all of it — above all that <b>no timer survives the end</b>, which
+ * is the half that would rot silently, because a frozen display looks identical
+ * whether the interval behind it was stopped or merely ignored.
  *
  * <h2>Why the clock is tested directly</h2>
  *
@@ -36,8 +45,8 @@ import { LandingMotion } from "@/components/v2/landing/motion-provider";
  * else in the tree happened to own a timeout.
  *
  * <p>The component tests then prove the wiring: that the clock reaches the
- * frame, that the reader sees 00:38 become 00:42, and that the picture is
- * genuinely still afterwards.
+ * frame, that the reader sees 00:38 become 00:44, that no word is ever inserted
+ * into the transcript, and that the picture is genuinely still afterwards.
  */
 
 /*
@@ -311,10 +320,6 @@ function draw() {
 }
 
 const clockFace = (c: HTMLElement) => c.querySelector("[data-clock]")?.textContent;
-const barHeights = (c: HTMLElement) =>
-  Array.from(c.querySelector("[data-level]")?.children ?? []).map(
-    (b) => (b as HTMLElement).style.height,
-  );
 
 describe("the capture frame", () => {
   beforeEach(() => {
@@ -335,7 +340,7 @@ describe("the capture frame", () => {
     expect(clockFace(container)).toBe("00:38");
   });
 
-  it("counts up for four seconds and then stops", () => {
+  it("counts up for six seconds and then stops", () => {
     const { container } = draw();
     windowOnScreen(true);
 
@@ -347,27 +352,44 @@ describe("the capture frame", () => {
     play(2000);
     expect(clockFace(container)).toBe("00:42");
 
-    // The point of the whole fix: a minute later it still reads 00:42, and it
+    play(2000);
+    expect(clockFace(container)).toBe("00:44");
+
+    // The point of the whole fix: a minute later it still reads 00:44, and it
     // is not a one-minute-long fake recording.
     play(60_000);
-    expect(clockFace(container)).toBe("00:42");
+    expect(clockFace(container)).toBe("00:44");
   });
 
-  it("settles the level meter instead of redrawing it forever", () => {
+  it("never animates the level meter's layout geometry", () => {
     const { container } = draw();
     windowOnScreen(true);
 
+    const bars = () => Array.from(container.querySelectorAll("[data-bar]"));
+    expect(bars()).toHaveLength(28);
+
+    /*
+     * The flicker, and the transcript jitter under it, both came from these
+     * bars carrying an inline `height` that was recomputed ten times a second.
+     * Nothing may set a layout property on them again: a bar whose box changes
+     * size drags the baseline of the row it sits in, and the whole transcript
+     * with it.
+     */
+    const layoutProps = ["height", "top", "bottom", "marginTop", "width", "paddingTop"] as const;
+    const noLayoutStyles = () =>
+      bars().every((b) =>
+        layoutProps.every((prop) => !(b as HTMLElement).style[prop]),
+      );
+
+    expect(noLayoutStyles()).toBe(true);
+    play(1500);
+    expect(noLayoutStyles()).toBe(true);
     play(CAPTURE.ticks * CAPTURE.tickMs);
-    const settled = barHeights(container);
+    expect(noLayoutStyles()).toBe(true);
 
-    expect(settled.length).toBeGreaterThan(0);
-    // Settled low, but not the flat hairline this meter draws for silence —
-    // a silent meter under a red Recording chip is a contradiction.
-    expect(settled.some((h) => parseInt(h, 10) > 2)).toBe(true);
-
+    // And the bars keep their identity: none added, none removed, ever.
     play(30_000);
-
-    expect(barHeights(container)).toEqual(settled);
+    expect(bars()).toHaveLength(28);
   });
 
   it("stops pulsing the recording lamp once the demonstration is over", () => {
@@ -385,17 +407,63 @@ describe("the capture frame", () => {
     );
   });
 
-  it("brings in all three live lines and leaves none of them provisional", () => {
+  it("holds every word of the transcript from the very first frame", () => {
+    const { container } = draw();
+
+    /*
+     * THE INVARIANT THAT KEEPS THE TRANSCRIPT STILL.
+     *
+     * Every word of all three utterances is in the DOM before the reader has
+     * even reached the section, in its final position with its final metrics.
+     * Arriving is a change of opacity. Because nothing is ever inserted, no
+     * line can rewrap and no word already on screen can be pushed anywhere.
+     */
+    const words = () => Array.from(container.querySelectorAll("[data-word]"));
+    const count = words().length;
+    expect(count).toBeGreaterThan(30);
+
+    const said = () => container.querySelectorAll('[data-word="said"]').length;
+    expect(said()).toBe(0);
+
+    // All the text, present and correct, while none of it has been revealed.
+    const text = words().map((w) => w.textContent!.trim()).join(" ");
+    expect(text).toContain("Let us start with pricing, because that is the one that has been open longest.");
+    expect(text).toContain("I would hold the price and move the annual discount instead.");
+    expect(text).toContain("Fifteen per cent on annual. Can you note the invoice copy?");
+
+    windowOnScreen(true);
+
+    // The count never moves, at any point in the sequence.
+    play(1000);
+    expect(words()).toHaveLength(count);
+    play(2000);
+    expect(words()).toHaveLength(count);
+
+    play(CAPTURE.ticks * CAPTURE.tickMs);
+    expect(words()).toHaveLength(count);
+    expect(said()).toBe(count);
+
+    play(30_000);
+    expect(words()).toHaveLength(count);
+    expect(said()).toBe(count);
+  });
+
+  it("reveals the words progressively rather than all at once", () => {
     const { container } = draw();
     windowOnScreen(true);
 
-    play(CAPTURE.ticks * CAPTURE.tickMs);
+    const said = () => container.querySelectorAll('[data-word="said"]').length;
+    const total = container.querySelectorAll("[data-word]").length;
 
-    // The words are the demonstration's content; that they all arrive is the
-    // part a reader would notice was missing.
-    expect(container.textContent).toContain("Let us start with pricing");
-    expect(container.textContent).toContain("I would hold the price");
-    expect(container.textContent).toContain("Fifteen per cent on annual");
+    expect(said()).toBe(0);
+    play(CAPTURE.firstWord * CAPTURE.tickMs + 500);
+    const partway = said();
+
+    expect(partway).toBeGreaterThan(0);
+    expect(partway).toBeLessThan(total);
+
+    play(CAPTURE.ticks * CAPTURE.tickMs);
+    expect(said()).toBe(total);
   });
 
   it("stops the clock when the reader scrolls the section away", () => {
@@ -409,7 +477,7 @@ describe("the capture frame", () => {
     play(10_000);
 
     // Settled rather than still counting behind a section nobody is looking at.
-    expect(clockFace(container)).toBe("00:42");
+    expect(clockFace(container)).toBe("00:44");
   });
 
   /**
@@ -441,5 +509,66 @@ describe("the capture frame", () => {
     // point: nothing is counting behind a picture nobody is looking at.
     play(10_000);
     expect(clockFace(container)).toBe("00:39");
+  });
+});
+
+/* ------------------------- nothing endless anywhere ------------------------ */
+
+/**
+ * The configuration that would bring the bug back.
+ *
+ * <p>Read from the source, because these are all things that look perfectly
+ * still in a jsdom snapshot and run forever in a browser: a `repeat: Infinity`
+ * added to the meter would pass every other test in this file.
+ *
+ * <p>Comments are stripped first. The file documents at length what was taken
+ * out and why — the two `setInterval`s, the `Math.random` that was never there,
+ * the loop that must not come back — and prose describing a mistake must not
+ * read as the mistake.
+ */
+describe("what the capture showcase may never contain", () => {
+  const code = async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(
+      resolve(process.cwd(), "components/v2/landing/stage-showcase.tsx"),
+      "utf8",
+    );
+    return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  };
+
+  it("configures no endless animation", async () => {
+    const src = await code();
+
+    expect(src).not.toMatch(/repeat:\s*Infinity/);
+    expect(src).not.toMatch(/repeatType/);
+    expect(src).not.toMatch(/animation-iteration-count/);
+    expect(src).toMatch(/repeat:\s*0/);
+  });
+
+  it("runs no interval, and no loop that would need one", async () => {
+    const src = await code();
+
+    // One bounded `setTimeout` chain is the only scheduling this file does.
+    expect(src).not.toMatch(/setInterval\s*\(/);
+    expect(src).not.toMatch(/requestAnimationFrame/);
+    expect(src.match(/setTimeout\s*\(/g) ?? []).toHaveLength(1);
+  });
+
+  it("generates no waveform geometry at random or in render", async () => {
+    const src = await code();
+
+    // Random amplitudes differ between the server pass and the client's, and
+    // regenerating them whenever state changes is what flicker is.
+    expect(src).not.toMatch(/Math\.random/);
+    // The shape is built once, at module scope, and frozen into a constant.
+    expect(src).toMatch(/const WAVE: number\[\]\[\] = Array\.from/);
+  });
+
+  it("uses no layout animation, which would reposition the transcript", async () => {
+    const src = await code();
+
+    // FLIP is exactly the movement this showcase exists to avoid.
+    expect(src).not.toMatch(/layout(Id)?\s*[={]/);
   });
 });
