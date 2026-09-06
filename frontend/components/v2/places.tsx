@@ -16,15 +16,22 @@ import { ASK, HOME, LIBRARY, placeFor, type PlaceId } from "@/lib/places";
  * meeting, Library is not where you are but it is where you came from, and a
  * navigation that goes blank one level down makes people feel lost.
  *
- * Three, and the third is Ask. Record, Import and Search are deliberately not
- * here — they are verbs, and putting them in a row of destinations is what
- * makes a nav look symmetrical and behave wrongly.
+ * Three, and the third is Ask Reverie. Record, Import and Search are
+ * deliberately not here — they are verbs, and putting them in a row of
+ * destinations is what makes a nav look symmetrical and behave wrongly.
  */
 
+/*
+ * The third slot is where the V2 design reference put Memory. Memory does not
+ * exist — the migrations dropped the tables it was drawn from and nothing has
+ * replaced them — so the slot carries the real third destination instead, at
+ * its full name. "Ask Reverie" rather than "Ask" because the bare verb beside
+ * two nouns reads as a control that got into the wrong row.
+ */
 const PLACES: { id: PlaceId; href: string; label: string }[] = [
   { id: "now", href: HOME, label: "Now" },
   { id: "library", href: LIBRARY, label: "Library" },
-  { id: "ask", href: ASK, label: "Ask" },
+  { id: "ask", href: ASK, label: "Ask Reverie" },
 ];
 
 export function Places({

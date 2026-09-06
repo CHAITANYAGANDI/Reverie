@@ -100,8 +100,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // about whether a recording is happening.
   const capturing = recorder.state !== "idle";
   const chrome = bandChrome(pathname, capturing);
-  // The two pages that draw their own full-height scrollers. Everything else
-  // gets the shell's container; see `<main>` below.
+  // The two pages that lay themselves out. Ask draws its own full-height
+  // scroller; Now draws the measure-and-margin spread, which sets its own
+  // document width and its own gutters because the margin has to be able to sit
+  // outside the reading column. Everything else gets the shell's container;
+  // see `<main>` below.
   const fullBleed = pathname === HOME || pathname === ASK;
   // Filled by the page underneath, when it has one. See components/side-pane.tsx.
   const pane = useSidePane();

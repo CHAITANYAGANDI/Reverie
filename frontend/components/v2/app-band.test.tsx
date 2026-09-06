@@ -91,7 +91,13 @@ describe("what is always there", () => {
 
     const nav = screen.getByRole("navigation", { name: "Places" });
     const names = Array.from(nav.querySelectorAll("a")).map((a) => a.textContent);
-    expect(names).toEqual(["Now", "Library", "Ask"]);
+    /*
+     * "Ask Reverie", not "Ask". The V2 reference puts Memory in this slot and
+     * Memory does not exist, so the slot carries the real third destination at
+     * its full name — a bare verb beside two nouns reads as a control that got
+     * into the wrong row.
+     */
+    expect(names).toEqual(["Now", "Library", "Ask Reverie"]);
   });
 
   it("sends each place to its own page", () => {
@@ -99,7 +105,7 @@ describe("what is always there", () => {
 
     expect(screen.getByRole("link", { name: "Now" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
-    expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
+    expect(screen.getByRole("link", { name: "Ask Reverie" })).toHaveAttribute("href", "/ask");
   });
 
   it("takes the mark home", () => {
@@ -107,7 +113,13 @@ describe("what is always there", () => {
     // been corners.
     band();
 
-    expect(screen.getByRole("link", { name: /Reverie/ })).toHaveAttribute("href", "/home");
+    // By its exact name: "Ask Reverie" also matches /Reverie/, and a loose
+    // pattern that starts matching a second element is a test that fails for a
+    // reason unrelated to the thing it is about.
+    expect(screen.getByRole("link", { name: "Reverie — home" })).toHaveAttribute(
+      "href",
+      "/home",
+    );
   });
 
   it("keeps the bell and the account, which the rail used to hold", () => {
@@ -143,7 +155,7 @@ describe("marking where you are", () => {
 
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Now" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Ask" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Ask Reverie" })).not.toHaveAttribute("aria-current");
   });
 
   it("keeps the parent marked one level down, without claiming to be it", () => {
@@ -160,7 +172,7 @@ describe("marking where you are", () => {
   it("marks nothing on a page that is not a place", () => {
     band({ pathname: "/record" });
 
-    for (const name of ["Now", "Library", "Ask"]) {
+    for (const name of ["Now", "Library", "Ask Reverie"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });
@@ -262,5 +274,73 @@ describe("the search store", () => {
     act(() => openSearch("acme"));
 
     expect(screen.getByTestId("overlay")).toHaveTextContent("open:acme");
+  });
+});
+
+/**
+ * The slot the reference filled with something that does not exist.
+ *
+ * <p>`design-demo/final/07-now.html` draws the band as Now / Library / Memory.
+ * Memory is not implemented — the migrations dropped the tables it was read
+ * from — so the third slot carries the real destination. These pin the absence,
+ * because a nav is exactly the place a future feature gets added as a disabled
+ * word "so it is ready", and a disabled word in a row of three is a promise the
+ * product cannot keep.
+ */
+describe("no future destination in the band", () => {
+  it("offers Memory nowhere, by any of its names", () => {
+    const { container } = band();
+
+    for (const word of [
+      /\bmemory\b/i,
+      /decision drift/i,
+      /commitment/i,
+      /promise/i,
+      /decision history/i,
+    ]) {
+      expect(container.textContent ?? "").not.toMatch(word);
+    }
+  });
+
+  it("routes the third place to the workspace Ask that exists", () => {
+    band();
+
+    // Not a new chat, not a modal, not a placeholder: the destination the
+    // product already has, with its thread, its composer and its citations.
+    expect(screen.getByRole("link", { name: "Ask Reverie" })).toHaveAttribute("href", "/ask");
+  });
+});
+
+/**
+ * The centre column.
+ *
+ * <p>Search sat in the right-hand group behind a flex spacer, which put it
+ * wherever the left group happened to end — visibly off centre, and drifting
+ * with the length of the place names. The band is a three-column grid now, so
+ * the middle column is the middle of the window whatever the two sides weigh.
+ */
+describe("where Search sits", () => {
+  it("is its own column between the two groups", () => {
+    const { container } = band();
+
+    const row = container.querySelector("header > div");
+    expect(row?.className).toContain("grid-cols-[1fr_auto_1fr]");
+
+    // Three children: left group, Search, right group. A fourth would mean
+    // something had been dropped back into the row beside the centre column.
+    expect(row?.children).toHaveLength(3);
+    expect(row?.children[1]).toContainElement(
+      screen.getByRole("button", { name: "Search" }),
+    );
+  });
+
+  it("keeps Record out of the accent colour", () => {
+    // The palette's own rule: the accent means "Reverie noticed this", not
+    // "this is the primary button". A filled iris pill on every page spends it
+    // on a control nobody asked for yet.
+    band();
+
+    const record = screen.getByRole("button", { name: "Record" });
+    expect(record.className).not.toContain("bg-brand");
   });
 });

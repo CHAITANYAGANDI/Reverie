@@ -14,7 +14,8 @@
  * them colliding.
  *
  * <p>This is one row, 48px, and it is the same row on every page. Left: the
- * mark and three words. Right: Search, Import, Record, notifications, you.
+ * mark and three words. Centre: Search. Right: Record, Import, notifications,
+ * you.
  * Nothing here belongs to the page underneath — page actions live in the page,
  * beside the thing they act on — which is what makes a fixed shape possible and
  * what makes the rulebook unnecessary.
@@ -38,7 +39,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Download, Mic, Search } from "lucide-react";
+import { Mic, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HOME } from "@/lib/routes";
 import { openSearch } from "@/lib/search-overlay";
@@ -71,7 +72,19 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
       className="v2-band no-print fixed inset-x-0 top-0 z-40 h-band"
       data-recording={recording ? "true" : undefined}
     >
-      <div className="flex h-full items-center gap-1 pl-3 pr-2 sm:pl-4 sm:pr-3">
+      {/*
+       * THREE COLUMNS, and that is the whole of how Search is centred.
+       *
+       * <p>It was a flex row with a spacer, which puts Search wherever the left
+       * group happens to end — so it drifted with the length of the place names
+       * and sat visibly right of centre. `1fr auto 1fr` gives the middle column
+       * its content width and splits the remainder evenly on both sides, which
+       * centres it against the *window* regardless of what the two groups
+       * weigh. Below `md` the middle column is empty and the sides carry
+       * everything, which is why the same grid works on a phone.
+       */}
+      <div className="grid h-full grid-cols-[1fr_auto_1fr] items-center gap-2 pl-3 pr-2 sm:pl-4 sm:pr-3">
+        <div className="flex min-w-0 items-center gap-1">
         {/* The mark goes home, which is the one thing a logo in a corner has
             meant for as long as there have been corners. Not a place in the
             row of three: it is the same destination as Now, and a nav with
@@ -90,29 +103,29 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
             is easier to reach with a thumb at the bottom. See
             components/v2/mobile-tabs.tsx. */}
         <Places pathname={pathname} className="ml-1 hidden md:flex" />
+        </div>
 
-        <div className="flex-1" />
+        {/* The centre column. Empty on a phone, where 232px of search box would
+            leave no room for the controls that have to be reachable. */}
+        <div className="hidden justify-center sm:flex">
+          <FindButton />
+        </div>
 
-        <FindButton />
-
+        <div className="flex items-center justify-end gap-1">
         {create && (
           <>
-            {/* Down: into Reverie. The pair with Export's up arrow — read from
-                the app's side, not the device's, so the two point at each
-                other rather than both meaning "file transfer".
-
-                A dialog rather than a route: a file arrives more often than
-                anything else creates a meeting, and it should not cost leaving
-                whatever is on screen. /upload still exists for the fuller form
-                — filing straight into a folder — and for direct links. */}
-            <BandIcon label="Import a recording" onClick={onImport}>
-              <Download className="h-4 w-4" />
-            </BandIcon>
-
-            {/* The one filled control in the band, and the only one that is not
-                an icon. Hidden on a phone, where it is the fourth bottom tab —
-                a red pill in a 48px band beside four other controls is the
-                first thing a thumb hits by accident. */}
+            {/*
+              QUIET, NOT BRAND-FILLED.
+              <p>This was a filled iris pill, which made the loudest thing in
+              the whole application a button that starts a recording nobody had
+              asked for yet — and spent the one accent on a control that is
+              present on every page. The palette's own rule is that the accent
+              means "Reverie noticed this", not "this is the primary button".
+              An outlined control in ink is what the reference draws and it
+              still reads as the most substantial thing on the right.
+              <p>Behaviour is untouched: same handler, same refusal title, same
+              hiding below `md` where it is the fourth bottom tab.
+            */}
             <button
               type="button"
               onClick={record.start}
@@ -121,13 +134,27 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
               // answers.
               title={record.refusal ?? undefined}
               className={cn(
-                "hidden h-8 shrink-0 items-center gap-1.5 rounded-full bg-brand-fill pl-2.5 pr-3.5 text-foot font-headline text-white md:flex",
-                "transition-colors duration-press ease-soft hover:bg-brand-hover",
+                "hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-foot font-headline text-ink md:flex",
+                "shadow-[inset_0_0_0_1px_rgb(var(--edge))]",
+                "transition-colors duration-press ease-soft hover:bg-surface-hover",
               )}
             >
               <Mic className="h-3.5 w-3.5" />
               Record
             </button>
+
+            {/* A plus, which is what the reference draws, and it opens the
+                Import dialog that already exists. Not a create menu: there is
+                exactly one thing this makes, and a menu with one item in it is
+                a click somebody pays for nothing.
+
+                A dialog rather than a route: a file arrives more often than
+                anything else creates a meeting, and it should not cost leaving
+                whatever is on screen. /upload still exists for the fuller form
+                — filing straight into a folder — and for direct links. */}
+            <BandIcon label="Import a recording" onClick={onImport}>
+              <Plus className="h-4 w-4" />
+            </BandIcon>
           </>
         )}
 
@@ -139,6 +166,7 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
 
         <NotificationBell />
         <AccountMenu />
+        </div>
       </div>
     </header>
   );
@@ -165,13 +193,16 @@ function FindButton() {
       onClick={() => openSearch()}
       aria-label="Search"
       className={cn(
-        "flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-edge bg-surface-raised px-2.5 text-foot text-ink-3",
-        "transition-colors duration-press ease-soft hover:border-edge-hover hover:text-ink-2",
-        "sm:pr-2",
+        /* 232px and 30px, from the reference. It was a bordered pill sized to
+           its contents, which read as another action in the right-hand group
+           rather than as a field. A field has a width. */
+        "flex h-[30px] w-full max-w-[232px] items-center gap-2 rounded-md bg-white/[0.05] pl-2.5 pr-1.5",
+        "text-callout text-ink-4 shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.08)]",
+        "transition-colors duration-press ease-soft hover:bg-white/[0.08] hover:text-ink-3",
       )}
     >
-      <Search className="h-4 w-4 shrink-0" />
-      <span className="hidden sm:inline">Search</span>
+      <Search className="h-3.5 w-3.5 shrink-0" />
+      <span className="flex-1 text-left">Search</span>
       {/* The shortcut, shown rather than taught. Mono because it is a key, and
           hidden where it cannot be pressed. */}
       <kbd className="hidden rounded-xs border border-line px-1 font-mono text-[10px] leading-4 text-ink-4 lg:inline">

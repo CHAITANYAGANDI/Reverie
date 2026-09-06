@@ -45,6 +45,17 @@ const query = vi.hoisted(() => ({ last: null as MeetingListQuery | null }));
 const refetch = vi.hoisted(() => vi.fn());
 
 let rows: MeetingResponse[];
+/**
+ * What a *narrowed* query answers with, when that differs.
+ *
+ * <p>Needed because the date filter now lives above the sections rather than on
+ * a section heading, and is drawn only where there is something to narrow — a
+ * filter on the first-minute screen is a control over an account with nothing
+ * in it. So "narrow the list until it is empty" has to be driven the way it
+ * actually happens: a list, then a window that returns nothing. Setting `rows`
+ * to `[]` before the first render tests a path the product does not have.
+ */
+let narrowedRows: MeetingResponse[] | null;
 /** How many exist behind the page. Drives the "showing the newest N" line. */
 let total: number | null;
 let loading: boolean;
@@ -120,12 +131,30 @@ vi.mock("@/lib/api", () => ({
     // An error keeps whatever was cached -- RTK does not throw the last good
     // page away -- so `noData` is what separates "failed with nothing" from
     // "failed over meetings already on screen".
-    const data = noData ? undefined : aPage(rows, total ?? rows.length);
+    const answering = q.from && narrowedRows ? narrowedRows : rows;
+    const data = noData ? undefined : aPage(answering, total ?? answering.length);
     return result(data, { isFetching: fetching, isError: errored });
   },
   // The masthead's greeting. Settings first, then the identity provider, then
   // nothing -- never the user id.
   useGetPreferencesQuery: () => ({ data: displayName === null ? {} : { displayName } }),
+  /*
+   * The margin's own list. It used to live behind `SidePane`, which these tests
+   * stubbed away wholesale; it is part of the page now, so its query has to be
+   * answered. Settled and empty, because none of these tests is about it — the
+   * action items have their own file.
+   */
+  useGetActionItemsQuery: () => ({
+    data: { content: [], totalElements: 0 },
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+    isUninitialized: false,
+    refetch: () => {},
+  }),
+  usePatchActionItemMutation: () => [vi.fn(), { isLoading: false }],
+  useCreateStandaloneActionItemMutation: () => [vi.fn(), { isLoading: false }],
 }));
 
 // `isLoaded` and `sessionKey` are not decoration: the date window is remembered
@@ -141,6 +170,12 @@ vi.mock("@/lib/auth", () => ({
     isLoaded: true,
   }),
 }));
+/*
+ * Neither is mounted by Now any more — the pane and the second chat are gone —
+ * but the stubs stay: `SidePane` is still the meeting page's, and a test file
+ * that silently starts rendering a real one because a stub was tidied away is
+ * how the pane would come back unnoticed.
+ */
 vi.mock("@/components/side-pane", () => ({ SidePane: () => null }));
 vi.mock("@/components/home-chat-panel", () => ({ HomeChatPanel: () => null }));
 vi.mock("@/components/action-items-panel", () => ({ ActionItemsPanel: () => null }));
@@ -183,6 +218,7 @@ beforeEach(() => {
   errored = false;
   noData = false;
   rows = [aMeeting()];
+  narrowedRows = null;
   total = null;
   displayName = null;
   // The window outlives a page now, so without this it would outlive a test and
@@ -327,7 +363,7 @@ describe("the masthead", () => {
 
     // First name only. "Good morning, Priya Raman" is a form letter.
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      /^Good (morning|afternoon|evening), Priya$/,
+      /^Good (morning|afternoon|evening), Priya\.$/,
     );
   });
 
@@ -337,11 +373,11 @@ describe("the masthead", () => {
     render(<HomePage />);
 
     const heading = await screen.findByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent(/^Good (morning|afternoon|evening)$/);
+    expect(heading).toHaveTextContent(/^Good (morning|afternoon|evening)\.$/);
     expect(screen.queryByText(/usr_1/)).not.toBeInTheDocument();
   });
 
-  it("says how many conversations are still being made", async () => {
+  it("gathers what is still being made under its own heading", async () => {
     rows = [
       aMeeting({ id: "a", status: "TRANSCRIBING" }),
       aMeeting({ id: "b", status: "SUMMARIZING" }),
@@ -349,18 +385,34 @@ describe("the masthead", () => {
     ];
     render(<HomePage />);
 
-    expect(await screen.findByText("2 conversations are still being made.")).toBeInTheDocument();
+    /*
+     * The count used to be a sentence in the masthead, several sections above
+     * the rows it was counting. It is now the heading over exactly those rows,
+     * which is the one place it cannot drift from them.
+     */
+    expect(await screen.findByRole("heading", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByText("2 conversations are still being made")).toBeInTheDocument();
   });
 
-  it("says when one could not be transcribed", async () => {
+  it("puts what failed under Needs attention, and nothing else there", async () => {
     // The one thing on this screen that genuinely needs a human, and previously
     // findable only by scrolling for a red badge.
-    rows = [aMeeting({ id: "a", status: "FAILED" })];
+    rows = [
+      aMeeting({ id: "a", status: "FAILED" }),
+      aMeeting({ id: "b", status: "TRANSCRIBING" }),
+    ];
     render(<HomePage />);
 
-    expect(
-      await screen.findByText("One conversation could not be transcribed."),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
+    expect(screen.getByText("1 conversation needs attention")).toBeInTheDocument();
+
+    /*
+     * A conversation still being made is the product working. Filing it under a
+     * heading that says it needs a person is how a real failure gets scrolled
+     * past, so the two are counted separately and never merged.
+     */
+    expect(screen.getByRole("heading", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByText("1 conversation is still being made")).toBeInTheDocument();
   });
 
   it("says nothing at all when nothing needs anything", async () => {
@@ -369,7 +421,8 @@ describe("the masthead", () => {
 
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByText(/still being made/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/could not be transcribed/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Needs attention" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "In progress" })).not.toBeInTheDocument();
   });
 
   it("claims nothing before the list has arrived", () => {
@@ -400,7 +453,9 @@ describe("the masthead", () => {
  */
 describe("when there is nothing to show", () => {
   it("blames the date window when there is one", async () => {
-    rows = [];
+    // A list, then a window that empties it. Which is the only way anybody
+    // reaches this screen.
+    narrowedRows = [];
 
     render(<HomePage />);
     await pickWindow(/^Today/);
@@ -409,11 +464,11 @@ describe("when there is nothing to show", () => {
     // Not the first-recording screen. A filter that empties the list has to say
     // so, or an archive that is merely narrowed reads as one that lost
     // everything.
-    expect(screen.queryByText("No conversations")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Record a meeting/ })).not.toBeInTheDocument();
   });
 
   it("offers both ways out of a narrowed list", async () => {
-    rows = [];
+    narrowedRows = [];
 
     render(<HomePage />);
     await pickWindow(/^Today/);
@@ -425,12 +480,21 @@ describe("when there is nothing to show", () => {
     );
   });
 
-  it("says the account is empty only when nothing is narrowing the list", () => {
+  it("says the account is empty only when nothing is narrowing the list", async () => {
     rows = [];
 
     render(<HomePage />);
 
-    expect(screen.getByText("No conversations")).toBeInTheDocument();
+    /*
+     * The first minute, from `09-now-first.html`: the heading carries it rather
+     * than a bordered box in the middle of the page. `find`, because the
+     * greeting waits for a clock the server does not have.
+     */
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      /^Nothing here yet/,
+    );
+    expect(screen.getByRole("link", { name: /Record a meeting/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Import a recording/ })).toBeInTheDocument();
   });
 
   it("never claims a folder is hiding anything", () => {
@@ -591,7 +655,11 @@ describe("filters that stay where you left them", () => {
  * only a settled, successful, genuinely empty response is allowed to make it.
  */
 describe("what Home shows when the request does not simply succeed", () => {
-  const EMPTY = "No conversations";
+  /* The first-minute screen's own call to action. The heading that used to
+     carry this ("No conversations") is gone — the masthead says it now, and it
+     waits for a clock, which a synchronous assertion cannot. This link does
+     not. */
+  const EMPTY = /Record a meeting/;
   const LOAD_ERROR = /couldn.t load your conversations/i;
 
   it("does not claim an empty account when the request failed and left no data", () => {
@@ -601,7 +669,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
     expect(screen.getByText(LOAD_ERROR)).toBeInTheDocument();
   });
 
@@ -648,7 +716,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("shows the skeleton before the first response, not an empty message", () => {
@@ -656,7 +724,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     const { container } = render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
     expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
   });
@@ -669,7 +737,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("keeps meetings on screen during a background refetch", () => {
@@ -693,7 +761,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     expect(screen.getByText("Still here")).toBeInTheDocument();
     expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("allows the empty screen once the request settles successfully with nothing", () => {
@@ -703,7 +771,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.getByText(EMPTY)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EMPTY })).toBeInTheDocument();
   });
 
   it("shows meetings on a successful non-empty response", () => {
@@ -712,7 +780,7 @@ describe("what Home shows when the request does not simply succeed", () => {
     render(<HomePage />);
 
     expect(screen.getByText("Tuesday design review")).toBeInTheDocument();
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 });
 
@@ -725,16 +793,22 @@ describe("what Home shows when the request does not simply succeed", () => {
  * keeps from the moment it is saved until it is ready.
  */
 describe("a meeting that is still processing", () => {
-  it("says so in its own row, with the stage and how far along", () => {
+  it("says so inline, with the stage, and invents no percentage", () => {
     rows = [aMeeting({ id: "mtg_p", title: "Recording — 8/26/2026", status: "SUMMARIZING" })];
 
     render(<HomePage />);
 
-    // The pill is one word while it runs; the stage is said in full underneath.
+    // "Processing · Generating summary…", on the row's own metadata line, so a
+    // row being made is exactly as tall as a finished one.
     expect(screen.getByText("Processing")).toBeInTheDocument();
     expect(screen.getByText("Generating summary…")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Processing progress" }))
-      .toBeInTheDocument();
+
+    /*
+     * No bar. The one it replaces read a percentage derived from *which stage*
+     * the job was in, which is a figure nobody measured — the server reports a
+     * stage, and the stage is what is shown.
+     */
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
   it("keeps the title, the time and the duration it always had", () => {
@@ -778,10 +852,12 @@ describe("a meeting that is still processing", () => {
     render(<HomePage />);
 
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    // The status, not a cause. A cause invented to fill the line would send
+    // somebody looking for a problem that may not be theirs.
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
-  it("shows one bar per processing meeting and none for the rest", () => {
+  it("marks the rows being made and leaves the rest alone", () => {
     rows = [
       aMeeting({ id: "mtg_a", title: "One", status: "TRANSCRIBING" }),
       aMeeting({ id: "mtg_b", title: "Two", status: "READY" }),
@@ -790,7 +866,9 @@ describe("a meeting that is still processing", () => {
 
     render(<HomePage />);
 
-    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+    // Two of the three, and the finished one carries no state at all.
+    expect(screen.getAllByText("Processing")).toHaveLength(2);
+    expect(screen.getByText("2 conversations are still being made")).toBeInTheDocument();
   });
 });
 
@@ -840,5 +918,100 @@ describe("when the sign-in changes under an open page", () => {
 
     expect(screen.getByRole("button", { name: /Last 7 days/ })).toBeInTheDocument();
     expect(lastQuery()?.from).toBeTruthy();
+  });
+});
+
+/**
+ * The composition Now was corrected to, and the things it must never grow back.
+ *
+ * <p>Two shapes were removed and both are the kind that return quietly. The
+ * persistent AI pane beside the list was a second application standing next to
+ * the first — and a second workspace chat, with a whole destination of its own
+ * already in the band. The rounded card per conversation was the V1 list
+ * wearing V2 colours.
+ *
+ * <p>What replaces them is the reference geometry: a measure, a margin, and one
+ * scroll. The margin is part of this page, which is the whole distinction — a
+ * pane has a border and a scrollbar and belongs to the shell; a margin stops
+ * where its content stops.
+ */
+describe("the shape of Now", () => {
+  it("lays the page out as a measure and a margin", async () => {
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    // 680 + 40 + 400, centred, collapsing to the measure alone below 1160px.
+    // The page used to state its own 768px width and leave the rest to a pane.
+    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+  });
+
+  it("mounts no side pane, so the margin cannot become a second application", async () => {
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    /*
+     * `SidePane` is stubbed to render nothing in this file, so its absence
+     * cannot be seen in the DOM. What can be seen is the tab bar that only ever
+     * existed to choose between the two things inside it.
+     */
+    expect(screen.queryByRole("tab", { name: /AI Chat/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Action Items/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the workspace Ask reachable, once", async () => {
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    // One door to one Ask. Not a composer that starts a thread of its own here
+    // and a second thread at /ask.
+    const launcher = screen.getByRole("link", { name: /Ask Reverie about any of it/ });
+    expect(launcher).toHaveAttribute("href", "/ask");
+    expect(screen.queryByRole("textbox", { name: /ask/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps your own list on the page rather than behind a tab", async () => {
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+  });
+
+  it("says nothing the product cannot do", async () => {
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    /*
+     * The reference fills this page with the memory layer: "What Reverie
+     * noticed", a decision reversed, a promise slipped twice, a risk open
+     * thirteen days. None of it exists. The composition was taken and the
+     * content was not.
+     */
+    for (const word of [
+      /\bmemory\b/i,
+      /decision reversed/i,
+      /decision drift/i,
+      /decision history/i,
+      /commitment/i,
+      /promise/i,
+      /slipped/i,
+      /since (your |the )?last meeting/i,
+      /what reverie noticed/i,
+    ]) {
+      expect(container.textContent ?? "").not.toMatch(word);
+    }
+  });
+
+  it("draws conversations as rows rather than as cards", async () => {
+    rows = [aMeeting({ id: "mtg_a", title: "Tuesday design review" })];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    // A hairline between rows, not a border around each one. `rounded-lg
+    // border` per row is the V1 list shape that this correction removed.
+    expect(row.className).not.toContain("border");
+    // And it still goes where it always went.
+    expect(row).toHaveAttribute("href", "/meetings/mtg_a");
+    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
   });
 });
