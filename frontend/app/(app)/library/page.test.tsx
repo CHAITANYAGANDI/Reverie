@@ -29,6 +29,15 @@ import type { MeetingResponse, MeetingListQuery, Page, Project } from "@/lib/typ
  * draws four filter chips and a "Kinds" section; `GET /meetings` supports the
  * dates and nothing else of theirs. Four convincing controls that narrow
  * nothing is worse than one that works.
+ *
+ * <p><b>The two empty states are different screens.</b> `15-library-empty.html`
+ * is single-column, and reading that as "no rows, no margin" dropped the
+ * folders on a brand new account — the one account that cannot reach them any
+ * other way, since `/folders` is linked from that margin and nowhere else. The
+ * reference is the *filtered* state, which has something to say about a filter
+ * and needs the measure to say it in. Folders are a different resource from
+ * meetings: they can exist with none, and they have to be creatable before the
+ * first meeting exists.
  */
 const query = vi.hoisted(() => ({ last: null as MeetingListQuery | null }));
 const refetch = vi.hoisted(() => vi.fn());
@@ -404,6 +413,62 @@ describe("when there is genuinely nothing", () => {
     expect(screen.queryByText(/Everything is in a folder/)).not.toBeInTheDocument();
   });
 
+  it("keeps the folders reachable, because nothing else links to them", async () => {
+    /*
+     * THE REGRESSION THIS EXISTS FOR. `state === "empty"` covers both empty
+     * states, and dropping the margin for all of it meant a new account saw no
+     * folders, no "Manage", and no way to make one — on the only page that
+     * links to /folders.
+     */
+    rows = [];
+    render(<LibraryPage />);
+
+    await screen.findByText("Nothing here yet");
+    expect(screen.getByRole("heading", { name: "Folders" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/folders");
+  });
+
+  it("offers a first folder when there are no folders either", async () => {
+    rows = [];
+    folders = [];
+    render(<LibraryPage />);
+
+    await screen.findByText("Nothing here yet");
+    expect(screen.getByText("No folders yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /New folder/ })).toBeInTheDocument();
+  });
+
+  it("shows the folders somebody already has, with no meetings in them", async () => {
+    /*
+     * Zero meetings is not zero folders. A folder can be made before the first
+     * recording exists, and equating the two counts would hide real data behind
+     * an unrelated resource's emptiness.
+     */
+    rows = [];
+    folders = [aFolder({ name: "Beta Launch", meetingCount: 0 })];
+    render(<LibraryPage />);
+
+    await screen.findByText("Nothing here yet");
+    expect(screen.getByRole("link", { name: /Beta Launch/ })).toHaveAttribute(
+      "href",
+      "/folder/prj_1",
+    );
+    expect(screen.queryByText("No folders yet.")).not.toBeInTheDocument();
+  });
+
+  it("still does not read a failed folder request as an account with no folders", async () => {
+    // The rule holds on the empty screen too, where there is even less room for
+    // the difference to be visible.
+    rows = [];
+    folders = undefined;
+    foldersErrored = true;
+    render(<LibraryPage />);
+
+    await screen.findByText("Nothing here yet");
+    expect(screen.getByRole("alert")).toHaveTextContent(/Couldn't load your folders/);
+    expect(screen.queryByText("No folders yet.")).not.toBeInTheDocument();
+  });
+
   it("draws no bordered card around any of it", async () => {
     /*
      * Both empty states and the error were `rounded-lg border border-dashed
@@ -441,6 +506,20 @@ describe("when a date window has emptied it", () => {
     expect(
       await screen.findByText(/The rest of your library is still here/),
     ).toBeInTheDocument();
+  });
+
+  it("gives the measure to the explanation, and no margin", async () => {
+    /*
+     * The other half of the rule, and the one the reference actually draws:
+     * this screen has something to say about the filter, so it gets the whole
+     * column to say it in. An account with nothing in it keeps its folders —
+     * see "keeps the folders reachable" above.
+     */
+    await narrow();
+
+    await screen.findByText(/Nothing from/);
+    expect(screen.queryByRole("heading", { name: "Folders" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Manage" })).not.toBeInTheDocument();
   });
 
   it("keeps the way to widen it", async () => {

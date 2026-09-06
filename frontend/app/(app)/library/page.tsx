@@ -132,18 +132,32 @@ export default function LibraryPage() {
   const narrowed = when.from !== null || when.to !== null;
 
   /*
-   * THE MARGIN IS FOR A PAGE THAT HAS AN ARCHIVE ON IT.
+   * WHETHER THE FILING SYSTEM IS REACHABLE FROM THIS PAGE.
    *
-   * <p>`15-library-empty.html` is `.single` rather than `.spread` — a filter
-   * that excluded everything, or a failure, gets the whole measure to explain
-   * itself in rather than a folder list beside it. The skeleton keeps the
-   * margin so that rows arriving do not shift the page sideways.
+   * <p>`15-library-empty.html` is `.single` rather than `.spread`, and reading
+   * that as "no rows, no margin" was wrong: it dropped the folders on a brand
+   * new account, which is the one account that cannot reach them any other way.
+   * `/folders` is only linked from this margin.
+   *
+   * <p>The reference is the *filtered* empty state — a window that excluded
+   * everything. That one gets the whole measure to explain itself in, because
+   * what it has to say is about the filter and a folder list beside it is
+   * beside the point. An account with nothing in it is a different screen with
+   * the same row count, and folders are a different resource from meetings:
+   * they can exist with no meetings at all, and they have to be creatable
+   * before the first meeting exists.
+   *
+   * <p>So the two are told apart by whether anything is narrowing the list.
+   * The skeleton keeps the margin so rows arriving do not shift the page
+   * sideways; a failed archive does not, for the same reason the filtered state
+   * does not — it needs the measure to say what went wrong.
    */
-  const spread = state === "skeleton" || state === "list";
+  const showFolders =
+    state === "skeleton" || state === "list" || (state === "empty" && !narrowed);
 
   return (
     <div className="px-4 pb-16 lg:px-6">
-      <div className="v2-spread" data-margin={spread ? undefined : "empty"}>
+      <div className="v2-spread" data-margin={showFolders ? undefined : "empty"}>
         <div className="min-w-0">
           <Masthead
             label="Library"
@@ -218,13 +232,20 @@ export default function LibraryPage() {
          * stops. The spacer is the reference's, and it drops the first margin
          * heading level with the first heading in the measure.
          */}
-        {spread && (
-          <div className="mt-10 min-w-0 lg:mt-0">
-            {/* Measured, not guessed: it drops "Folders" onto the same
-                baseline as the first day heading in the measure. The
-                reference's own 214px was for its masthead metrics, not
-                these. */}
-            <div aria-hidden className="hidden h-[230px] lg:block" />
+        {showFolders && (
+          <div className="mt-10 min-w-0 min-[1160px]:mt-0">
+            {/*
+              1160px, not `lg`. The spacer drops "Folders" onto the same
+              baseline as the first heading in the measure, which is only
+              somewhere to be while the spread has two columns -- and it splits
+              at 1160px (see `.v2-spread` in globals.css) where `lg` is 1024.
+              Keyed on `lg` it left a 230px hole above the stacked folders for
+              every width in between.
+
+              Measured, not guessed: the reference's own 214px was for its
+              masthead metrics, not these.
+            */}
+            <div aria-hidden className="hidden h-[230px] min-[1160px]:block" />
             <FolderMargin />
           </div>
         )}
