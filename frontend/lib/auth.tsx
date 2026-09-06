@@ -69,6 +69,19 @@ interface AuthContextValue {
    */
   completeOnboarding: () => Promise<void>;
   /**
+   * Forget that onboarding was ever finished.
+   *
+   * <p>For the one case that produces it: closing an account destroys Reverie's
+   * data, the identity deletion is refused, and the credential survives. That
+   * identity must not go on claiming to be onboarded — the next sign-in gets a
+   * freshly provisioned, empty Reverie row, and walking somebody into an empty
+   * product with the questions already marked answered is the exact state this
+   * flag exists to prevent.
+   *
+   * <p>Not called by an ordinary sign-out. Signing out is not losing anything.
+   */
+  clearOnboarding: () => Promise<void>;
+  /**
    * Destroy the sign-in itself, not just Reverie's copy of the account.
    *
    * <p>Closing an account erases Reverie's data; this is the other half, and
@@ -193,9 +206,17 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = React.useCallback((to?: string) => {
     try {
       window.localStorage.removeItem(DEV_USER_KEY);
-      // Dev mode's only version of "this identity is gone". Without it the
-      // flag outlives the sign-in it belongs to and nobody is asked again.
-      window.localStorage.removeItem(devFlagKey(userId));
+      /*
+       * The onboarding flag is deliberately NOT removed here.
+       *
+       * <p>Signing out is not losing anything. It briefly did clear it, which
+       * made dev mode ask the two questions again on every single sign-in —
+       * the flag is keyed on the dev user id and signing back in as the same
+       * dev user is the same person, who has already answered.
+       *
+       * <p>What destroys it is `deleteIdentity`, which is the deletion path and
+       * dev mode's only version of "this identity is gone".
+       */
     } catch {
       /* ignore */
     }
@@ -204,11 +225,11 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
     clearPreferences();
     authStore.devUserId = DEFAULT_DEV_USER;
     window.location.href = to ?? SIGN_IN;
-    // `userId`, because the onboarding flag is keyed on it: an empty dependency
-    // list captured whoever was signed in when this mounted, so signing out
-    // after a dev user switch cleared the wrong key and left the new one's flag
-    // behind.
-  }, [userId]);
+    // Nothing from the render, now that the onboarding flag is no longer
+    // touched here. It briefly needed `userId` for the key it was clearing, and
+    // leaving that dependency behind would re-create this callback on every dev
+    // user switch for no reason.
+  }, []);
 
   /*
    * DEV MODE HAS NO IDENTITY PROVIDER, so it has nowhere to put this but the
@@ -240,9 +261,29 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId]);
 
-  /* There is no identity in dev mode, so there is nothing to destroy and
-     nothing to claim was destroyed. */
-  const deleteIdentity = React.useCallback(async () => false, []);
+  const clearOnboarding = React.useCallback(async () => {
+    setDevOnboarding(false);
+    try {
+      window.localStorage.removeItem(devFlagKey(userId));
+    } catch {
+      /* ignore */
+    }
+  }, [userId]);
+
+  /*
+   * There is no identity in dev mode, so there is nothing to destroy and
+   * nothing to claim was destroyed — hence `false`, honestly.
+   *
+   * <p>It still forgets the onboarding answers, because this is the deletion
+   * path and dev mode's flag is the only thing standing in for the identity
+   * that a Clerk deletion would take with it. Without this, closing a dev
+   * account and signing back in landed in an empty product that thought the
+   * questions had been answered.
+   */
+  const deleteIdentity = React.useCallback(async () => {
+    await clearOnboarding();
+    return false;
+  }, [clearOnboarding]);
 
   const value: AuthContextValue = {
     mode: "dev",
@@ -250,6 +291,7 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
     setDevUserId,
     onboardingCompleted: devOnboarding,
     completeOnboarding,
+    clearOnboarding,
     deleteIdentity,
     // Dev has no sessions. The id is the only thing that distinguishes one
     // sign-in from another, and switching dev users is a sign-in.

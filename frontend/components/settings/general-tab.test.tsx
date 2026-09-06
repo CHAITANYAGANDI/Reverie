@@ -25,13 +25,14 @@ import type { PreferencesResponse, PrivacyOverview } from "@/lib/types";
  * Reverie ships no terms of service of its own.
  */
 const {
-  update, setRetention, closeAccount, signOut, deleteIdentity, toastError,
+  update, setRetention, closeAccount, signOut, deleteIdentity, clearOnboarding, toastError,
 } = vi.hoisted(() => ({
   update: vi.fn(),
   setRetention: vi.fn(),
   closeAccount: vi.fn(),
   signOut: vi.fn(),
   deleteIdentity: vi.fn(),
+  clearOnboarding: vi.fn(),
   toastError: vi.fn(),
 }));
 
@@ -47,7 +48,9 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/settings" }));
 vi.mock("@/lib/auth", () => ({
   // `profile` carries how this person signed in, which is what decides whether
   // the name, the address and the password are theirs to change here.
-  useAuth: () => ({ userId: "usr_dev", mode, signOut, deleteIdentity, profile: identity }),
+  useAuth: () => ({
+    userId: "usr_dev", mode, signOut, deleteIdentity, clearOnboarding, profile: identity,
+  }),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -507,6 +510,54 @@ describe("closing the account", () => {
     // Data first: erasing it needs a live session token, and destroying the
     // identity ends the session.
     expect(closeAccount).toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("does not leave a surviving identity claiming to be onboarded", async () => {
+    /*
+     * THE PARTIAL FAILURE, WHICH IS THE ONE WORTH PINNING.
+     *
+     * <p>Reverie's data is gone and the credential is not. If it signs in again
+     * it gets a freshly provisioned, empty row — and an identity still carrying
+     * `onboardingCompleted` would walk straight into that empty product with
+     * the two questions marked answered, which is the exact state the flag
+     * exists to prevent. So the flag is forgotten, the failure is still
+     * reported, and nothing claims the deletion succeeded.
+     */
+    mode = "clerk";
+    deleteIdentity.mockResolvedValue(false);
+    render(<GeneralTab />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete account" }));
+    await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
+    await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
+
+    await waitFor(() => expect(clearOnboarding).toHaveBeenCalled());
+
+    // The data really did go, so that half is not walked back.
+    expect(closeAccount).toHaveBeenCalled();
+    // And the truthful message still stands — no success is claimed.
+    expect(toastError).toHaveBeenCalledWith(
+      "Your data is deleted. The sign-in itself could not be removed.",
+    );
+  });
+
+  it("leaves the onboarding flag alone when the identity really is gone", async () => {
+    /*
+     * Nothing to reset: the metadata went with the user it was on. Touching it
+     * would be an update against a deleted identity, which is a request that
+     * can only fail.
+     */
+    mode = "clerk";
+    deleteIdentity.mockResolvedValue(true);
+    render(<GeneralTab />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete account" }));
+    await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
+    await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/"));
+    expect(clearOnboarding).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
   });
 

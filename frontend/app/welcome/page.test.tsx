@@ -233,4 +233,18 @@ describe("somebody who has already done this", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/home"));
   });
+
+  it("stays and is asked when the flag is not set", async () => {
+    /*
+     * The other half of the same rule, and the end of the partial-deletion
+     * lifecycle: an identity whose Reverie data was deleted but which survived
+     * has had its flag cleared, so the next sign-in provisions an empty row and
+     * lands here rather than being waved through into it.
+     */
+    completed = false;
+    render(<WelcomePage />);
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(replace).not.toHaveBeenCalled();
+  });
 });

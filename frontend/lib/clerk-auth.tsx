@@ -184,6 +184,21 @@ function ClerkBridge({
   }, [user]);
 
   /**
+   * Forget that onboarding was ever finished, without touching anything else on
+   * the identity.
+   *
+   * <p>The key is removed rather than set to false, so the metadata carries no
+   * claim either way — which is what `onboardingCompleted` already reads as
+   * "not done", and leaves nothing behind for a later reader to misinterpret.
+   */
+  const clearOnboarding = React.useCallback(async () => {
+    if (!user) return;
+    const rest = { ...user.unsafeMetadata };
+    delete (rest as Record<string, unknown>)[ONBOARDING_FLAG];
+    await user.update({ unsafeMetadata: rest });
+  }, [user]);
+
+  /**
    * Destroy the sign-in itself.
    *
    * <p>The instance can refuse — self-service deletion is a dashboard setting —
@@ -218,6 +233,7 @@ function ClerkBridge({
     // not-done: the cost is two skippable questions.
     onboardingCompleted: isLoaded ? completed : false,
     completeOnboarding,
+    clearOnboarding,
     deleteIdentity,
     profile,
     signOut: (to?: string) => {

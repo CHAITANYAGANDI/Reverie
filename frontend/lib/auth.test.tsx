@@ -17,7 +17,7 @@ vi.hoisted(() => {
 });
 
 import * as React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, cleanup } from "@testing-library/react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { readPreferences, writePreference } from "@/lib/preference-store";
 
@@ -41,12 +41,16 @@ import { readPreferences, writePreference } from "@/lib/preference-store";
 
 /** Reads the context out so a test can drive it. */
 function Probe() {
-  const { sessionKey, isLoaded, signOut } = useAuth();
+  const { sessionKey, isLoaded, signOut, onboardingCompleted, completeOnboarding, deleteIdentity } =
+    useAuth();
   return (
     <div>
       <span data-testid="session">{isLoaded ? sessionKey : "…"}</span>
+      <span data-testid="onboarded">{onboardingCompleted ? "yes" : "no"}</span>
       <button onClick={() => signOut?.()}>Sign out</button>
       <button onClick={() => signOut?.("/")}>Close account</button>
+      <button onClick={() => void completeOnboarding()}>Finish onboarding</button>
+      <button onClick={() => void deleteIdentity()}>Delete identity</button>
     </div>
   );
 }
@@ -155,6 +159,81 @@ describe("where signing out lands", () => {
     });
 
     expect(spot.href).toBe("/");
+  });
+});
+
+/**
+ * The onboarding flag, across the two things that end a session.
+ *
+ * <p>Dev mode has no identity provider, so the flag lives beside the dev user
+ * id in the browser rather than on a Clerk user. That makes the distinction
+ * this file has to pin an easy one to get wrong: signing out is not losing
+ * anything, and it briefly did clear the flag — which made dev mode ask the two
+ * questions again on every single sign-in, to the same person, who had already
+ * answered them.
+ */
+describe("what onboarding survives", () => {
+  async function mount() {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+    });
+  }
+
+  async function press(name: string) {
+    await act(async () => {
+      screen.getByRole("button", { name }).click();
+    });
+  }
+
+  it("remembers being finished", async () => {
+    await mount();
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("no");
+
+    await press("Finish onboarding");
+
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("yes");
+  });
+
+  it("survives an ordinary sign-out and the sign-in after it", async () => {
+    /*
+     * The required lifecycle: a dev user finishes onboarding, signs out, signs
+     * back in as the same dev user, and goes straight to Now — which is what
+     * the welcome screen does when it reads this flag as true.
+     */
+    watchNavigation();
+    await mount();
+    await press("Finish onboarding");
+    await press("Sign out");
+
+    // Signing back in is the next mount, under the same dev user id.
+    cleanup();
+    await mount();
+
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("yes");
+  });
+
+  it("is destroyed by deleting the identity, which is the deletion path", async () => {
+    /*
+     * Dev mode has no identity to destroy, so the flag is the only thing
+     * standing in for what a Clerk deletion would take with it. Without this,
+     * closing a dev account and signing back in landed in an empty product that
+     * thought the questions had been answered.
+     */
+    await mount();
+    await press("Finish onboarding");
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("yes");
+
+    await press("Delete identity");
+
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("no");
+
+    cleanup();
+    await mount();
+    expect(screen.getByTestId("onboarded")).toHaveTextContent("no");
   });
 });
 

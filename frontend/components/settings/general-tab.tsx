@@ -649,7 +649,7 @@ function Dial({
  * empty body. The point is that it cannot be produced by a stray click.
  */
 function CloseAccountSection() {
-  const { signOut, deleteIdentity, mode } = useAuth();
+  const { signOut, deleteIdentity, clearOnboarding, mode } = useAuth();
   const [close, { isLoading }] = useCloseAccountMutation();
   const [typed, setTyped] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -684,10 +684,32 @@ function CloseAccountSection() {
       const gone = (await deleteIdentity?.()) ?? false;
       if (mode === "clerk" && !gone) {
         /*
-         * Said out loud rather than swallowed. The instance can refuse — self
-         * service deletion is a dashboard setting — and somebody who is told
-         * their sign-in was destroyed when it was not will find out by signing
-         * in successfully, which is the worst way to learn it.
+         * THE IDENTITY SURVIVED, SO IT MUST NOT GO ON CLAIMING TO BE ONBOARDED.
+         *
+         * <p>Reverie's data is gone either way. If this credential signs in
+         * again it gets a freshly provisioned, empty row — and an identity
+         * still carrying `onboardingCompleted` would walk straight into that
+         * empty product with the two questions marked answered, which is the
+         * exact state the flag exists to prevent. Forgetting it here means the
+         * next sign-in is onboarded again, whether or not the deletion is ever
+         * retried.
+         *
+         * <p>Before the message and not after: the message is the last thing
+         * that happens on this screen before the sign-out, and an error thrown
+         * on the way to it must not leave the flag standing.
+         */
+        try {
+          await clearOnboarding?.();
+        } catch {
+          /* Nothing better to do, and the sentence below is still true. */
+        }
+
+        /*
+         * Said out loud rather than swallowed, and never reported as a success.
+         * The instance can refuse — self-service deletion is a dashboard
+         * setting — and somebody who is told their sign-in was destroyed when
+         * it was not will find out by signing in successfully, which is the
+         * worst way to learn it.
          */
         toast.error("Your data is deleted. The sign-in itself could not be removed.");
       }
