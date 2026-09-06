@@ -52,6 +52,20 @@ vi.mock("next/navigation", () => ({
 
 import SsoCallbackPage from "@/app/sso-callback/page";
 
+/**
+ * What is actually on screen, ignoring anything only a screen reader gets.
+ *
+ * <p>This route draws the surface colour and nothing else, and it carries one
+ * `sr-only` line so assistive technology is not handed silence on a real
+ * navigation stop. Asserting on `textContent` cannot tell those apart — it
+ * would either forbid the announcement or stop noticing a visible spinner.
+ */
+function visibleText(container: HTMLElement): string {
+  const clone = container.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(".sr-only").forEach((el) => el.remove());
+  return (clone.textContent ?? "").trim();
+}
+
 /** Puts something on the address bar, which is where the provider replies. */
 function arriveWith(search: string) {
   window.history.replaceState({}, "", `/sso-callback${search}`);
@@ -122,7 +136,7 @@ describe("cancelling at Google", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalled());
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(container.textContent).toBe("");
+    expect(visibleText(container)).toBe("");
   });
 
   it("attempts no exchange, there being nothing to exchange", async () => {
@@ -185,9 +199,9 @@ describe("before clerk-js has loaded", () => {
     await act(async () => {});
 
     expect(handleRedirectCallback).not.toHaveBeenCalled();
-    // And silent while it waits, rather than announcing a sign-in that has not
-    // started.
-    expect(container.textContent).toBe("");
+    // And nothing on screen while it waits, rather than a page announcing a
+    // sign-in that has not started.
+    expect(visibleText(container)).toBe("");
   });
 
   it("runs as soon as it has", async () => {
@@ -255,9 +269,10 @@ describe("while the exchange is running", () => {
      */
     const { container } = render(<SsoCallbackPage />);
 
-    expect(container.textContent).toBe("");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(visibleText(container)).toBe("");
     expect(container.querySelector("svg")).toBeNull();
+    // The one thing it does say is said to a screen reader only.
+    expect(screen.getByRole("status")).toHaveClass("sr-only");
     await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
   });
 
