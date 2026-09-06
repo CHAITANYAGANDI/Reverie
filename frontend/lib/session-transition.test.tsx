@@ -28,7 +28,7 @@ import { configureStore, type Middleware } from "@reduxjs/toolkit";
  * doing `data ?? []` would assert the fix out of the test.
  *
  * <p>It used to be `FolderTree`, in the navigation rail. The rail is gone and
- * the tree with it; the list is `FolderTable`, at the top of Library, and it
+ * the tree with it; the list is `FolderList`, at the top of Library, and it
  * carries the same three-state rule — which is exactly why this test follows it
  * there rather than being retired with the component it was written against.
  *
@@ -47,7 +47,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("next/navigation", () => ({ usePathname: () => "/home" }));
 
 import { api } from "@/lib/api";
-import { FolderTable } from "@/components/folder-table";
+import { FolderList } from "@/components/folder-list";
 import { AuthGate } from "@/components/auth-gate";
 import { SessionCacheGuard } from "@/components/session-cache-guard";
 import {
@@ -153,7 +153,7 @@ function Folders() {
   React.useEffect(() => {
     mounts.folders += 1;
   }, []);
-  return <FolderTable />;
+  return <FolderList />;
 }
 
 function Meetings() {

@@ -143,6 +143,19 @@ describe("which place a page is in", () => {
     expect(placeFor("/ask/")).toEqual({ id: "ask", nested: false });
   });
 
+  it("keeps Library lit on both folder routes", () => {
+    /*
+     * `/folders` is a real page again rather than a redirect into Library, and
+     * that must not turn it into a fourth destination: the band has three
+     * places in it, and giving the filing system permanent screen area is the
+     * decision the V2 study reversed. Nested, so the band underlines Library
+     * and the page carries its own way back up.
+     */
+    expect(placeFor("/folders")).toEqual({ id: "library", nested: true });
+    expect(placeFor("/folders/")).toEqual({ id: "library", nested: true });
+    expect(placeFor("/folder/prj_1")).toEqual({ id: "library", nested: true });
+  });
+
   it("ignores a query string and a hash", () => {
     expect(placeFor("/library?sort=name")).toEqual({ id: "library", nested: false });
     expect(placeFor("/meetings/mtg_1#t=120")).toEqual({ id: "library", nested: true });

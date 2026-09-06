@@ -19,11 +19,17 @@ import type { Project } from "@/lib/types";
  * clicked, a starred folder is first; it is the only thing here that is a
  * statement about what somebody is working on rather than about the data.
  *
- * <h2>Two files merged into this one</h2>
+ * <h2>Three files' worth of rules, and one route that came back</h2>
  *
- * <p>This was `app/(app)/folders/page.test.tsx`. That route is a redirect now —
- * folders are part of Library — and every assertion it held is below, unchanged
- * except for the one about where the New folder button lives.
+ * <p>This was `app/(app)/folders/page.test.tsx`, then
+ * `components/folder-table.test.tsx` when the list moved to the top of Library,
+ * and the route exists again — the list is a page and the Library margin is a
+ * glance at it. Every assertion those files held is below.
+ *
+ * <p>What changed with the V2 composition is the drawing, so the assertions
+ * about the drawing changed with it: the two column headers ("Name", "Last
+ * Updated") are a chip, and the ordering that always put starred folders first
+ * is now two headed groups instead of an order nobody could see.
  *
  * <p>The second half came from `components/folder-tree.test.tsx`, the navigation
  * rail's folder section, which is retired with the rail. It is here because it
@@ -74,7 +80,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-import { FolderTable } from "@/components/folder-table";
+import { FolderList } from "@/components/folder-list";
 
 function folder(over: Partial<Project> = {}): Project {
   return {
@@ -90,6 +96,19 @@ function folder(over: Partial<Project> = {}): Project {
   };
 }
 
+/**
+ * The folder rows, in order.
+ *
+ * <p>By href rather than by role: the masthead carries a "Library" link back up
+ * a level, and `getAllByRole("link")[0]` was picking that up the moment this
+ * page grew a breadcrumb.
+ */
+function folderNames(): string[] {
+  return Array.from(document.querySelectorAll('a[href^="/folder/"]')).map(
+    (el) => el.textContent ?? "",
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   folders = [folder()];
@@ -102,21 +121,21 @@ beforeEach(() => {
 
 describe("the list", () => {
   it("shows each folder and how much is in it", () => {
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByText("Meetings")).toBeInTheDocument();
-    expect(screen.getByText("1 conversation")).toBeInTheDocument();
+    expect(screen.getByText("1 meeting")).toBeInTheDocument();
   });
 
   it("counts in the plural when it should", () => {
     folders = [folder({ meetingCount: 4 })];
-    render(<FolderTable />);
+    render(<FolderList />);
 
-    expect(screen.getByText("4 conversations")).toBeInTheDocument();
+    expect(screen.getByText("4 meetings")).toBeInTheDocument();
   });
 
   it("links a folder to itself", () => {
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByRole("link", { name: /Meetings/ })).toHaveAttribute(
       "href",
@@ -128,16 +147,34 @@ describe("the list", () => {
     // This was once the only meeting list there was, and carried a row for
     // meetings in no folder. Library lists everything below it now, so nothing
     // is hidden by leaving them out.
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.queryByText(/No folder/)).not.toBeInTheDocument();
   });
 
   it("says what a folder is for when there are none", () => {
     folders = [];
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByText("No folders yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(/group conversations around the work they belong to/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a folder's own description, and never invented prose", () => {
+    /*
+     * `description` is a real column on Project. The reference's row prose —
+     * "The beta date, the migration runbook and the SSO risk all live here" —
+     * is a summary of tracked cross-meeting state, which does not exist.
+     */
+    folders = [folder({ description: "Everything about the beta." })];
+    render(<FolderList />);
+
+    expect(screen.getByText("Everything about the beta.")).toBeInTheDocument();
+    for (const invented of [/tracked/i, /instalment/i, /promise/i, /risk open/i]) {
+      expect(document.body.textContent ?? "").not.toMatch(invented);
+    }
   });
 });
 
@@ -147,38 +184,134 @@ describe("ordering", () => {
       folder({ id: "old", name: "Older", updatedAt: "2026-01-01T09:00:00Z" }),
       folder({ id: "new", name: "Newer", updatedAt: "2026-08-10T09:00:00Z" }),
     ];
-    render(<FolderTable />);
+    render(<FolderList />);
 
-    const names = screen.getAllByRole("link").map((el) => el.textContent);
-    expect(names[0]).toContain("Newer");
+    expect(folderNames()[0]).toContain("Newer");
   });
 
-  it("sorts by name when the column is clicked", async () => {
+  it("sorts by name when that order is chosen", async () => {
+    /*
+     * The control is a chip in the masthead rather than two column headers over
+     * one column. The order it produces is unchanged.
+     */
     folders = [
       folder({ id: "b", name: "Beta", updatedAt: "2026-08-10T09:00:00Z" }),
       folder({ id: "a", name: "Alpha", updatedAt: "2026-01-01T09:00:00Z" }),
     ];
-    render(<FolderTable />);
+    render(<FolderList />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Name/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Order the folders" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Name" }));
 
-    expect(screen.getAllByRole("link")[0].textContent).toContain("Alpha");
+    expect(folderNames()[0]).toContain("Alpha");
   });
 
-  it("puts a starred folder first whichever column is sorted", () => {
+  it("names the order for what it actually sorts by", () => {
+    /*
+     * The reference calls this chip "Recently used". `updatedAt` moves when a
+     * folder is renamed, starred or filed into, and never when it is opened —
+     * nothing records being used, so that label would promise a history this
+     * product does not keep.
+     */
+    folders = [folder({ id: "a" }), folder({ id: "b", name: "Other" })];
+    render(<FolderList />);
+
+    expect(screen.getByRole("button", { name: "Order the folders" })).toHaveTextContent(
+      "Recently updated",
+    );
+    expect(document.body.textContent ?? "").not.toMatch(/Recently used/);
+  });
+
+  it("puts a starred folder first, whichever order is chosen", () => {
     folders = [
       folder({ id: "recent", name: "Recent", updatedAt: "2026-08-10T09:00:00Z" }),
       folder({ id: "pinned", name: "Pinned", favorite: true, updatedAt: "2026-01-01T09:00:00Z" }),
     ];
-    render(<FolderTable />);
+    render(<FolderList />);
 
-    expect(screen.getAllByRole("link")[0].textContent).toContain("Pinned");
+    expect(folderNames()[0]).toContain("Pinned");
+  });
+});
+
+describe("the two groups", () => {
+  it("heads the starred ones, and everything else separately", () => {
+    // The order was always this; the headings are what make it visible.
+    folders = [
+      folder({ id: "pinned", name: "Pinned", favorite: true }),
+      folder({ id: "plain", name: "Plain" }),
+    ];
+    render(<FolderList />);
+
+    expect(screen.getByRole("heading", { name: "Starred" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Everything else" })).toBeInTheDocument();
+  });
+
+  it("draws no Starred heading when nothing is starred", () => {
+    // A heading over no rows describes the layout rather than the data.
+    folders = [folder({ id: "plain", name: "Plain" })];
+    render(<FolderList />);
+
+    expect(screen.queryByRole("heading", { name: "Starred" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Everything else" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "All folders" })).toBeInTheDocument();
+  });
+});
+
+describe("how the page names itself", () => {
+  it("counts the folders it actually has", () => {
+    folders = [folder({ id: "a" }), folder({ id: "b", name: "Two" })];
+    render(<FolderList />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("2 folders");
+  });
+
+  it("says one folder in the singular", () => {
+    render(<FolderList />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("1 folder");
+  });
+
+  it("says none when there are none", () => {
+    folders = [];
+    render(<FolderList />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("No folders yet");
+  });
+
+  it("claims no count while the answer is unknown", () => {
+    /*
+     * "No folders yet" is a claim about the account, and a request that has not
+     * come back is not evidence for it — so the page is headed by what it is
+     * until there is a number that is true.
+     */
+    folders = undefined;
+    loading = true;
+    render(<FolderList />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Folders");
+    expect(screen.queryByText("No folders yet")).not.toBeInTheDocument();
+  });
+
+  it("says where it sits, and offers the way back up", () => {
+    render(<FolderList />);
+
+    expect(screen.getByText("Library \u00b7 folders")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Library/ })).toHaveAttribute("href", "/library");
+  });
+
+  it("is not a table", () => {
+    // "Name / Last Updated" were two column headers doubling as the sort, over
+    // what was really one column.
+    render(<FolderList />);
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Last Updated" })).not.toBeInTheDocument();
   });
 });
 
 describe("the row menu", () => {
   async function openMenu() {
-    render(<FolderTable />);
+    render(<FolderList />);
     await userEvent.click(screen.getByRole("button", { name: "Actions for Meetings" }));
   }
 
@@ -243,13 +376,13 @@ describe("creating", () => {
    * them above the list, never two a centimetre apart.
    */
   it("puts a New folder button beside the heading, and only one", () => {
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getAllByRole("button", { name: /New folder/ })).toHaveLength(1);
   });
 
   it("opens the dialog from it", async () => {
-    render(<FolderTable />);
+    render(<FolderList />);
 
     await userEvent.click(screen.getByRole("button", { name: /New folder/ }));
 
@@ -258,7 +391,7 @@ describe("creating", () => {
 
   it("keeps one in the empty state, where it is being explained", async () => {
     folders = [];
-    render(<FolderTable />);
+    render(<FolderList />);
 
     // Two now, and that is not what the old file argued against: the heading
     // button and the one inside the explanation are a page-length apart, and
@@ -295,7 +428,7 @@ describe("when the request does not simply succeed", () => {
   it("shows a skeleton before the first answer, not an empty list", () => {
     folders = undefined;
     loading = true;
-    const { container } = render(<FolderTable />);
+    const { container } = render(<FolderList />);
 
     expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
@@ -306,7 +439,7 @@ describe("when the request does not simply succeed", () => {
     // with no data also has an error, and the error branch answers first — so
     // mutating the rule to treat undefined as empty would leave them passing.
     folders = undefined;
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
   });
@@ -314,7 +447,7 @@ describe("when the request does not simply succeed", () => {
   it("says the request failed, and offers a retry", async () => {
     folders = undefined;
     errored = true;
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(/Couldn't load your folders/);
     expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
@@ -326,7 +459,7 @@ describe("when the request does not simply succeed", () => {
   it("keeps backend detail off the screen", () => {
     folders = undefined;
     errored = true;
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.queryByText(/500/)).not.toBeInTheDocument();
   });
@@ -335,7 +468,7 @@ describe("when the request does not simply succeed", () => {
     // Known-good rows beat a failed refresh. Throwing away the good copy
     // because the new one did not arrive is strictly worse than showing it.
     errored = true;
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByText("Meetings")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -343,7 +476,7 @@ describe("when the request does not simply succeed", () => {
 
   it("keeps the folders on screen during a background refetch", () => {
     fetching = true;
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByText("Meetings")).toBeInTheDocument();
   });
@@ -352,18 +485,27 @@ describe("when the request does not simply succeed", () => {
     // The fix must not make the empty state unreachable — that would trade a
     // false negative for a permanent skeleton on a new account.
     folders = [];
-    render(<FolderTable />);
+    render(<FolderList />);
 
     expect(screen.getByText(EMPTY)).toBeInTheDocument();
   });
 
-  it("hides the sort header while the failure is on screen", () => {
-    // Two column headers over an error message are controls for a list that is
-    // not there.
+  it("hides the order control while the failure is on screen", () => {
+    // A control for a list that is not there.
     folders = undefined;
     errored = true;
-    render(<FolderTable />);
+    render(<FolderList />);
 
-    expect(screen.queryByRole("button", { name: /Last Updated/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Order the folders" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no order to choose between one folder", () => {
+    render(<FolderList />);
+
+    expect(
+      screen.queryByRole("button", { name: "Order the folders" }),
+    ).not.toBeInTheDocument();
   });
 });

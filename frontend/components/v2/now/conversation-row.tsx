@@ -49,7 +49,25 @@ function Dot() {
   );
 }
 
-export function NowConversationRow({ meeting }: { meeting: MeetingResponse }) {
+export function NowConversationRow({
+  meeting,
+  action,
+}: {
+  meeting: MeetingResponse;
+  /**
+   * A control for this row, drawn at its trailing edge.
+   *
+   * <p>For the one list that has one: a folder's meetings carry "Remove from
+   * folder". Outside the link, because a menu inside an anchor is neither valid
+   * nor clickable, and absolutely positioned so a row with a menu is exactly as
+   * tall as one without — which is the whole reason this row reads as a list.
+   *
+   * <p>Optional and unused on Now, so that page is unchanged. Library, a folder
+   * and Now share one drawing of this row on purpose: two drawings is how a
+   * status pill ends up on one screen and not the other.
+   */
+  action?: React.ReactNode;
+}) {
   const Icon =
     meeting.sourceType === "YOUTUBE"
       ? Youtube
@@ -107,7 +125,7 @@ export function NowConversationRow({ meeting }: { meeting: MeetingResponse }) {
   }
 
   return (
-    <li>
+    <li className="relative">
       <Link
         href={`/meetings/${meeting.id}`}
         /* The bleed is `sm:` and up. It exists so the hover fill and the
@@ -115,7 +133,12 @@ export function NowConversationRow({ meeting }: { meeting: MeetingResponse }) {
            it needs slack on both sides to do that — at 390 the measure is
            already flush against the page padding, so ten pixels each way is
            ten pixels of horizontal scroll. */
-        className="block rounded-md py-3 transition-colors duration-press ease-soft hover:bg-white/[0.035] sm:-mx-2.5 sm:px-2.5"
+        className={
+          "block rounded-md py-3 transition-colors duration-press ease-soft hover:bg-white/[0.035] sm:-mx-2.5 sm:px-2.5" +
+          // Room for the control, so a long title runs out before it rather
+          // than under it. Only when there is one.
+          (action ? " pr-9 sm:pr-9" : "")
+        }
       >
         <span className="flex items-baseline gap-2.5">
           <Icon className="h-[13px] w-[13px] shrink-0 translate-y-px text-ink-5" aria-hidden />
@@ -132,6 +155,7 @@ export function NowConversationRow({ meeting }: { meeting: MeetingResponse }) {
           ))}
         </span>
       </Link>
+      {action && <div className="absolute right-0 top-3">{action}</div>}
     </li>
   );
 }

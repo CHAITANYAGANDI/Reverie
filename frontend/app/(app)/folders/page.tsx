@@ -1,21 +1,31 @@
-import { redirect } from "next/navigation";
-import { LIBRARY } from "@/lib/routes";
+"use client";
 
 /**
- * The folder list moved into Library.
+ * THE FOLDER LIST, A PAGE AGAIN.
  *
- * <p>A redirect rather than a deletion, because this URL is three years of
- * bookmarks, a link on the meeting menu that somebody may have open, and the
- * destination of a folder deletion in a tab that has not been reloaded. A 404
- * for any of those is a worse answer than the page they were going to.
+ * <p>It was this route, then a section at the top of Library, and now this
+ * route once more — `design-demo/final/16-folders.html`. The middle version put
+ * a filing system most people touch twice a week in front of the archive
+ * everybody opens Library for; the fix is a quiet list in the Library margin
+ * with a door to the full thing, which is this.
  *
- * <p>It is also still where {@link isFolderListPath} points, which is what keeps
- * the band underlining Library on the way through.
+ * <p><b>Not a navigation destination.</b> The band still has three places in it
+ * — Now, Library, Ask Reverie — and Library is the one that stays lit here: see
+ * `placeFor` in lib/places.ts, which already treated this URL as nested inside
+ * Library while it was a redirect. Adding a fourth place to the band would be
+ * giving permanent screen area to the thing that was just taken out of it.
  *
- * <p>The page itself is `components/folder-table.tsx`, which carries every test
- * this route had plus the three-state handling it was missing — see
- * `components/folder-table.test.tsx`.
+ * <p>Turning the redirect back into a page also makes the old bookmarks useful
+ * rather than merely harmless: this URL is where a folder deletion sends you,
+ * and where the meeting menu's folder link used to go.
+ *
+ * <p>The page body is `components/folder-list.tsx`, which owns the query — the
+ * title is the folder count, so the component that fetches has to be the one
+ * that heads the page.
  */
+
+import { FolderList } from "@/components/folder-list";
+
 export default function FoldersPage() {
-  redirect(LIBRARY);
+  return <FolderList />;
 }
