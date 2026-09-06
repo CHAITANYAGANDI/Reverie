@@ -481,12 +481,13 @@ describe("closing the account", () => {
     await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
 
     /*
-     * Out to the front door, not to the sign-in form. An ordinary sign-out
-     * lands on the form because the usual reason to leave is to come back;
-     * this account no longer exists, and offering to sign into it would be the
-     * product not having noticed.
+     * Out to the sign-up form. An ordinary sign-out lands on the sign-in form
+     * because the usual reason to leave is to come back; this account no longer
+     * exists, so offering to sign into it would be the product not having
+     * noticed, and the landing page — which is where this used to go — is the
+     * front door for somebody still deciding whether to try Reverie.
      */
-    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/sign-up"));
   });
 
   it("destroys the sign-in as well as the data", async () => {
@@ -556,7 +557,7 @@ describe("closing the account", () => {
     await userEvent.type(screen.getByLabelText(/to confirm/), "delete everything");
     await userEvent.click(screen.getByRole("button", { name: /Delete everything/ }));
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(signOut).toHaveBeenCalledWith("/sign-up"));
     expect(clearOnboarding).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -583,7 +584,7 @@ describe("closing the account", () => {
       ),
     );
     // And still out, because the data really is gone.
-    expect(signOut).toHaveBeenCalledWith("/");
+    expect(signOut).toHaveBeenCalledWith("/sign-up");
   });
 
   it("backs out and forgets what was typed", async () => {

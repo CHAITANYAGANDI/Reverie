@@ -14,6 +14,7 @@ import {
   tokenProbeAttempt,
 } from "@/lib/auth-store";
 import { clearPreferences } from "@/lib/preference-store";
+import { signOutAndLeave } from "@/lib/sign-out";
 import { normalizeProvider } from "@/lib/identity-owner";
 import type { AuthContextValue, UserProfile } from "@/lib/auth";
 import { SIGN_IN, SIGN_UP } from "@/lib/routes";
@@ -240,10 +241,30 @@ function ClerkBridge({
       // Belt to the session key's braces, and the part that runs even when the
       // next person to sign in on this browser is somebody else.
       clearPreferences();
-      // Given per call rather than left to `afterSignOutUrl`, so closing an
-      // account can leave by a different door. The provider default below is
-      // what an ordinary sign-out gets.
-      void signOut({ redirectUrl: to ?? SIGN_IN });
+
+      /*
+       * THE LEAVING IS OURS RATHER THAN CLERK'S.
+       *
+       * <p>It was `signOut({ redirectUrl })`, which is never read on the one
+       * path that matters: `clerk.signOut` returns on its first line when the
+       * client has no sessions left, and destroying an identity is exactly what
+       * leaves it in that state. Closing an account therefore moved nobody —
+       * see lib/sign-out for the line and the three cases.
+       *
+       * <p>The target is still given per call rather than left to
+       * `afterSignOutUrl`, because closing an account leaves by a different
+       * door from an ordinary sign-out.
+       *
+       * <p>A document load and not a route change, deliberately. The RTK Query
+       * cache, the Redux store and Clerk's own client all belong to the session
+       * being left; a client-side navigation carries every one of them into the
+       * next screen, and on the deletion path that means into a screen built
+       * for an account that no longer exists. `replace` rather than `assign`
+       * for the same reason — Back is not somewhere to return to.
+       */
+      void signOutAndLeave(signOut, to ?? SIGN_IN, (target) =>
+        window.location.replace(target),
+      );
     },
   };
 

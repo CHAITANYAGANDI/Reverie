@@ -59,6 +59,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { settingsError } from "@/components/settings/shared";
 import { LEGAL_LINKS } from "@/lib/build-info";
+import { SIGN_UP } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   Avatar,
@@ -715,12 +716,20 @@ function CloseAccountSection() {
       }
 
       /*
-       * Out to the front door, not to the sign-in form. Signing out ordinarily
-       * means "I will be back" and lands on the form; this account has just
-       * been deleted, and offering to sign into it would be the product not
-       * having noticed.
+       * OUT TO THE SIGN-UP FORM.
+       *
+       * <p>Not the sign-in form: signing out ordinarily means "I will be back"
+       * and lands there, and this account has just been deleted — offering to
+       * sign into it would be the product not having noticed, and the attempt
+       * could only fail. Not the landing page either, which was the last
+       * answer: it is the front door for somebody deciding whether to try
+       * Reverie, and this is somebody who already has, so the useful next
+       * screen is the one that makes a new account.
+       *
+       * <p>This is also the navigation that used not to happen at all — see
+       * lib/sign-out.
        */
-      signOut?.("/");
+      signOut?.(SIGN_UP);
     } catch (err) {
       toast.error(settingsError(err));
     }

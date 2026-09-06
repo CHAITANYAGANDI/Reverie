@@ -43,8 +43,12 @@ interface AuthContextValue {
    * <p>Lands on the sign-in form by default, because the ordinary reason to
    * sign out is to stop — and a marketing page is not what somebody who has
    * just left their own account came for. `to` is for the one case where that
-   * is wrong: closing an account, where a form for an account that no longer
-   * exists would be a poor way to say goodbye.
+   * is wrong: closing an account, which goes to the sign-up form instead. That
+   * account is gone, so a form offering to sign into it would be the product
+   * not having noticed, and the only way back in is to make a new one.
+   *
+   * <p>It ends somewhere else whatever the revoke does. Under Clerk that is not
+   * automatic — see lib/sign-out.
    */
   signOut?: (to?: string) => void;
   /**
@@ -240,8 +244,9 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
    * same Google account coming back after a full deletion is a new identity
    * with nothing on it and is asked again. Dev mode has no identity to destroy
    * and no server row of its own to key on, so it keeps the flag beside the dev
-   * user id it already stores — and `signOut` clears it, which is dev mode's
-   * only version of the same event.
+   * user id it already stores — and `deleteIdentity` clears it, which is dev
+   * mode's only version of the same event. An ordinary sign-out leaves it
+   * alone, because signing out is not losing anything.
    */
   const [devOnboarding, setDevOnboarding] = React.useState(false);
   React.useEffect(() => {
