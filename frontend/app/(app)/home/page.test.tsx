@@ -171,14 +171,12 @@ vi.mock("@/lib/auth", () => ({
   }),
 }));
 /*
- * Neither is mounted by Now any more — the pane and the second chat are gone —
- * but the stubs stay: `SidePane` is still the meeting page's, and a test file
- * that silently starts rendering a real one because a stub was tidied away is
- * how the pane would come back unnoticed.
+ * Now mounts no pane. The stub stays because `SidePane` is still the meeting
+ * page's, and a test file that silently starts rendering a real one because a
+ * stub was tidied away is how the pane would come back unnoticed. The two panel
+ * stubs that used to sit here went with the panels.
  */
 vi.mock("@/components/side-pane", () => ({ SidePane: () => null }));
-vi.mock("@/components/home-chat-panel", () => ({ HomeChatPanel: () => null }));
-vi.mock("@/components/action-items-panel", () => ({ ActionItemsPanel: () => null }));
 
 import HomePage from "@/app/(app)/home/page";
 

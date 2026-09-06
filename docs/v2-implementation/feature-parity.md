@@ -90,7 +90,7 @@ V2's Now had a memory-derived "Needs you". That is removed. What replaces it is 
 | Scope picker (Recent / All) | **RELOCATE** | *Recent* stays and is implicit; *All Conversations* moves to **Library**. Keeping both would be the duplicate library the brief forbids. `home/page.test.tsx` is updated, not deleted. |
 | Processing rows | KEEP | `ProcessingRow` + `useLiveMeetingStatus` |
 | Failed meeting row | KEEP | existing status handling |
-| Side pane: chat \| action items | KEEP | `HomeChatPanel`, `ActionItemsPanel` — becomes the V2 margin |
+| Side pane: chat \| action items | DONE | Now has no pane. The chat is the `/ask` destination, reached from the band and from the compact launcher under the masthead; action items are inline in the V2 margin as `components/v2/now/action-items.tsx`, on the same query and mutations. `HomeChatPanel` and `ActionItemsPanel` were removed once nothing but their own tests referenced them. |
 | Empty states (5 variants) | KEEP | `homeListState` already distinguishes them |
 
 ### 3a · What "Needs you" actually became
@@ -308,7 +308,7 @@ The V2 prototype used its own words. Production keeps production's, except where
 
 | Category | Handling |
 |---|---|
-| **A — behaviour survives, markup changed** | update selectors/roles, keep the assertion. Expected for most of `home`, `folders`, `folder/[id]`, `search-command`, `insights-panel`, `action-items-panel`. |
+| **A — behaviour survives, markup changed** | update selectors/roles, keep the assertion. Expected for most of `home`, `folders`, `folder/[id]`, `search-command`, `insights-panel`. |
 | **B — presentation-only test** | rewrite around behaviour. |
 | **C — surface intentionally removed** | only where V2 removes something *that was already dead*. **No production capability is being removed**, so this category should be near-empty. The one real entry is Home's *All Conversations* scope, which is **relocated to Library, not deleted** — its test moves with it. |
 | **New** | `app-shell` (band, places, ⌘K, record survival, portals) and the meeting shell, neither of which has any test today. |

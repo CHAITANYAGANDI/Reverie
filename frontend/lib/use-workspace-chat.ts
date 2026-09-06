@@ -17,7 +17,7 @@
  * They did, and it was deliberate: the home rail's expand button used to
  * *navigate* to /ask, so the two had to be one conversation or expanding a
  * panel would have abandoned a half-typed question. Expanding widens the rail
- * in place now — see `onExpand` in components/home-chat-panel — so nothing
+ * in place now — see the Ask page and `components/chat/chat-shell` — so nothing
  * depends on it any more, and what was left was two screens showing each
  * other's questions for no reason anybody could see.
  *
