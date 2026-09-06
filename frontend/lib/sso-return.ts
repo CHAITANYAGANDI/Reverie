@@ -9,6 +9,27 @@
 
 import { HOME, SIGN_IN, SIGN_UP } from "@/lib/routes";
 
+/**
+ * A provider round-trip that produced no session, and what to do about it.
+ *
+ * <h2>Why the two are not the same thing</h2>
+ *
+ * <p>A cancellation is not a failure. Somebody pressed Cancel; they know what
+ * they did, and a screen telling them so is a click between them and the form
+ * they meant to go back to. So it carries no message: the answer is the sign-in
+ * form, immediately.
+ *
+ * <p>Everything else is worth a sentence, because nobody chose it. A refused
+ * scope, a locked account, a provider outage — landing on a blank sign-in
+ * form after one of those is the product declining to say what happened, which
+ * is the bug this screen was built to fix.
+ */
+export type SsoRefusal =
+  /** They pressed Cancel. Nothing to explain. */
+  | { kind: "cancelled" }
+  /** Something nobody asked for, said out loud. */
+  | { kind: "failed"; message: string };
+
 /** The routes Clerk is allowed to send somebody to from the callback. */
 const KNOWN = [SIGN_IN, SIGN_UP];
 
@@ -189,7 +210,7 @@ const CLERK_RESOLVES = new Set(["external_account_exists", "identifier_already_s
  */
 export function ssoFailure(
   verifications: readonly (VerificationLike | null | undefined)[],
-): string | null {
+): SsoRefusal | null {
   for (const verification of verifications) {
     if (!verification) continue;
 
@@ -203,7 +224,9 @@ export function ssoFailure(
       BROKEN.has(status) || (Boolean(code) && status !== "verified" && status !== "transferable");
     if (!broken) continue;
 
-    if (code.includes("access_denied")) return "You cancelled that sign-in.";
+    // Their own decision, so there is nothing to report and nowhere to be but
+    // back on the form. See SsoRefusal.
+    if (code.includes("access_denied")) return { kind: "cancelled" };
 
     /*
      * The provider's own words where there are any. Reporting "you cancelled"
@@ -211,7 +234,7 @@ export function ssoFailure(
      * that will not work.
      */
     const said = verification.error?.longMessage?.trim() || verification.error?.message?.trim();
-    return said || "Google did not complete that sign-in.";
+    return { kind: "failed", message: said || "Google did not complete that sign-in." };
   }
 
   return null;
@@ -225,15 +248,15 @@ export function ssoFailure(
  * that reports "you cancelled" over a refused scope or a provider outage is
  * telling somebody to retry a thing that will not work.
  *
- * @returns the sentence to show, or null when nothing went wrong
+ * @returns what to do about it, or null where nothing went wrong
  */
-export function refusalFrom(search: string): string | null {
+export function refusalFrom(search: string): SsoRefusal | null {
   const params = new URLSearchParams(search);
   const code = params.get("error");
   if (!code) return null;
 
-  if (code === "access_denied") return "You cancelled that sign-in.";
+  if (code === "access_denied") return { kind: "cancelled" };
 
   const detail = params.get("error_description")?.trim();
-  return detail || "Google did not complete that sign-in.";
+  return { kind: "failed", message: detail || "Google did not complete that sign-in." };
 }

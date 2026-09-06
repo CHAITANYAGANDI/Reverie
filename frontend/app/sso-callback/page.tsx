@@ -4,11 +4,18 @@
  * The half-second between Google and Reverie — and every way it can go wrong.
  *
  * <p>`authenticateWithRedirect` sends somebody out to Google and Google sends
- * them back here. What happens next is an exchange with no UI of its own, so
- * this route is a screen with invisible work underneath it. Worth drawing
- * rather than leaving blank: it is the first thing a new account sees, on the
- * slowest step of the flow, and an empty dark page for a second reads as
- * something having gone wrong.
+ * them back here. What happens next is an exchange with no UI of its own — and
+ * this route now has none either. It draws the surface colour and nothing at
+ * all while it works.
+ *
+ * <p>It used to draw Reverie's mark over "Signing you in", on the reasoning
+ * that an empty dark page for a second reads as something having gone wrong. It
+ * reads as a screen, which is worse: the screens either side of this one are
+ * the two somebody actually asked for, and pressing Cancel at Google produced a
+ * Reverie page announcing a sign-in that was not happening, followed by another
+ * Reverie page announcing that it had not happened. This is plumbing. The only
+ * thing an empty page can still get wrong is being white between two dark ones,
+ * so it is not white.
  *
  * <p>It must be reachable while signed out — the whole point is that the
  * session does not exist yet — so it is listed as public in the middleware.
@@ -24,7 +31,8 @@
  *       consent screen and the browser comes back here; the exchange has
  *       nothing to exchange, and the page went on saying "Signing you in"
  *       indefinitely. Passing `signInUrl` was supposed to be enough, and
- *       reported from the real instance, it was not.</li>
+ *       reported from the real instance, it was not. It now goes straight back
+ *       to the form — see below.</li>
  *   <li><b>A transferred sign-in left the product.</b> `transferable` defaults
  *       to true, so a Google identity with no Clerk user turns a sign-in
  *       attempt into a sign-up — and Clerk navigated to its own hosted sign-up
@@ -174,8 +182,31 @@ export default function SsoCallbackPage() {
         sdk.client?.signIn?.firstFactorVerification,
         sdk.client?.signUp?.verifications?.externalAccount,
       ]);
+
     if (refusal) {
-      setPhase({ state: "stopped", message: refusal, note: UNCHANGED });
+      /*
+       * A CANCELLATION IS ANSWERED BY THE FORM, NOT BY A SCREEN ABOUT IT.
+       *
+       * <p>It briefly drew "You cancelled that sign-in." over a Back to sign in
+       * button, which is a click and a sentence between somebody and the thing
+       * they were already trying to get back to. They pressed Cancel; they know
+       * what they did.
+       *
+       * <p>`replace`, so the browser's Back button does not return to a
+       * callback with nothing left to exchange.
+       */
+      if (refusal.kind === "cancelled") {
+        nav.replace(SIGN_IN);
+        return;
+      }
+
+      /*
+       * Everything else does get a screen, and the difference is who decided.
+       * A refused scope, a locked account, a provider that fell over —
+       * putting somebody back on the sign-in form after one of those, with no
+       * word about why, is the product declining to say what happened.
+       */
+      setPhase({ state: "stopped", message: refusal.message, note: UNCHANGED });
       return;
     }
 
@@ -321,10 +352,26 @@ export default function SsoCallbackPage() {
      */
   }, [ready]);
 
+  /*
+   * NOTHING, IN THE RIGHT COLOUR.
+   *
+   * <p>The whole of what this route shows while it works, which at ordinary
+   * speed is a frame or two. `min-h-screen` and the surface colour so the step
+   * between two dark screens is not a white one; no text, no mark, no spinner,
+   * because every one of those makes plumbing look like a destination.
+   */
+  if (phase.state === "working") {
+    return <div className="min-h-screen bg-surface" />;
+  }
+
+  /*
+   * And the exception: a refusal nobody chose. This is a real thing to tell
+   * somebody, so it wears the product — the same wash the sign-in screen
+   * carries, so the seconds between Google and the app are not a different
+   * product. A cancellation never reaches here; it is answered by the form.
+   */
   return (
     <div className="relative grid min-h-screen place-items-center px-6 py-16">
-      {/* The same wash the sign-in screen carries, so the seconds between
-          Google and the app are not a different product. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_62%_at_50%_-12%,hsl(var(--brand)/0.15),transparent_62%),radial-gradient(80%_40%_at_82%_8%,hsl(var(--success)/0.05),transparent_70%)]"
@@ -333,22 +380,16 @@ export default function SsoCallbackPage() {
       <div className="relative z-10 flex w-full max-w-[400px] flex-col items-start gap-5">
         <Lockup size={21} />
 
-        {phase.state === "working" ? (
-          <p className="v2-label" role="status">
-            Signing you in
-          </p>
-        ) : (
-          <div role="alert">
-            <p className="text-title-1 font-headline text-ink">{phase.message}</p>
-            <p className="mt-2.5 text-body leading-[1.55] text-ink-3">{phase.note}</p>
-            <Link
-              href={SIGN_IN}
-              className="mt-6 inline-flex h-10 items-center rounded-md bg-ink px-4 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90"
-            >
-              Back to sign in
-            </Link>
-          </div>
-        )}
+        <div role="alert">
+          <p className="text-title-1 font-headline text-ink">{phase.message}</p>
+          <p className="mt-2.5 text-body leading-[1.55] text-ink-3">{phase.note}</p>
+          <Link
+            href={SIGN_IN}
+            className="mt-6 inline-flex h-10 items-center rounded-md bg-ink px-4 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90"
+          >
+            Back to sign in
+          </Link>
+        </div>
       </div>
     </div>
   );

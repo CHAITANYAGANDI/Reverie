@@ -151,7 +151,11 @@ describe("reading a failure off Clerk's own resources", () => {
    * dropped, and the returned value is `undefined` rather than the promise.
    * Nothing to await, nothing to catch, no navigation of ours.
    */
-  it("names a cancelled consent screen from the verification", () => {
+  it("reads a cancelled consent screen as a cancellation, with nothing to say", () => {
+    /*
+     * No message, deliberately. They pressed Cancel and know they did; the
+     * callback answers it with the sign-in form rather than a screen about it.
+     */
     expect(
       ssoFailure([
         {
@@ -159,14 +163,14 @@ describe("reading a failure off Clerk's own resources", () => {
           error: { code: "oauth_access_denied", longMessage: "The user did not grant access." },
         },
       ]),
-    ).toBe("You cancelled that sign-in.");
+    ).toEqual({ kind: "cancelled" });
   });
 
   it("finds it on the sign-up half as well", () => {
     // A Google *sign-up* records the same refusal on the external account.
     expect(
       ssoFailure([null, { status: "failed", error: { code: "oauth_access_denied" } }]),
-    ).toBe("You cancelled that sign-in.");
+    ).toEqual({ kind: "cancelled" });
   });
 
   it("passes on what the provider actually said, rather than guessing", () => {
@@ -177,20 +181,21 @@ describe("reading a failure off Clerk's own resources", () => {
           error: { code: "oauth_email_domain_reserved", longMessage: "That domain is reserved." },
         },
       ]),
-    ).toBe("That domain is reserved.");
+    ).toEqual({ kind: "failed", message: "That domain is reserved." });
   });
 
   it("still says something when there are no words with the code", () => {
-    expect(ssoFailure([{ status: "expired", error: { code: "verification_expired" } }])).toBe(
-      "Google did not complete that sign-in.",
-    );
+    expect(ssoFailure([{ status: "expired", error: { code: "verification_expired" } }])).toEqual({
+      kind: "failed",
+      message: "Google did not complete that sign-in.",
+    });
   });
 
   it("counts a refusal that never reached a status", () => {
     // `unverified` with an error is a round-trip that came back refused, not a
     // verification that has not started.
-    expect(ssoFailure([{ status: "unverified", error: { code: "oauth_access_denied" } }])).toBe(
-      "You cancelled that sign-in.",
+    expect(ssoFailure([{ status: "unverified", error: { code: "oauth_access_denied" } }])).toEqual(
+      { kind: "cancelled" },
     );
   });
 
@@ -231,8 +236,9 @@ describe("what the callback says when it did not work", () => {
   });
 
   it("names a cancelled consent screen as a cancellation", () => {
-    // `access_denied` is what pressing Cancel at Google produces.
-    expect(refusalFrom("?error=access_denied")).toBe("You cancelled that sign-in.");
+    // `access_denied` is what pressing Cancel at Google produces, and a
+    // cancellation carries no message: the answer is the form, not a screen.
+    expect(refusalFrom("?error=access_denied")).toEqual({ kind: "cancelled" });
   });
 
   it("passes on what the provider actually said, rather than guessing", () => {
@@ -240,12 +246,15 @@ describe("what the callback says when it did not work", () => {
      * Reporting "you cancelled" over a refused scope or a provider outage tells
      * somebody to retry a thing that will not work.
      */
-    expect(refusalFrom("?error=invalid_scope&error_description=Scope%20not%20permitted")).toBe(
-      "Scope not permitted",
-    );
+    expect(
+      refusalFrom("?error=invalid_scope&error_description=Scope%20not%20permitted"),
+    ).toEqual({ kind: "failed", message: "Scope not permitted" });
   });
 
   it("still says something when the provider gave a code and no words", () => {
-    expect(refusalFrom("?error=server_error")).toBe("Google did not complete that sign-in.");
+    expect(refusalFrom("?error=server_error")).toEqual({
+      kind: "failed",
+      message: "Google did not complete that sign-in.",
+    });
   });
 });

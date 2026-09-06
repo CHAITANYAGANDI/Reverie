@@ -22,9 +22,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
  * a screenshot, and the first of which passed the whole time the bug was live.
  */
 
-const { handleRedirectCallback, replace, update, setActive } = vi.hoisted(() => ({
+const { handleRedirectCallback, replace, push, update, setActive } = vi.hoisted(() => ({
   handleRedirectCallback: vi.fn(),
   replace: vi.fn(),
+  push: vi.fn(),
   update: vi.fn(),
   setActive: vi.fn(),
 }));
@@ -46,7 +47,7 @@ vi.mock("@clerk/nextjs", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ replace, push }),
 }));
 
 import SsoCallbackPage from "@/app/sso-callback/page";
@@ -91,40 +92,64 @@ describe("cancelling at Google", () => {
     };
   }
 
-  it("says so, rather than going on claiming to sign somebody in", async () => {
+  it("never presses Back into a dead callback", async () => {
+    /*
+     * `replace`, not `push`. The callback has nothing left to exchange, so
+     * pressing Back onto it would land on a page that can only fail.
+     */
     cancelled();
     render(<SsoCallbackPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled that sign-in.");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/sign-in"));
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("goes straight back to the sign-in form", async () => {
+    /*
+     * And not to a screen about it. That screen said "You cancelled that
+     * sign-in." over a Back to sign in button, which is a sentence and a click
+     * between somebody and the form they were already trying to return to.
+     */
+    cancelled();
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/sign-in"));
+  });
+
+  it("draws no screen about it on the way", async () => {
+    cancelled();
+    const { container } = render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(container.textContent).toBe("");
   });
 
   it("attempts no exchange, there being nothing to exchange", async () => {
     cancelled();
     render(<SsoCallbackPage />);
 
-    await screen.findByRole("alert");
+    await waitFor(() => expect(replace).toHaveBeenCalled());
     expect(handleRedirectCallback).not.toHaveBeenCalled();
   });
 
-  it("offers the way back rather than leaving somebody on a dead page", async () => {
-    cancelled();
+  it("still stops and explains a refusal nobody chose", async () => {
+    /*
+     * The other half of the same rule, and why the two are told apart at all.
+     * A cancellation is somebody's own decision; a locked account is not, and
+     * putting them back on the sign-in form with no word about why would be the
+     * product declining to say what happened.
+     */
+    signIn = {
+      firstFactorVerification: {
+        status: "failed",
+        error: { code: "user_locked", longMessage: "Your account is locked." },
+      },
+    };
     render(<SsoCallbackPage />);
 
-    await screen.findByRole("alert");
-    expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
-      "href",
-      "/sign-in",
-    );
-  });
-
-  it("promises nothing about an account it never touched", async () => {
-    cancelled();
-    render(<SsoCallbackPage />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Nothing on your account was changed.",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your account is locked.");
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("lets a sign-in Clerk means to transfer go through", async () => {
@@ -154,13 +179,15 @@ describe("before clerk-js has loaded", () => {
      * and conclude nothing.
      */
     loaded = false;
-    render(<SsoCallbackPage />);
+    const { container } = render(<SsoCallbackPage />);
     // Flushed, because the exchange is reached through an await and would
     // otherwise be safely un-run for the wrong reason.
     await act(async () => {});
 
     expect(handleRedirectCallback).not.toHaveBeenCalled();
-    expect(screen.getByRole("status")).toHaveTextContent("Signing you in");
+    // And silent while it waits, rather than announcing a sign-in that has not
+    // started.
+    expect(container.textContent).toBe("");
   });
 
   it("runs as soon as it has", async () => {
@@ -220,11 +247,25 @@ describe("when the exchange goes nowhere at all", () => {
 });
 
 describe("while the exchange is running", () => {
-  it("says so, and says it once", async () => {
-    render(<SsoCallbackPage />);
+  it("shows nothing at all, being plumbing rather than a destination", async () => {
+    /*
+     * It drew Reverie's mark over "Signing you in", which made a step somebody
+     * never asked for look like a screen. The two pages either side of it are
+     * the ones they did ask for.
+     */
+    const { container } = render(<SsoCallbackPage />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Signing you in");
+    expect(container.textContent).toBe("");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(container.querySelector("svg")).toBeNull();
     await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+  });
+
+  it("still paints the surface colour, so the step is not a white flash", () => {
+    // The one thing an empty page can get wrong between two dark screens.
+    const { container } = render(<SsoCallbackPage />);
+
+    expect(container.firstElementChild).toHaveClass("min-h-screen", "bg-surface");
   });
 
   it("tells Clerk where Reverie's own forms are", async () => {
@@ -432,19 +473,19 @@ describe("a step Clerk insists on that Reverie cannot draw", () => {
 });
 
 describe("when it did not work", () => {
-  it("names a cancelled consent screen, and does not attempt an exchange", async () => {
+  it("takes a cancellation on the URL back to the form, and exchanges nothing", async () => {
     arriveWith("?error=access_denied");
     render(<SsoCallbackPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled that sign-in.");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/sign-in"));
     // Nothing to exchange, so nothing is attempted — the attempt is what used
     // to leave the page claiming to be signing somebody in.
     expect(handleRedirectCallback).not.toHaveBeenCalled();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("offers the way back rather than leaving somebody on a dead page", async () => {
-    arriveWith("?error=access_denied");
+    // A refusal nobody chose, which is the case that still gets a screen.
+    arriveWith("?error=server_error");
     render(<SsoCallbackPage />);
 
     await screen.findByRole("alert");
@@ -472,17 +513,30 @@ describe("when it did not work", () => {
 });
 
 describe("what it wears", () => {
-  it("carries Reverie's mark while it waits", () => {
-    const { container } = render(<SsoCallbackPage />);
+  /** The one state that is a screen: a refusal nobody chose. */
+  async function failed() {
+    signIn = {
+      firstFactorVerification: {
+        status: "failed",
+        error: { code: "user_locked", longMessage: "Your account is locked." },
+      },
+    };
+    const view = render(<SsoCallbackPage />);
+    await screen.findByRole("alert");
+    return view;
+  }
 
-    // This screen sits between Google and the app and used to carry the generic
-    // microphone glyph the V2 identity study rejected.
+  it("carries Reverie's mark on the one page it does draw", async () => {
+    // Which is not the waiting state any more. This screen used to carry the
+    // generic microphone glyph the V2 identity study rejected.
+    const { container } = await failed();
+
     expect(container.querySelector("svg")).not.toBeNull();
     expect(container.textContent).toContain("Reverie");
   });
 
-  it("never mentions Clerk", () => {
-    const { container } = render(<SsoCallbackPage />);
+  it("never mentions Clerk", async () => {
+    const { container } = await failed();
 
     expect(container.textContent ?? "").not.toMatch(/clerk/i);
   });
