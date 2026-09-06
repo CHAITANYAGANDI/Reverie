@@ -110,7 +110,7 @@ vi.mock("@/components/v2/mobile-tabs", () => ({ MobileTabs: () => <nav /> }));
 vi.mock("@/components/search-command", () => ({ SearchCommand: () => null }));
 vi.mock("@/components/import-dialog", () => ({ ImportDialog: () => null }));
 vi.mock("@/components/processing-dock", () => ({ ProcessingDock: () => null }));
-vi.mock("@/components/folder-header-actions", () => ({ FolderHeaderActions: () => null }));
+vi.mock("@/components/folder-actions", () => ({ FolderActions: () => null }));
 /*
  * Stands in for the docked bar, reporting the one thing this file is about:
  * that the recorder it reads is still the same live one after a navigation.

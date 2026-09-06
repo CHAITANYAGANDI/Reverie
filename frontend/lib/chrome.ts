@@ -44,11 +44,15 @@ export interface BandChrome {
   /**
    * The folder the page is inside, or null.
    *
-   * <p>Two callers, neither of which has an id. Import files into the folder
-   * you are standing in, and the folder's own rename and delete are rendered
-   * beside the page rather than inside it. Read from the path because the shell
-   * does not know what page it is wrapping; the query behind it is the one the
-   * page already made, so this costs a cache read rather than a request.
+   * <p>One caller now, and it is the import dialog: a file dropped while you
+   * are standing in a folder lands in that folder. Read from the path because
+   * the shell does not know what page it is wrapping.
+   *
+   * <p>It had a second caller until the folder's own rename and delete moved
+   * into the folder's masthead. They were rendered by the shell, at the right
+   * of a full-width row, which put them about 340px clear of a centred 680px
+   * document — see components/folder-actions.tsx. Nothing about the band
+   * changed with that move, and nothing folder-specific belongs in it.
    */
   folderId: string | null;
 }

@@ -41,6 +41,7 @@ export function Masthead({
   back,
   label,
   title,
+  actions,
   sub,
   meta,
   bar,
@@ -49,11 +50,24 @@ export function Masthead({
   /** The eyebrow: "Library", "Library · folders". */
   label?: string;
   title: React.ReactNode;
+  /**
+   * What you do to the thing this page is about, on the title's own line.
+   *
+   * <p>Opposite the name, at the right edge of the measure. That edge is the
+   * point: a folder's rename and delete were rendered by the shell, at the
+   * right-hand end of a full-width row, which left them about 340px clear of a
+   * centred 680px document and reading as belonging to the application rather
+   * than to the folder. A control for one object belongs beside that object.
+   *
+   * <p>Icons rather than words. The name is what somebody reads here; two
+   * labelled buttons across from it would compete with it at the same weight.
+   */
+  actions?: React.ReactNode;
   /** One sentence. Prose, not a subtitle restating the title. */
   sub?: React.ReactNode;
   /** Facts about the thing, in a dotted row. Only ones the server sent. */
   meta?: React.ReactNode;
-  /** Controls. Last, so they read as acting on what is above them. */
+  /** Controls that act on the list below. Last, under everything they narrow. */
   bar?: React.ReactNode;
 }) {
   return (
@@ -70,7 +84,16 @@ export function Masthead({
 
       {label && <p className="v2-label mb-[9px]">{label}</p>}
 
-      <h1 className="text-title-l font-headline text-ink">{title}</h1>
+      {actions ? (
+        <div className="flex items-start gap-4">
+          <h1 className="min-w-0 flex-1 text-title-l font-headline text-ink">{title}</h1>
+          {/* `pt-0.5` sits a 28px control against the cap height of a 30px
+              line rather than against the line box. */}
+          <div className="flex shrink-0 items-center gap-0.5 pt-0.5">{actions}</div>
+        </div>
+      ) : (
+        <h1 className="text-title-l font-headline text-ink">{title}</h1>
+      )}
 
       {sub && (
         <p className="mt-2.5 max-w-[58ch] text-title-3 font-body leading-[1.5] text-ink-3">

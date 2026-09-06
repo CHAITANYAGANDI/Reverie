@@ -47,7 +47,7 @@ vi.mock("@/components/folder-dialog", () => ({
     open ? <div data-testid="folder-dialog" /> : null,
 }));
 
-import { FolderHeaderActions } from "@/components/folder-header-actions";
+import { FolderActions } from "@/components/folder-actions";
 import { resetSearchOverlay, useSearchOverlay } from "@/lib/search-overlay";
 
 /** Reads the store the menu writes to, so a test can see what it opened with. */
@@ -64,17 +64,17 @@ beforeEach(() => {
 });
 
 async function openMenu() {
-  render(<FolderHeaderActions folderId="prj_1" />);
-  await userEvent.click(screen.getByRole("button", { name: "More options" }));
+  render(<FolderActions folderId="prj_1" />);
+  await userEvent.click(screen.getByRole("button", { name: "Folder actions" }));
 }
 
 describe("the menu", () => {
-  it("says what it is, since it is an icon between two labelled buttons", () => {
-    render(<FolderHeaderActions folderId="prj_1" />);
+  it("says what it is, since it is an unlabelled icon beside the folder's name", () => {
+    render(<FolderActions folderId="prj_1" />);
 
-    const trigger = screen.getByRole("button", { name: "More options" });
+    const trigger = screen.getByRole("button", { name: "Folder actions" });
     // The tooltip and the accessible name are the same words on purpose.
-    expect(trigger).toHaveAttribute("title", "More options");
+    expect(trigger).toHaveAttribute("title", "Folder actions");
   });
 
   it("offers rename, search and delete", async () => {
@@ -156,10 +156,10 @@ describe("deleting", () => {
 describe("before the folder has loaded", () => {
   it("renders nothing at all", () => {
     folder = undefined;
-    render(<FolderHeaderActions folderId="prj_1" />);
+    render(<FolderActions folderId="prj_1" />);
 
     // A delete behind a menu that cannot name what it deletes, and a
     // confirmation reading “Delete “undefined”?”.
-    expect(screen.queryByRole("button", { name: "More options" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Folder actions" })).not.toBeInTheDocument();
   });
 });

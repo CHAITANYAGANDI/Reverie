@@ -1,18 +1,24 @@
 "use client";
 
 /**
- * Rename and delete, for the folder currently open.
+ * Rename, search and delete, for the folder currently open.
  *
- * <p>In the top bar rather than on the page, beside Record. Those are the three
- * things you do to a folder you are standing in, and having two of them at the
- * top of the document while the third sat in the header meant looking in two
- * places for one set of actions.
+ * <h2>Where this has been</h2>
  *
- * <p>It reads the folder from the route rather than being handed one, because
- * the shell renders the header and does not know what page it is wrapping.
- * `useGetProjectQuery` is the same call the page underneath already made, so
- * this is a cache read; if it misses — a hard refresh, where both mount at
- * once — RTK Query collapses the two into one request.
+ * <p>On the page, then in the old per-page top bar, then in the shell's header
+ * row once the band went global — and now in the folder's own masthead, which
+ * is where it should have landed the first time.
+ *
+ * <p>The shell row is a full-width strip, so once the folder document became a
+ * centred 680px measure these controls sat about 340px clear of it, hard right,
+ * reading as chrome that belongs to the application rather than to the folder.
+ * A control for one object belongs beside that object. The band stays global
+ * and carries nothing from the page underneath; this is not in it and must not
+ * go back into it.
+ *
+ * <p>It still reads the folder from the route rather than being handed one.
+ * `useGetProjectQuery` is the call the page around it already made, so this is
+ * a cache read, and the id is the one thing a caller always has.
  *
  * <p>Renders nothing until the folder resolves. A menu offering to delete
  * something unnamed is worse than a menu that arrives a moment late, and the
@@ -34,7 +40,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-export function FolderHeaderActions({ folderId }: { folderId: string }) {
+export function FolderActions({ folderId }: { folderId: string }) {
   const router = useRouter();
   const { data: folder } = useGetProjectQuery(folderId);
   const [remove, { isLoading: removing }] = useDeleteProjectMutation();
@@ -73,16 +79,16 @@ export function FolderHeaderActions({ folderId }: { folderId: string }) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          {/* `title` as well as `aria-label`: this is an unlabelled icon sitting
-              between two labelled buttons, so hovering has to say what it is.
-              It opens on click rather than on hover — a menu that opens by
-              passing over it fires on the way to Record, and cannot be reached
-              by a keyboard or a finger at all. */}
+          {/* `title` as well as `aria-label`: an unlabelled icon beside the
+              folder's name, so hovering has to say what it is. It opens on
+              click rather than on hover — a menu that opens by passing over it
+              fires on the way past, and cannot be reached by a keyboard or a
+              finger at all. */}
           <button
             type="button"
-            aria-label="More options"
-            title="More options"
-            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Folder actions"
+            title="Folder actions"
+            className="rounded-md p-1.5 text-ink-4 transition-colors duration-press ease-soft hover:bg-white/[0.06] hover:text-ink"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>

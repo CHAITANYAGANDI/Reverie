@@ -290,13 +290,85 @@ describe("ProjectPage", () => {
     expect(askProject).not.toHaveBeenCalled();
   });
 
-  it("keeps rename and delete out of the page body", () => {
+  it("carries the folder's own actions in its masthead", async () => {
+    /*
+     * THIS ASSERTED THE OPPOSITE, and the reversal is the point.
+     *
+     * <p>The actions were rendered by the shell, at the right-hand end of a
+     * full-width row. That was fine while the page was full width and wrong the
+     * moment it became a centred 680px document: they sat about 340px clear of
+     * the folder they act on, reading as chrome rather than as the folder's.
+     *
+     * <p>Still one set of them — the shell no longer draws any, which
+     * components/app-shell.test.tsx pins from the other side.
+     */
     render(<ProjectPage />);
 
-    // They moved to the top bar beside Record; see
-    // components/folder-header-actions.test.tsx. Two menus for one set of
-    // actions is the state this asserts against.
-    expect(screen.queryByRole("button", { name: "Folder actions" })).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Folder actions" });
+    await userEvent.click(trigger);
+
+    expect(await screen.findByRole("menuitem", { name: /Rename folder/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Search in folder/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Delete folder/ })).toBeInTheDocument();
+  });
+
+  it("puts them on the title's line, at the edge of the measure", () => {
+    /*
+     * Structural rather than pixel-counting: the star and the menu are inside
+     * the masthead and after the name, which is what "beside the folder" means
+     * once the document is a centred column.
+     */
+    render(<ProjectPage />);
+
+    const h1 = screen.getByRole("heading", { level: 1 });
+    const menu = screen.getByRole("button", { name: "Folder actions" });
+    const star = screen.getByRole("button", { name: "Star this folder" });
+
+    // After the name and BEFORE the facts line: on the title's row rather than
+    // in a bar under the metadata, which is where a `bar` slot would put them
+    // and is the arrangement this asserts against.
+    const meta = screen.getByText(/last updated/);
+    for (const control of [star, menu]) {
+      expect(h1.compareDocumentPosition(control)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(control.compareDocumentPosition(meta)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(h1.parentElement).toContainElement(control);
+    }
+  });
+
+  it("renames the folder from there", async () => {
+    render(<ProjectPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Folder actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Rename folder/ }));
+
+    expect(await screen.findByRole("heading", { name: "Rename folder" })).toBeInTheDocument();
+  });
+
+  it("deletes it from there, promising the meetings survive first", async () => {
+    render(<ProjectPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Folder actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Delete folder/ }));
+
+    await waitFor(() => expect(deleteProject).toHaveBeenCalledWith("prj_1"));
+    // The sentence people read at the moment they are deciding.
+    expect(
+      (window.confirm as unknown as { mock: { calls: string[][] } }).mock.calls[0][0],
+    ).toMatch(/are kept/);
+  });
+
+  it("adds nothing folder-specific to the global band", () => {
+    /*
+     * The band is 48px of global chrome and the same shape on every screen.
+     * This page draws no band — the shell does — so what is asserted here is
+     * that the move did not smuggle a destination or a folder control into one:
+     * see components/app-shell.test.tsx for the shell's half.
+     */
+    render(<ProjectPage />);
+
+    for (const global of [/^Now$/, /^Ask Reverie$/, /^Record$/]) {
+      expect(screen.queryByRole("link", { name: global })).not.toBeInTheDocument();
+    }
   });
 
   it("says so when the folder is gone, and where its meetings went", () => {

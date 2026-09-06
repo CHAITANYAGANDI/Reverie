@@ -78,11 +78,12 @@ vi.mock("@/components/recording-bar", () => ({
 vi.mock("@/components/processing-dock", () => ({
   ProcessingDock: () => <div data-testid="processing-dock" />,
 }));
-vi.mock("@/components/folder-header-actions", () => ({
-  FolderHeaderActions: ({ folderId }: { folderId: string }) => (
-    <button type="button">Actions for {folderId}</button>
-  ),
-}));
+/*
+ * Not mocked, and not rendered. The shell used to draw the folder's own
+ * rename and delete from `chrome.folderId`; they are in the folder's own
+ * masthead now, so the shell importing that component at all would be the
+ * regression these two tests exist for.
+ */
 
 import { AppShell } from "@/components/app-shell";
 import { HEADER_SLOT_ID, HeaderSlot } from "@/components/header-slot";
@@ -242,22 +243,34 @@ describe("the page's own controls", () => {
     expect(slot).toHaveTextContent("Export");
   });
 
-  it("puts a folder's own actions beside the page, not in the band", () => {
-    // They used to be at the right-hand end of the top bar, sharing it with
-    // Import, Record and search. The band is global now and carries nothing
-    // belonging to the page underneath.
+  it("draws none of a folder's own actions, on a folder or anywhere else", () => {
+    /*
+     * THE SHELL IS OUT OF THIS ENTIRELY NOW.
+     *
+     * <p>It drew them from `chrome.folderId` at the right of a full-width row,
+     * which put them about 340px clear of a centred 680px folder document —
+     * chrome, to look at, rather than the folder's. They are in the folder's
+     * masthead; see app/(app)/folder/[id]/page.test.tsx.
+     *
+     * <p>The band never carried them and must not start: it is 48px of global
+     * chrome and the same shape on every screen, which is the whole reason it
+     * can be trusted.
+     */
     pathname = "/folder/prj_1";
     shell();
 
-    const actions = screen.getByRole("button", { name: "Actions for prj_1" });
-    expect(actions).toBeInTheDocument();
-    expect(screen.getByTestId("band")).not.toContainElement(actions);
+    expect(screen.queryByRole("button", { name: "Folder actions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rename folder/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("band")).toBeInTheDocument();
   });
 
-  it("offers none anywhere else", () => {
+  it("still knows which folder it is in, because the import dialog needs it", () => {
+    // `chrome.folderId` kept its other caller. Removing it with the actions
+    // would have quietly sent every import to the top level.
+    pathname = "/folder/prj_1";
     shell();
 
-    expect(screen.queryByRole("button", { name: /Actions for/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("import")).toHaveAttribute("data-folder", "prj_1");
   });
 });
 

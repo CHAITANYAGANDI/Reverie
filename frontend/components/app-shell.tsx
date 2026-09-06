@@ -53,7 +53,6 @@ import { closeSearch, openSearch, useSearchOverlay } from "@/lib/search-overlay"
 import { ImportDialog } from "@/components/import-dialog";
 import { RecordingBar } from "@/components/recording-bar";
 import { ProcessingDock } from "@/components/processing-dock";
-import { FolderHeaderActions } from "@/components/folder-header-actions";
 import { HEADER_SLOT_ID } from "@/components/header-slot";
 import { AppBand } from "@/components/v2/app-band";
 import { MobileTabs } from "@/components/v2/mobile-tabs";
@@ -196,26 +195,29 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             from pushing the pane off the screen instead of scrolling itself. */}
         <div className="flex w-full min-w-0 flex-col lg:w-auto lg:flex-1">
           {/*
-           * The page's own controls, and the folder's.
+           * The page's own controls, for the pages that still put anything
+           * here.
            *
            * <p>They were at the right-hand end of the old top bar, sharing it
            * with Import, Record and search — which is what that file's rulebook
            * was refereeing. They are out of the band entirely now: the band is
-           * global, and a folder's rename belongs beside the folder.
+           * global, and what belongs to a page belongs in it.
            *
-           * <p>This row has no height of its own. Both children carry their own
-           * padding and the portal target is `empty:hidden`, so on the great
-           * majority of pages — which put nothing here — it contributes exactly
-           * zero pixels rather than a strip of nothing above the title. That
-           * was the `bare` flag's whole job, and it is now structural instead of
-           * a rule. See components/header-slot.tsx.
+           * <p>The folder's own rename and delete used to be rendered here from
+           * `chrome.folderId`. They are in the folder's masthead now: this row
+           * is full width, so once the folder document became a centred 680px
+           * measure they sat about 340px clear of it and read as chrome rather
+           * than as the folder's. See components/folder-actions.tsx. The slot
+           * below is untouched and is still what the meeting page fills.
+           *
+           * <p>This row has no height of its own. The portal target is
+           * `empty:hidden`, so on the great majority of pages — which put
+           * nothing here — it contributes exactly zero pixels rather than a
+           * strip of nothing above the title. That was the `bare` flag's whole
+           * job, and it is now structural instead of a rule. See
+           * components/header-slot.tsx.
            */}
           <div className="flex items-center justify-end gap-2 px-4 lg:px-6">
-            {chrome.folderId && (
-              <div className="flex items-center gap-2 py-3">
-                <FolderHeaderActions folderId={chrome.folderId} />
-              </div>
-            )}
             <div id={HEADER_SLOT_ID} className="flex items-center gap-2 py-3 empty:hidden" />
 
             {/*

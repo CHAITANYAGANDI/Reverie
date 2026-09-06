@@ -37,10 +37,13 @@
  * and still work — so a folder's existing history is unreachable rather than
  * deleted. The workspace chat at /ask is where asking lives.
  *
- * <p><b>Rename, delete and search-in-folder.</b> Those are in the band beside
- * Record — see components/folder-header-actions.tsx. They are what you do to
- * the folder you are standing in, and having them here as well meant one set of
- * actions living in two places.
+ * <p><b>Rename, delete and search-in-folder.</b> Those are in the masthead, at
+ * the right edge of the measure, beside the star — see
+ * components/folder-actions.tsx. They were rendered by the shell in a
+ * full-width row, which put them about 340px clear of a centred 680px document
+ * and reading as chrome rather than as the folder's. Still one set of actions,
+ * and now beside the thing they act on. Nothing folder-specific is in the
+ * global band.
  *
  * <h2>What the facts row may say</h2>
  *
@@ -56,6 +59,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { Star, MoreHorizontal, FileText, FolderMinus } from "lucide-react";
+import { FolderActions } from "@/components/folder-actions";
 import {
   useGetProjectQuery,
   useGetProjectMeetingsQuery,
@@ -136,27 +140,34 @@ export default function FolderPage() {
                     <span>last updated {relativeDay(folder.updatedAt)}</span>
                   </>
                 }
-                bar={
-                  /* The star is the whole of "this is the folder I am in this
-                     week": starred folders sort to the top of the margin and of
-                     the folders page. Rename, delete and search are in the band
-                     — see components/folder-header-actions.tsx. */
-                  <button
-                    type="button"
-                    aria-label={folder.favorite ? "Remove star" : "Star this folder"}
-                    aria-pressed={folder.favorite}
-                    onClick={() => void update({ id, body: { favorite: !folder.favorite } })}
-                    className="-ml-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-callout text-ink-3 transition-colors duration-press ease-soft hover:bg-white/[0.035] hover:text-ink"
-                  >
-                    <Star
-                      className={cn(
-                        "h-[13px] w-[13px]",
-                        folder.favorite && "fill-amber-400 text-amber-400",
-                      )}
-                      aria-hidden
-                    />
-                    {folder.favorite ? "Starred" : "Star this folder"}
-                  </button>
+                actions={
+                  <>
+                    {/* The star is the whole of "this is the folder I am in
+                        this week": starred folders sort to the top of the
+                        Library margin and of the folders page. An icon and not
+                        a labelled button, because the name is what somebody
+                        reads on this line. */}
+                    <button
+                      type="button"
+                      aria-label={folder.favorite ? "Remove star" : "Star this folder"}
+                      title={folder.favorite ? "Remove star" : "Star this folder"}
+                      aria-pressed={folder.favorite}
+                      onClick={() => void update({ id, body: { favorite: !folder.favorite } })}
+                      className="rounded-md p-1.5 text-ink-4 transition-colors duration-press ease-soft hover:bg-white/[0.06] hover:text-ink"
+                    >
+                      <Star
+                        className={cn(
+                          "h-4 w-4",
+                          folder.favorite && "fill-amber-400 text-amber-400",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {/* Rename, search-in-folder and delete, with the
+                        confirmation that says the meetings survive. Rendered
+                        by the shell until now; see the note at the top. */}
+                    <FolderActions folderId={id} />
+                  </>
                 }
               />
 
