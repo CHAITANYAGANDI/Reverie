@@ -15,19 +15,20 @@
  * collects what it never reads is asking somebody to work for you before you
  * have done anything for them.
  *
- * <h2>The count is derived, never written down</h2>
+ * <h2>Both apply to every account, Google included</h2>
  *
- * <p>"Step 1 of 2" when the name is ours to collect, "Step 1 of 1" when the
- * identity provider already owns it. Signing up with Google means Google holds
- * the name — Settings says exactly that and disables the field — so asking here
- * would be the product contradicting itself two screens apart, and saving it
- * would write a copy into Reverie's column that then outranks Google's
- * everywhere.
+ * <p>This briefly skipped the name where the provider had supplied one, so a
+ * Google sign-up went straight to the language question and was never asked
+ * what to call anybody. Google supplies the name; it owns nothing afterwards.
+ * Reverie's {@code display_name} is its own column, the server never rewrites
+ * it from the token, and every screen reads it before the provider's — so the
+ * question is real, and the screen prefills it, which makes the step a
+ * confirmation rather than an interrogation. See lib/identity-owner.
  *
- * <p>So the steps are computed from the identity rather than declared, and the
- * label counts what is actually there. A hard-coded "of 2" over a one-step flow
- * is a progress indicator that lies on the only screen where somebody is still
- * deciding whether to trust the product.
+ * <p>The count still comes from the list rather than a literal 2, so the label
+ * cannot drift from what is on screen. A progress indicator that miscounts is a
+ * small lie on the one screen where somebody is still deciding whether to trust
+ * the product.
  */
 
 /** Where the completion flag lives on a Clerk identity. */
@@ -37,15 +38,13 @@ export const ONBOARDING_FLAG = "onboardingCompleted";
 export type OnboardingStep = "name" | "language";
 
 /**
- * Which steps apply to this account.
+ * The steps, in order: the name, then the language, then Now.
  *
- * @param collectsName whether the name is Reverie's to collect — see
- *   `identityPermissions`, which answers it from the provider and whether the
- *   account has a password of its own.
+ * <p>A constant rather than a function of the identity, because both questions
+ * are Reverie's own preferences and both therefore apply to every account. One
+ * list, counted by the label and walked by the screen.
  */
-export function stepsFor(collectsName: boolean): OnboardingStep[] {
-  return collectsName ? ["name", "language"] : ["language"];
-}
+export const ONBOARDING_STEPS: readonly OnboardingStep[] = ["name", "language"];
 
 /**
  * Whether onboarding has been finished, read off whatever the identity carries.
@@ -65,7 +64,7 @@ export function onboardingCompleted(metadata: unknown): boolean {
   return (metadata as Record<string, unknown>)[ONBOARDING_FLAG] === true;
 }
 
-/** "Step 1 of 2", or "Step 1 of 1" where the name is not ours to ask for. */
+/** "Step 1 of 2", counted off the list rather than written as a literal. */
 export function stepLabel(index: number, total: number): string {
   return `Step ${index + 1} of ${total}`;
 }

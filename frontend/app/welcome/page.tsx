@@ -12,8 +12,9 @@
  * <ul>
  *   <li><b>Your name.</b> It is what the account button and the owner column on
  *       an action item show. Prefilled where the provider knew it, which turns
- *       the step into a confirmation rather than a question — and skipped
- *       entirely where the provider <em>owns</em> it.</li>
+ *       the step into a confirmation rather than a question — and asked of
+ *       everybody, because it is Reverie's own column whoever filled it
+ *       first.</li>
  *   <li><b>The language your meetings are in.</b> Detection is good and it is
  *       fooled by a quiet opening minute, so a transcript in the wrong language
  *       is a real outcome that one tap here prevents. Detect automatically
@@ -26,12 +27,11 @@
  * offers all three. A menu in front of the thing it is a menu of is a screen
  * somebody has to get through rather than one that helps.
  *
- * <h2>The count is derived from the identity</h2>
+ * <h2>The count is read off the list</h2>
  *
- * <p>"Step 1 of 2" where the name is Reverie's to collect, "Step 1 of 1" where
- * Google already holds it. Not a fixed two: a progress indicator that says "of
- * 2" over a one-step flow is a small lie on the one screen where somebody is
- * still deciding whether to trust the product. See lib/onboarding.
+ * <p>"Step 1 of 2", then "Step 2 of 2", then Now — counted from
+ * {@code ONBOARDING_STEPS} rather than written as a literal, so the label
+ * cannot drift from what is on screen. See lib/onboarding.
  *
  * <h2>Everything is skippable, and skipping counts as done</h2>
  *
@@ -56,8 +56,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { Field, SubmitButton } from "@/components/auth/auth-form";
 import { useAuth } from "@/lib/auth";
 import { useGetLanguagesQuery, useUpdatePreferencesMutation } from "@/lib/api";
-import { identityPermissions } from "@/lib/identity-owner";
-import { stepsFor, stepLabel, type OnboardingStep } from "@/lib/onboarding";
+import { ONBOARDING_STEPS, stepLabel } from "@/lib/onboarding";
 import { HOME } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -74,7 +73,7 @@ export default function WelcomePage() {
 
 function Welcome() {
   const router = useRouter();
-  const { mode, profile, isLoaded, onboardingCompleted, completeOnboarding } = useAuth();
+  const { profile, isLoaded, onboardingCompleted, completeOnboarding } = useAuth();
   const [save] = useUpdatePreferencesMutation();
   const languages = useGetLanguagesQuery();
 
@@ -91,21 +90,13 @@ function Welcome() {
   }, [isLoaded, onboardingCompleted, router]);
 
   /*
-   * The name step exists only where the name is this account's to set. Signing
-   * up with Google means Google holds it — Settings says exactly that and
-   * disables the field — so asking here would be the product contradicting
-   * itself two screens apart, and saving it would write a copy into Reverie's
-   * column that then outranks Google's everywhere.
+   * Both questions, for every account. This briefly skipped the name where the
+   * provider had supplied one, which meant a Google sign-up went straight to
+   * the language question and was never asked what to call anybody. Google
+   * supplies the name; Reverie's own column owns it from then on — so the step
+   * is asked, and prefilled below from whatever the provider knew.
    */
-  const permissions = identityPermissions({
-    mode,
-    provider: profile.provider,
-    hasPassword: profile.hasPassword,
-  });
-  const steps = React.useMemo<OnboardingStep[]>(
-    () => stepsFor(permissions.name),
-    [permissions.name],
-  );
+  const steps = ONBOARDING_STEPS;
 
   const [step, setStep] = React.useState(0);
   const [name, setName] = React.useState("");
@@ -146,7 +137,7 @@ function Welcome() {
     setLeaving(true);
     try {
       const patch: { displayName?: string; defaultLanguage?: string } = {};
-      if (permissions.name && name.trim()) patch.displayName = name.trim();
+      if (name.trim()) patch.displayName = name.trim();
       if (language) patch.defaultLanguage = language;
       if (Object.keys(patch).length > 0) await save(patch).unwrap();
     } catch {

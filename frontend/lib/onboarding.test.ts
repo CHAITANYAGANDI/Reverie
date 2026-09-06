@@ -1,35 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { stepsFor, stepLabel, onboardingCompleted } from "@/lib/onboarding";
+import { ONBOARDING_STEPS, stepLabel, onboardingCompleted } from "@/lib/onboarding";
 
 /**
  * Which questions a new account gets, and whether it has already had them.
  *
- * <p>Both decisions are pure, which is the point: the step count is derived
- * from the identity rather than written down, and completion is read from one
- * explicit flag rather than guessed from what the account contains.
+ * <p>The list is one constant and completion is one explicit flag, which is the
+ * point: neither is guessed from what the account happens to contain.
  */
-describe("which steps apply", () => {
-  it("asks for a name and a language where the name is ours to collect", () => {
-    expect(stepsFor(true)).toEqual(["name", "language"]);
-  });
-
-  it("asks only for a language where the provider owns the name", () => {
+describe("which steps there are", () => {
+  it("asks for a name and then a language, for every account", () => {
     /*
-     * Signing up with Google means Google holds the name — Settings says so and
-     * disables the field. Asking here would be the product contradicting itself
-     * two screens apart, and saving it would write a copy into Reverie's own
-     * column that then outranks Google's everywhere.
+     * It briefly skipped the name where the provider had supplied one, so a
+     * Google sign-up went straight to the language question and was never asked
+     * what to call anybody. Reverie's `display_name` is its own column — the
+     * provider fills it first and owns nothing after that — so the question is
+     * real, and the screen prefills it.
      */
-    expect(stepsFor(false)).toEqual(["language"]);
+    expect(ONBOARDING_STEPS).toEqual(["name", "language"]);
   });
 
   it("never has a third step", () => {
     // The flow this restores ended on "You are set up" over three buttons that
     // Now already carries. A menu in front of the thing it is a menu of.
-    for (const collects of [true, false]) {
-      expect(stepsFor(collects).length).toBeLessThanOrEqual(2);
-      expect(stepsFor(collects)).not.toContain("start");
-    }
+    expect(ONBOARDING_STEPS).toHaveLength(2);
+    expect(ONBOARDING_STEPS).not.toContain("start");
   });
 });
 
@@ -39,11 +33,14 @@ describe("the step label", () => {
     expect(stepLabel(1, 2)).toBe("Step 2 of 2");
   });
 
-  it("says one of one rather than forcing a two-step count", () => {
+  it("takes the total rather than assuming it", () => {
     /*
-     * "Step 1 of 2" over a one-step flow is a small lie on the one screen where
-     * somebody is still deciding whether to trust the product.
+     * The count is passed in from the list, so the label cannot drift from
+     * what is on screen if the list ever changes. A progress indicator that
+     * miscounts is a small lie on the one screen where somebody is still
+     * deciding whether to trust the product.
      */
+    expect(stepLabel(0, ONBOARDING_STEPS.length)).toBe("Step 1 of 2");
     expect(stepLabel(0, 1)).toBe("Step 1 of 1");
   });
 });

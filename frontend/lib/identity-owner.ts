@@ -1,18 +1,17 @@
 /**
- * Who owns your name and your password — and therefore where they can be
- * changed.
+ * Who owns your password — and therefore where it can be changed.
  *
  * <h2>The question this answers</h2>
  *
  * <p>Reverie has two kinds of account and they are not the same underneath:
  *
  * <ul>
- *   <li><b>Signed up with Google.</b> The name and the picture are Google's,
- *       arriving through Clerk. There is no password — Google authenticates,
- *       and Clerk holds no credential of its own for this person.</li>
+ *   <li><b>Signed up with Google.</b> Google authenticates, and Clerk holds no
+ *       credential of its own for this person — so there is no password here
+ *       to change.</li>
  *   <li><b>Signed up with an email and a password.</b> Clerk holds the
- *       credential, and the name and the password are the account holder's to
- *       change from here.</li>
+ *       credential, and the password is the account holder's to change from
+ *       here.</li>
  * </ul>
  *
  * <p>The old rule could not tell them apart. It asked one question — "is this
@@ -27,15 +26,30 @@
  * kind of account they have — see lib/account-actions. The address is a display
  * on every screen that shows it, so there is nothing left to decide.
  *
+ * <h2>The name is not in here either, and its absence is a correction</h2>
+ *
+ * <p>It used to be, locked for a Google account on the reasoning that the next
+ * sign-in would rewrite an edit. That is true of the address and false of the
+ * name: {@code UserService.provision} refreshes {@code users.email} from the
+ * token on every request and never touches {@code display_name}, and every
+ * screen reads Reverie's column first and falls back to the provider's only
+ * when it is empty. The provider supplies the first value and owns nothing
+ * after that.
+ *
+ * <p>The lock cost two real things. Onboarding could not ask a Google account
+ * what to call somebody — it went straight to the language question — and
+ * Settings then refused to let them change a name they had never been asked
+ * for. Both over a rewrite that does not happen.
+ *
  * <h2>Why an editable field that cannot save is worse than no field</h2>
  *
  * <p>A disabled input with a sentence beside it is understood in a second. A
- * form that accepts an edit and reverts it — which is what a Google name does,
- * because the next sign-in rewrites it — is the kind of bug people report as
- * data loss.
+ * form that accepts an edit and reverts it is the kind of bug people report as
+ * data loss. That is the whole reason the password is decided here: a Change
+ * password dialog on an account with no password anywhere can only fail.
  *
  * <p>So this fails closed: an account whose credential cannot be identified is
- * treated as somebody else's, and the fields are locked rather than offered.
+ * treated as somebody else's, and the password is locked rather than offered.
  */
 
 /** Where the identity lives. */
@@ -61,12 +75,12 @@ export interface Credential {
 
 export interface IdentityPermissions {
   owner: IdentityOwner;
-  /** Reverie's own `display_name` column. */
-  name: boolean;
   /*
-   * There is no `email` here, and its absence is the answer rather than an
-   * omission: the address on an Reverie account is fixed once it is made, for
-   * every kind of account. See lib/account-actions for why.
+   * There is no `email` here and no `name`, and both absences are answers
+   * rather than omissions. The address on a Reverie account is fixed once it is
+   * made, for every kind of account — see lib/account-actions. The display name
+   * is Reverie's own column for every kind of account, so there is nothing left
+   * to decide about that either.
    */
   password: boolean;
   /**
@@ -89,8 +103,8 @@ export function identityOwner({ mode, provider, hasPassword }: Credential): Iden
   /*
    * The provider wins over the password, and that order is deliberate. An
    * account that signed up with Google and later set a password still has
-   * Google as the source of its name and address, and offering to edit them
-   * here would be offering to edit a copy.
+   * Google as the source of its address, and offering to edit that here would
+   * be offering to edit a copy the next request overwrites.
    */
   if (provider) return "external";
   if (hasPassword) return "reverie";
@@ -109,15 +123,15 @@ export function identityPermissions(credential: Credential): IdentityPermissions
   switch (owner) {
     case "reverie":
       // Clerk holds the credential on Reverie's behalf, and this is the account
-      // holder. All three are theirs.
-      return { owner, name: true, password: true, ownerLabel: "" };
+      // holder, so the password is theirs to rotate.
+      return { owner, password: true, ownerLabel: "" };
     case "dev":
-      // No provider and no credential: the name and address are ordinary
-      // columns, and there is no password in existence to rotate.
-      return { owner, name: true, password: false, ownerLabel: "" };
+      // A header rather than a credential: there is no password in existence to
+      // rotate.
+      return { owner, password: false, ownerLabel: "" };
     case "external":
     default:
-      return { owner, name: false, password: false, ownerLabel: label };
+      return { owner, password: false, ownerLabel: label };
   }
 }
 

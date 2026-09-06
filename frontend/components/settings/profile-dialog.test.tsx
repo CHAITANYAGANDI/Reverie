@@ -108,6 +108,42 @@ describe("what it asks for", () => {
   });
 });
 
+describe("the name", () => {
+  it("can be changed by an account that signs in with Google", async () => {
+    /*
+     * It was disabled for one, on the reasoning that the next sign-in would
+     * overwrite the edit. `UserService.provision` refreshes `users.email` from
+     * the token on every request and never touches `display_name`, so that
+     * rewrite does not happen — and the lock meant onboarding never asked a
+     * Google account what to call them and this dialog then refused to let
+     * them say.
+     */
+    const { onSave } = show(EMPTY, GOOGLE);
+    const field = screen.getByLabelText("Full Name");
+    expect(field).toBeEnabled();
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "Maya Chen");
+    await userEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+    expect(onSave).toHaveBeenCalledWith({ displayName: "Maya Chen", avatarUrl: "" });
+  });
+
+  it("says the name here is not the Google account's", async () => {
+    // The two fields under it really are somebody else's, so the one that is
+    // not says so rather than leaving it to be assumed.
+    show(EMPTY, GOOGLE);
+
+    expect(screen.getByText(/does not change your Google account/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a provider where there is none", async () => {
+    show(EMPTY, REVERIE);
+
+    expect(screen.queryByText(/does not change your/)).not.toBeInTheDocument();
+  });
+});
+
 describe("the photo", () => {
   it("shows initials until there is one", () => {
     show();
@@ -278,7 +314,8 @@ describe("the email", () => {
     await waitFor(() => expect(avatarFromFile).toHaveBeenCalled());
     await userEvent.click(screen.getByRole("button", { name: "Finish" }));
 
-    expect(onSave).toHaveBeenCalledWith({ avatarUrl: PNG });
+    expect(onSave).toHaveBeenCalledWith({ avatarUrl: PNG, displayName: "Priya Raman" });
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty("email");
   });
 });
 

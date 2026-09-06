@@ -26,10 +26,10 @@ const REVERIE: Credential = { mode: "clerk", provider: "", hasPassword: true };
 const DEV: Credential = { mode: "dev", provider: "", hasPassword: false };
 
 describe("an account that signs in with Google", () => {
-  it("owns neither of them here", () => {
+  it("has no password here to change", () => {
     const can = identityPermissions(GOOGLE);
 
-    expect(can).toMatchObject({ owner: "external", name: false, password: false });
+    expect(can).toMatchObject({ owner: "external", password: false });
   });
 
   it("says nothing at all about the address", () => {
@@ -37,6 +37,20 @@ describe("an account that signs in with Google", () => {
     // this module to answer about it. See lib/account-actions.
     expect(identityPermissions(GOOGLE)).not.toHaveProperty("email");
     expect(identityPermissions(GOOGLE)).not.toHaveProperty("emailVia");
+  });
+
+  it("does not lock the display name either", () => {
+    /*
+     * It did, on the reasoning that the next sign-in would overwrite an edit.
+     * `UserService.provision` refreshes `users.email` from the token on every
+     * request and never touches `display_name`, and every screen reads
+     * Reverie's column before the provider's — so that rewrite does not happen.
+     * The lock meant onboarding never asked a Google account what to call them
+     * and Settings then refused to let them say.
+     */
+    for (const credential of [GOOGLE, REVERIE, DEV]) {
+      expect(identityPermissions(credential)).not.toHaveProperty("name");
+    }
   });
 
   it("names Google, so the sentence on screen can too", () => {
@@ -59,22 +73,21 @@ describe("an account that signs in with Google", () => {
 
   it("stays Google's even after a password is added", () => {
     /*
-     * Clerk lets an OAuth account set a password later. The name still comes
-     * from Google, so editing it here would be editing a copy that the next
-     * sign-in overwrites.
+     * Clerk lets an OAuth account set a password later. The address still comes
+     * from Google, and `provision` rewrites it from the token on the very next
+     * request, so offering to edit it here would be offering to edit a copy.
      */
     const can = identityPermissions({ ...GOOGLE, hasPassword: true });
 
     expect(can.owner).toBe("external");
-    expect(can.name).toBe(false);
+    expect(can.ownerLabel).toBe("Google");
   });
 });
 
 describe("an account made with an email and a password", () => {
-  it("owns both", () => {
+  it("owns the password", () => {
     expect(identityPermissions(REVERIE)).toMatchObject({
       owner: "reverie",
-      name: true,
       password: true,
     });
   });
@@ -85,10 +98,9 @@ describe("an account made with an email and a password", () => {
 });
 
 describe("a development session", () => {
-  it("owns its name, and has no password in existence", () => {
+  it("has no password in existence to rotate", () => {
     expect(identityPermissions(DEV)).toMatchObject({
       owner: "dev",
-      name: true,
       password: false,
     });
   });
@@ -104,7 +116,6 @@ describe("failing closed", () => {
 
     expect(can.owner).toBe("external");
     expect(can.password).toBe(false);
-    expect(can.name).toBe(false);
   });
 
   it("treats an unknown mode as having no provider rather than guessing", () => {

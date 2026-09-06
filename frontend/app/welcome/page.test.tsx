@@ -84,6 +84,12 @@ beforeEach(() => {
   completed = false;
 });
 
+/** Past the name question, which now comes first for every account. */
+async function reachLanguage() {
+  await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+  return screen.findByRole("radio", { name: /Detect automatically/ });
+}
+
 describe("how many steps there are", () => {
   it("asks for a name first where Reverie owns it", async () => {
     render(<WelcomePage />);
@@ -94,20 +100,23 @@ describe("how many steps there are", () => {
     );
   });
 
-  it("asks only for a language where Google owns the name", async () => {
+  it("asks a Google account too, prefilled with what Google knew", async () => {
     provider = "google";
     providerName = "Maya Chen";
     render(<WelcomePage />);
 
     /*
-     * One of one, not "Step 1 of 2" with a step that never comes. Google holds
-     * the name; Settings says so and disables the field.
+     * The reported bug: signing up with Google went straight to the language
+     * question and nobody was ever asked what to call them. Reverie's
+     * `display_name` is its own column — Google fills it first and owns nothing
+     * after that, and the server never rewrites it — so the step is asked, and
+     * prefilled, which makes it a confirmation rather than an interrogation.
      */
-    expect(await screen.findByText("Step 1 of 1")).toBeInTheDocument();
+    expect(await screen.findByText("Step 1 of 2")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "What language do you usually meet in?",
+      "What should we call you?",
     );
-    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Maya Chen"));
   });
 
   it("moves from the name to the language, and counts it", async () => {
@@ -151,21 +160,26 @@ describe("the language step", () => {
     providerName = "Maya Chen";
     render(<WelcomePage />);
 
-    const auto = await screen.findByRole("radio", { name: /Detect automatically/ });
+    const auto = await reachLanguage();
     expect(auto).toHaveAttribute("aria-checked", "true");
   });
 
-  it("sends nothing when the default is kept, and still finishes", async () => {
+  it("stores no language when the default is kept, and still finishes", async () => {
     provider = "google";
     providerName = "Maya Chen";
     render(<WelcomePage />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+    await reachLanguage();
+    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
-    // Auto-detect is the absence of a stored choice, so there is nothing to
-    // write — but the flow is still finished and recorded.
+    /*
+     * Auto-detect is the absence of a stored choice, so there is nothing to
+     * write for it. The name confirmed on the way past is another matter — it
+     * is an answer somebody gave, even by pressing Continue on a prefill.
+     */
     await waitFor(() => expect(completeOnboarding).toHaveBeenCalled());
-    expect(save).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith({ displayName: "Maya Chen" });
+    expect(save.mock.calls[0][0]).not.toHaveProperty("defaultLanguage");
     expect(replace).toHaveBeenCalledWith("/home");
   });
 
@@ -174,10 +188,13 @@ describe("the language step", () => {
     providerName = "Maya Chen";
     render(<WelcomePage />);
 
-    await userEvent.click(await screen.findByRole("radio", { name: /German/ }));
+    await reachLanguage();
+    await userEvent.click(screen.getByRole("radio", { name: /German/ }));
     await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ defaultLanguage: "de" }));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith({ displayName: "Maya Chen", defaultLanguage: "de" }),
+    );
     expect(replace).toHaveBeenCalledWith("/home");
   });
 });
@@ -205,6 +222,8 @@ describe("finishing", () => {
      * again, which is the behaviour this screen exists not to be.
      */
     await waitFor(() => expect(completeOnboarding).toHaveBeenCalled());
+    // Nothing was answered, so nothing is written: the defaults stand.
+    expect(save).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith("/home");
   });
 
