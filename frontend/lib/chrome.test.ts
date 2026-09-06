@@ -161,7 +161,7 @@ describe("which place a page is in", () => {
     // Not a gap. Each of these is entered from a control of its own and left by
     // finishing, and underlining a destination nobody navigated to would be a
     // lie about where they are.
-    for (const path of ["/record", "/settings", "/settings/plans", "/welcome", "/upload", "/"]) {
+    for (const path of ["/record", "/settings", "/settings/plans", "/upload", "/"]) {
       expect(placeFor(path)).toEqual({ id: null, nested: false });
     }
   });

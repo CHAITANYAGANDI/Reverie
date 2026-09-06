@@ -61,10 +61,9 @@ describe("returning from Google", () => {
   it("still says where a finished flow goes when the flow did not say", () => {
     render(<SsoCallbackPage />);
 
-    // A returning sign-in goes home; a brand-new account goes to the welcome
-    // screen. These are the fallbacks, not the hand-back-to-a-form URLs above.
+    // These are the fallbacks, not the hand-back-to-a-form URLs above.
     expect(captured.signInFallbackRedirectUrl).toBe("/home");
-    expect(captured.signUpFallbackRedirectUrl).toBe("/welcome");
+    expect(captured.signUpFallbackRedirectUrl).toBe("/home");
   });
 
   it("wears Reverie's mark while it waits", () => {

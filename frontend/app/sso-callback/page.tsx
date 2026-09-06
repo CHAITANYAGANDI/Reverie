@@ -35,7 +35,7 @@
 
 import { AuthenticateWithRedirectCallback } from "@clerk/nextjs";
 import { Lockup } from "@/components/v2/lockup";
-import { HOME, SIGN_IN, SIGN_UP, WELCOME } from "@/lib/routes";
+import { HOME, SIGN_IN, SIGN_UP } from "@/lib/routes";
 
 export default function SsoCallbackPage() {
   return (
@@ -56,12 +56,12 @@ export default function SsoCallbackPage() {
         signInUrl={SIGN_IN}
         signUpUrl={SIGN_UP}
         /*
-          Where to go if Clerk cannot tell which flow this was. A returning
-          sign-in goes home; a brand-new account goes to the welcome screen.
-          Both are fallbacks: the redirect the flow started with normally wins.
+          Where to go if Clerk cannot tell which flow this was. Both roads end
+          in the same place, and both are fallbacks: the redirect the flow
+          started with normally wins.
         */
         signInFallbackRedirectUrl={HOME}
-        signUpFallbackRedirectUrl={WELCOME}
+        signUpFallbackRedirectUrl={HOME}
       />
 
       <div className="relative z-10 flex w-full max-w-[400px] flex-col items-start gap-5">

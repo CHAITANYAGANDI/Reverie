@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Lockup } from "@/components/v2/lockup";
 
 /**
- * The frame every screen outside the app shares: sign in, sign up, welcome.
+ * The frame the screens outside the app share: sign in, and sign up.
  *
  * <h2>Whose screen this is</h2>
  *

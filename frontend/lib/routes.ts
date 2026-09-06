@@ -31,14 +31,6 @@ export const SIGN_IN = "/sign-in";
 export const SIGN_UP = "/sign-up";
 
 /**
- * The first screen inside a new account.
- *
- * <p>Written by both sign-up roads and read by the screen itself, which is
- * exactly the shape of thing this file exists for.
- */
-export const WELCOME = "/welcome";
-
-/**
  * The chat.
  *
  * <p>The third place in the band. A constant rather than six literals, for the

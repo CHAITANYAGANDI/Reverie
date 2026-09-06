@@ -18,7 +18,7 @@
  * dimmer rule: present, plainly not current. See components/v2/places.tsx.
  *
  * <p>Some paths are in no place, and that is a real answer rather than a gap.
- * /record, /settings, /welcome and /upload are things you are doing, not
+ * /record, /settings and /upload are things you are doing, not
  * somewhere you are, and each of them is left from a control of its own.
  */
 
