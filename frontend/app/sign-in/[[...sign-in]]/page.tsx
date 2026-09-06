@@ -40,6 +40,7 @@ import {
   SubmitButton,
 } from "@/components/auth/auth-form";
 import { authErrorMessage, isAlreadySignedIn } from "@/lib/clerk-errors";
+import { factorStrategies, signInBlockMessage } from "@/lib/sign-in-block";
 import { HOME } from "@/lib/routes";
 
 export default function SignInPage() {
@@ -149,11 +150,25 @@ function SignInForm() {
           return;
         }
         /*
-         * Anything else is a step this form does not draw -- a second factor,
-         * most likely. Rather than pretend, it says so and offers the way that
-         * does work. This is the honest cost of owning the form.
+         * Anything else is a step this form does not draw, and it says WHICH.
+         *
+         * <p>It used to answer every one of them with the same sentence —
+         * "needs another step … Continue with Google, or reset your password"
+         * — which named two remedies without saying which applied. Somebody
+         * whose account was created with Google read "reset your password" and
+         * went to reset a password that does not exist.
+         *
+         * <p>Clerk already says what would work: an attempt that needs a first
+         * factor comes back listing the factors that exist for this account,
+         * and a Google-only account simply has no `password` among them. See
+         * lib/sign-in-block.
          */
-        setError("This account needs another step to sign in. Continue with Google, or reset your password.");
+        setError(
+          signInBlockMessage({
+            status: attempt.status,
+            firstFactors: factorStrategies(attempt.supportedFirstFactors),
+          }) ?? "",
+        );
         setBusy(null);
         return;
       }

@@ -117,15 +117,42 @@ describe("signing in", () => {
   });
 
   it("does not strand somebody on a step it cannot draw", async () => {
-    // A second factor, most likely. Owning the form means owning the states it
-    // does not handle, and saying so beats a button that silently does nothing.
-    clerk.create.mockResolvedValue({ status: "needs_second_factor" });
+    // Owning the form means owning the states it does not handle, and saying so
+    // beats a button that silently does nothing.
+    clerk.create.mockResolvedValue({
+      status: "needs_second_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
     render(<SignInPage />);
     await screen.findByRole("button", { name: "Sign in" });
 
     await signIn();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/another step/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/two-step/i);
+  });
+
+  it("says an account has no password rather than telling them to reset one", async () => {
+    /*
+     * The reported bug. Every blocked outcome used to produce one sentence —
+     * "needs another step … Continue with Google, or reset your password" —
+     * which named two remedies without saying which applied. Somebody whose
+     * account was created with Google went to reset a password that does not
+     * exist. Clerk says which factors would work; this reads them.
+     */
+    clerk.create.mockResolvedValue({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "oauth_google" }],
+    });
+    render(<SignInPage />);
+    await screen.findByRole("button", { name: "Sign in" });
+
+    await signIn();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/no password/i);
+    expect(alert).toHaveTextContent(/Continue with Google/i);
+    // And specifically not the advice that sent people in circles.
+    expect(alert).not.toHaveTextContent(/reset your password/i);
   });
 });
 
