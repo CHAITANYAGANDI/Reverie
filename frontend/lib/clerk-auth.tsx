@@ -16,6 +16,7 @@ import {
 import { clearPreferences } from "@/lib/preference-store";
 import { normalizeProvider } from "@/lib/identity-owner";
 import type { AuthContextValue, UserProfile } from "@/lib/auth";
+import { SIGN_IN, SIGN_UP } from "@/lib/routes";
 
 type Ctx = React.Context<AuthContextValue | null>;
 
@@ -194,8 +195,8 @@ export function ClerkAuthProvider({
      */
     <ClerkProvider
       publishableKey={publishableKey}
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
+      signInUrl={SIGN_IN}
+      signUpUrl={SIGN_UP}
       afterSignOutUrl="/"
     >
       <ClerkBridge AuthContext={AuthContext}>{children}</ClerkBridge>

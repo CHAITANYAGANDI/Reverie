@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { SIGN_IN } from "@/lib/routes";
 
 /**
  * Nobody reaches the app without being somebody.
@@ -94,7 +95,7 @@ const guard = DEV_MODE
        */
       const back = request.nextUrl.pathname + request.nextUrl.search;
       return redirectToSignIn({ returnBackUrl: back });
-    }, { signInUrl: "/sign-in" });
+    }, { signInUrl: SIGN_IN });
 
 export default function middleware(
   request: NextRequest,

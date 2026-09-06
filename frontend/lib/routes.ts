@@ -17,6 +17,20 @@
 export const HOME = "/home";
 
 /**
+ * The two screens Reverie hosts itself, and the reason they are constants.
+ *
+ * <p>These are read back by Clerk in three separate places — the provider, the
+ * middleware and the OAuth callback — and every one of them has to agree.
+ * Where any of them is missing, Clerk does not fail: it quietly falls back to
+ * its own hosted Account Portal on `accounts.dev`, which is a different domain
+ * wearing a different brand, and somebody who cancels a Google sign-in ends up
+ * there instead of back on Reverie's form. That is not a crash anyone would
+ * catch in review, which is exactly the kind of string this file is for.
+ */
+export const SIGN_IN = "/sign-in";
+export const SIGN_UP = "/sign-up";
+
+/**
  * The first screen inside a new account.
  *
  * <p>Written by both sign-up roads and read by the screen itself, which is
