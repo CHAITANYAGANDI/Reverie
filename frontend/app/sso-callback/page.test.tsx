@@ -31,12 +31,17 @@ const { handleRedirectCallback, replace, update, setActive } = vi.hoisted(() => 
 
 /** The in-flight sign-up Clerk keeps on the client, or none. */
 let signUp: Record<string, unknown> | null;
+/** The in-flight sign-in, which is where a refused round-trip is recorded. */
+let signIn: Record<string, unknown> | null;
+/** Whether clerk-js has finished loading. Nothing above is readable before. */
+let loaded: boolean;
 
 vi.mock("@clerk/nextjs", () => ({
   useClerk: () => ({
+    loaded,
     handleRedirectCallback,
     setActive,
-    client: signUp ? { signUp } : undefined,
+    client: { signUp: signUp ?? undefined, signIn: signIn ?? undefined },
   }),
 }));
 
@@ -56,7 +61,162 @@ beforeEach(() => {
   handleRedirectCallback.mockResolvedValue(undefined);
   setActive.mockResolvedValue(undefined);
   signUp = null;
+  signIn = null;
+  loaded = true;
   arriveWith("");
+});
+
+/**
+ * Cancelling at Google.
+ *
+ * <p>Reported twice. Google's `error=access_denied` goes to *Clerk's* callback,
+ * not Reverie's: Clerk consumes it, records it on the verification, and
+ * redirects here with a clean query string. So the URL reading found nothing,
+ * the exchange went ahead, and the screen said "Signing you in" indefinitely.
+ *
+ * <p>The first attempt at this fixed it by passing a `customNavigate` to
+ * `handleRedirectCallback`. That argument is dropped by `@clerk/nextjs`, whose
+ * wrapper takes one parameter — so the fix passed these tests and changed
+ * nothing in a browser. The decision is made here now, before the exchange, off
+ * the resources the client has already loaded.
+ */
+describe("cancelling at Google", () => {
+  /** What Clerk leaves on the sign-in when the consent screen is refused. */
+  function cancelled() {
+    signIn = {
+      firstFactorVerification: {
+        status: "failed",
+        error: { code: "oauth_access_denied", longMessage: "The user did not grant access." },
+      },
+    };
+  }
+
+  it("says so, rather than going on claiming to sign somebody in", async () => {
+    cancelled();
+    render(<SsoCallbackPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled that sign-in.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("attempts no exchange, there being nothing to exchange", async () => {
+    cancelled();
+    render(<SsoCallbackPage />);
+
+    await screen.findByRole("alert");
+    expect(handleRedirectCallback).not.toHaveBeenCalled();
+  });
+
+  it("offers the way back rather than leaving somebody on a dead page", async () => {
+    cancelled();
+    render(<SsoCallbackPage />);
+
+    await screen.findByRole("alert");
+    expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
+  });
+
+  it("promises nothing about an account it never touched", async () => {
+    cancelled();
+    render(<SsoCallbackPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Nothing on your account was changed.",
+    );
+  });
+
+  it("lets a sign-in Clerk means to transfer go through", async () => {
+    /*
+     * `external_account_exists` is a sign-in that is really a sign-up. Stopping
+     * on it would break a flow that works, which is a worse bug than the one
+     * this screen is fixing.
+     */
+    signIn = {
+      firstFactorVerification: {
+        status: "transferable",
+        error: { code: "external_account_exists" },
+      },
+    };
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("before clerk-js has loaded", () => {
+  it("attempts nothing, because there is nothing to read yet", async () => {
+    /*
+     * The client carries the verifications this screen reads, and before the
+     * load they are absent rather than empty. Deciding then would read nothing
+     * and conclude nothing.
+     */
+    loaded = false;
+    render(<SsoCallbackPage />);
+    // Flushed, because the exchange is reached through an await and would
+    // otherwise be safely un-run for the wrong reason.
+    await act(async () => {});
+
+    expect(handleRedirectCallback).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Signing you in");
+  });
+
+  it("runs as soon as it has", async () => {
+    loaded = false;
+    const view = render(<SsoCallbackPage />);
+
+    loaded = true;
+    view.rerender(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+  });
+});
+
+describe("when the exchange goes nowhere at all", () => {
+  it("stops saying it is signing you in, rather than saying it forever", async () => {
+    /*
+     * `@clerk/nextjs` returns `undefined` from `handleRedirectCallback` with
+     * its own `.catch` already attached, so there is no promise here to await
+     * and no rejection to catch. Anything that goes wrong inside it leaves this
+     * page on "Signing you in" with nothing to notice, which is the shape of
+     * every report about this screen. This is the floor under that.
+     */
+    vi.useFakeTimers();
+    try {
+      render(<SsoCallbackPage />);
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+
+      expect(screen.getByRole("alert")).toHaveTextContent("That sign-in did not finish.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fire once the flow has decided where to go", async () => {
+    // A watchdog that goes off after a successful navigation would replace a
+    // page somebody is already reading with an error about it.
+    vi.useFakeTimers();
+    try {
+      render(<SsoCallbackPage />);
+      await act(async () => {});
+      const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
+      await act(async () => {
+        await navigate("/home");
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(replace).toHaveBeenCalledWith("/home");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("while the exchange is running", () => {
@@ -150,14 +310,15 @@ describe("a sign-up that only needs something Reverie can answer", () => {
     });
     render(<SsoCallbackPage />);
 
-    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
-    const navigate = handleRedirectCallback.mock.calls[0][1] as (to: string) => Promise<unknown>;
-
-    // Clerk asks for its hosted continue page; the fill happens instead.
-    await navigate("https://touching-locust-18.accounts.dev/sign-up/continue");
-
+    /*
+     * Before the exchange rather than inside its navigation, which is where
+     * this lived and therefore never ran -- the navigate is dropped by the
+     * wrapper. Clerk's FAPI has already opened the account and left it one
+     * field short, so filling that field is the whole of what remains, and
+     * there is no hosted page for anybody to be sent to.
+     */
+    await waitFor(() => expect(setActive).toHaveBeenCalledWith({ session: "sess_new" }));
     expect(update).toHaveBeenCalledWith({ username: expect.stringMatching(/^maya-[0-9a-f]{6}$/) });
-    expect(setActive).toHaveBeenCalledWith({ session: "sess_new" });
     // A brand-new account, so the two questions rather than Now.
     expect(replace).toHaveBeenCalledWith("/welcome");
   });

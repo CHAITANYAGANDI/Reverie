@@ -126,6 +126,97 @@ export function inApp(to: string, origin?: string): string {
   return path;
 }
 
+/** The part of a Clerk verification that says it did not work. */
+export interface VerificationLike {
+  /** `unverified` | `verified` | `transferable` | `failed` | `expired`. */
+  status?: string | null;
+  error?: { code?: string | null; longMessage?: string | null; message?: string | null } | null;
+}
+
+/** Statuses that mean the round-trip is over and did not work. */
+const BROKEN = new Set(["failed", "expired"]);
+
+/**
+ * Codes clerk-js resolves by itself, which must never be reported as failures.
+ *
+ * <p>`external_account_exists` is a sign-in that is really a sign-up, and
+ * `identifier_already_signed_in` is an identity already signed in on this
+ * browser. Both are flows that work; claiming either as a failure would stop a
+ * sign-in that was about to succeed, which is a worse bug than the one this
+ * function exists for.
+ */
+const CLERK_RESOLVES = new Set(["external_account_exists", "identifier_already_signed_in"]);
+
+/**
+ * Why the provider round-trip failed, read off Clerk's own resources.
+ *
+ * <h2>Why the URL is not enough</h2>
+ *
+ * <p>Cancelling at Google does produce `error=access_denied` — on
+ * <em>Clerk's</em> callback, not on Reverie's. Clerk's FAPI consumes it,
+ * records it on the verification, and redirects here with nothing on the query
+ * string. So `refusalFrom` found nothing, the exchange went ahead anyway, and
+ * the screen said "Signing you in" indefinitely.
+ *
+ * <h2>Why it is not left to `handleRedirectCallback`</h2>
+ *
+ * <p>Because that decision cannot be reached from outside it. The
+ * `@clerk/nextjs` wrapper is, in full:
+ *
+ * <pre>
+ *   this.handleRedirectCallback = (params) =&gt; {
+ *     const callback = () =&gt; this.clerkjs?.handleRedirectCallback(params);
+ *     if (this.clerkjs &amp;&amp; loaded) void callback()?.catch(() =&gt; {});
+ *     else this.premountMethodCalls.set("handleRedirectCallback", callback);
+ *   };
+ * </pre>
+ *
+ * <p>One parameter. The `customNavigate` this app passes as the second argument
+ * is dropped, so every route clerk-js picks goes through its own router and
+ * never through this app's — corroborated in the wild by a session task
+ * arriving as `/sign-up#/tasks/choose-organization` with the fragment intact,
+ * which `inApp` strips. It also returns `undefined` rather than the promise,
+ * with its own `.catch` already attached, so awaiting it awaits nothing and a
+ * rejection cannot be caught here.
+ *
+ * <p>So the failure is diagnosed before the exchange is attempted, off
+ * resources the client has already loaded, and the screen stops on its own
+ * terms rather than waiting for a navigation that is not coming.
+ *
+ * @param verifications `signIn.firstFactorVerification` and
+ *   `signUp.verifications.externalAccount`, in that order of interest
+ * @returns the sentence to show, or null where nothing has gone wrong
+ */
+export function ssoFailure(
+  verifications: readonly (VerificationLike | null | undefined)[],
+): string | null {
+  for (const verification of verifications) {
+    if (!verification) continue;
+
+    const code = verification.error?.code ?? "";
+    if (code && CLERK_RESOLVES.has(code)) continue;
+
+    const status = verification.status ?? "";
+    // An error code on anything that is not already through counts, because
+    // `unverified` with a code is a round-trip that came back refused.
+    const broken =
+      BROKEN.has(status) || (Boolean(code) && status !== "verified" && status !== "transferable");
+    if (!broken) continue;
+
+    if (code.includes("access_denied")) return "You cancelled that sign-in.";
+
+    /*
+     * The provider's own words where there are any. Reporting "you cancelled"
+     * over a refused scope or a locked account tells somebody to retry a thing
+     * that will not work.
+     */
+    const said = verification.error?.longMessage?.trim() || verification.error?.message?.trim();
+    return said || "Google did not complete that sign-in.";
+  }
+
+  return null;
+}
+
 /**
  * Whether Google or Clerk said the attempt did not happen, and what it said.
  *

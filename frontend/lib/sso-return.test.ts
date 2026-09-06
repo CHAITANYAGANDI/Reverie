@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inApp, refusalFrom, sessionTask, taskRefusal } from "@/lib/sso-return";
+import { inApp, refusalFrom, sessionTask, ssoFailure, taskRefusal } from "@/lib/sso-return";
 
 /**
  * Where a Google round-trip is allowed to put somebody.
@@ -132,6 +132,95 @@ describe("a step Clerk wants that Reverie has no answer to", () => {
      */
     expect(inApp("/sign-up#/tasks/choose-organization", OURS)).toBe("/sign-up");
     expect(inApp("/#/tasks/choose-organization", OURS)).toBe("/home");
+  });
+});
+
+describe("reading a failure off Clerk's own resources", () => {
+  /*
+   * THE BUG THESE EXIST FOR.
+   *
+   * <p>Cancelling at Google left the callback screen saying "Signing you in"
+   * forever. `refusalFrom` was supposed to catch it and could not: the
+   * `error=access_denied` Google sends goes to *Clerk's* callback, which
+   * consumes it, records it on the verification, and redirects here with a
+   * clean query string. Nothing was on the URL to find.
+   *
+   * <p>And it could not be left to `handleRedirectCallback` either, because
+   * `@clerk/nextjs` wraps it as `(params) => clerkjs?.handleRedirectCallback(params)`
+   * — one parameter, so the navigate this app passes as the second is
+   * dropped, and the returned value is `undefined` rather than the promise.
+   * Nothing to await, nothing to catch, no navigation of ours.
+   */
+  it("names a cancelled consent screen from the verification", () => {
+    expect(
+      ssoFailure([
+        {
+          status: "failed",
+          error: { code: "oauth_access_denied", longMessage: "The user did not grant access." },
+        },
+      ]),
+    ).toBe("You cancelled that sign-in.");
+  });
+
+  it("finds it on the sign-up half as well", () => {
+    // A Google *sign-up* records the same refusal on the external account.
+    expect(
+      ssoFailure([null, { status: "failed", error: { code: "oauth_access_denied" } }]),
+    ).toBe("You cancelled that sign-in.");
+  });
+
+  it("passes on what the provider actually said, rather than guessing", () => {
+    expect(
+      ssoFailure([
+        {
+          status: "failed",
+          error: { code: "oauth_email_domain_reserved", longMessage: "That domain is reserved." },
+        },
+      ]),
+    ).toBe("That domain is reserved.");
+  });
+
+  it("still says something when there are no words with the code", () => {
+    expect(ssoFailure([{ status: "expired", error: { code: "verification_expired" } }])).toBe(
+      "Google did not complete that sign-in.",
+    );
+  });
+
+  it("counts a refusal that never reached a status", () => {
+    // `unverified` with an error is a round-trip that came back refused, not a
+    // verification that has not started.
+    expect(ssoFailure([{ status: "unverified", error: { code: "oauth_access_denied" } }])).toBe(
+      "You cancelled that sign-in.",
+    );
+  });
+
+  it("says nothing about a client that has not attempted anything", () => {
+    // The ordinary arrival. Claiming a failure here would stop every sign-in.
+    expect(ssoFailure([])).toBeNull();
+    expect(ssoFailure([null, undefined])).toBeNull();
+    expect(ssoFailure([{ status: "unverified" }, { status: "unverified" }])).toBeNull();
+    expect(ssoFailure([{ status: "verified" }])).toBeNull();
+  });
+
+  it("leaves the two states clerk-js resolves by itself alone", () => {
+    /*
+     * `external_account_exists` is a sign-in that is really a sign-up, and
+     * `identifier_already_signed_in` is an identity already signed in on this
+     * browser. Both work. Reporting either as a failure would stop a sign-in
+     * that was about to succeed, which is worse than the bug being fixed.
+     */
+    expect(
+      ssoFailure([{ status: "transferable", error: { code: "external_account_exists" } }]),
+    ).toBeNull();
+    expect(
+      ssoFailure([{ status: "failed", error: { code: "identifier_already_signed_in" } }]),
+    ).toBeNull();
+  });
+
+  it("does not claim a second factor as a failure", () => {
+    // The password was right and the verification is through; what is left is
+    // another step, not a refusal.
+    expect(ssoFailure([{ status: "verified", error: null }])).toBeNull();
   });
 });
 

@@ -51,7 +51,7 @@ import { useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { Lockup } from "@/components/v2/lockup";
 import { HOME, SIGN_IN, SIGN_UP, WELCOME } from "@/lib/routes";
-import { inApp, refusalFrom, taskRefusal } from "@/lib/sso-return";
+import { inApp, refusalFrom, ssoFailure, taskRefusal } from "@/lib/sso-return";
 import { completedSession, fillableFields } from "@/lib/clerk-signup";
 
 type Phase = { state: "working" } | { state: "stopped"; message: string; note: string };
@@ -66,6 +66,24 @@ const UNCHANGED = "Nothing on your account was changed.";
  */
 const ACCOUNT_MADE =
   "Your account was created. That step has to be turned off in Reverie's authentication settings before this sign-in can finish.";
+
+/**
+ * How long to let the exchange run before saying it did not happen.
+ *
+ * <p>A watchdog rather than a timeout: nothing is cancelled, and the timer is
+ * cleared the moment this screen is navigated away from. It exists because the
+ * exchange is fire-and-forget — `@clerk/nextjs` returns `undefined` from
+ * `handleRedirectCallback` with its own `.catch` attached, so there is no
+ * promise here to await and no rejection to catch, and anything that goes wrong
+ * inside it leaves this page saying "Signing you in" forever. Which is what it
+ * did.
+ *
+ * <p>Generously long. The client has already loaded by the time it starts, so
+ * what remains is a round trip or two; the cost of firing early is an error on
+ * a screen that was about to succeed, and the cost of firing late is a few more
+ * seconds of a spinner that was never going to stop.
+ */
+const GIVE_UP_AFTER_MS = 15_000;
 
 /**
  * Finish a sign-up that is only missing something Reverie will answer itself.
@@ -105,6 +123,14 @@ export default function SsoCallbackPage() {
   const [phase, setPhase] = React.useState<Phase>({ state: "working" });
 
   /*
+   * Nothing here can be decided before clerk-js has loaded its client. The
+   * verifications this screen reads live on it, and before the load they are
+   * not empty but absent — so a mount-only effect would read nothing and
+   * conclude nothing.
+   */
+  const ready = clerk.loaded;
+
+  /*
    * ON MOUNT, AND NOT ON EVERY RENDER.
    *
    * <p>`useClerk()` and `useRouter()` hand back a fresh object on renders that
@@ -128,21 +154,60 @@ export default function SsoCallbackPage() {
   });
 
   React.useEffect(() => {
+    if (!ready) return;
     const { clerk: sdk, router: nav } = latest.current;
 
     /*
-     * An error on the URL is known before anything is attempted, so it is not
-     * worth attempting: the exchange would fail and the page would claim to be
-     * signing somebody in until it did.
+     * WHETHER THIS ROUND-TRIP FAILED, ASKED BEFORE ANYTHING IS ATTEMPTED.
+     *
+     * <p>Two readings, because the answer arrives in two places. An `error` on
+     * the query string is the plain case. The reported one is not: cancelling
+     * at Google puts `error=access_denied` on *Clerk's* callback, which
+     * consumes it, records it on the verification, and redirects here with a
+     * clean URL — so the first reading found nothing, the exchange went
+     * ahead, and the screen said "Signing you in" indefinitely. The second
+     * reading is that verification. See lib/sso-return.
      */
-    const refusal = refusalFrom(window.location.search);
+    const refusal =
+      refusalFrom(window.location.search) ??
+      ssoFailure([
+        sdk.client?.signIn?.firstFactorVerification,
+        sdk.client?.signUp?.verifications?.externalAccount,
+      ]);
     if (refusal) {
       setPhase({ state: "stopped", message: refusal, note: UNCHANGED });
       return;
     }
 
     let done = false;
+
+    /*
+     * And a floor under the whole thing, for everything that can go wrong
+     * inside a call whose promise this app is not given. See GIVE_UP_AFTER_MS.
+     */
+    const watchdog = setTimeout(() => {
+      if (done) return;
+      done = true;
+      setPhase({ state: "stopped", message: "That sign-in did not finish.", note: UNCHANGED });
+    }, GIVE_UP_AFTER_MS);
     void (async () => {
+      /*
+       * A SIGN-UP ONE FIELD SHORT, FILLED BEFORE THE EXCHANGE.
+       *
+       * <p>This used to live inside the navigation below, where it never ran:
+       * the wrapper drops the navigate. Here it is on the road that produced
+       * the bug — a Google sign-up whose account Clerk's FAPI has already
+       * opened and left at `missing_requirements`. The transfer road, where the
+       * sign-up does not exist until clerk-js creates it, is still covered
+       * inside the navigation, for if that argument is ever honoured.
+       */
+      if (await fillMissing(sdk)) {
+        done = true;
+        clearTimeout(watchdog);
+        nav.replace(WELCOME);
+        return;
+      }
+
       try {
         await sdk.handleRedirectCallback(
           {
@@ -190,6 +255,7 @@ export default function SsoCallbackPage() {
             const blocked = taskRefusal(to);
             if (blocked) {
               done = true;
+              clearTimeout(watchdog);
               setPhase({ state: "stopped", message: blocked, note: ACCOUNT_MADE });
               return;
             }
@@ -214,11 +280,13 @@ export default function SsoCallbackPage() {
             const filled = await fillMissing(sdk);
             if (filled) {
               done = true;
+              clearTimeout(watchdog);
               nav.replace(WELCOME);
               return;
             }
 
             done = true;
+            clearTimeout(watchdog);
             nav.replace(inApp(to, window.location.origin));
           },
         );
@@ -230,6 +298,8 @@ export default function SsoCallbackPage() {
          * in forever.
          */
         if (!done) {
+          done = true;
+          clearTimeout(watchdog);
           setPhase({
             state: "stopped",
             message: "That sign-in did not finish.",
@@ -241,10 +311,15 @@ export default function SsoCallbackPage() {
 
     return () => {
       done = true;
+      clearTimeout(watchdog);
     };
-    // Mount only: the two it needs come out of the ref above, so a fresh
-    // `useClerk()` object cannot re-run an exchange that has already happened.
-  }, []);
+    /*
+     * On `ready` and nothing else. The two it needs come out of the ref above,
+     * so a fresh `useClerk()` object — a new one on every render —
+     * cannot re-run an exchange that has already happened. `ready` goes false
+     * to true once and stays there.
+     */
+  }, [ready]);
 
   return (
     <div className="relative grid min-h-screen place-items-center px-6 py-16">
