@@ -168,7 +168,7 @@ describe("a forgotten password", () => {
     render(<SignInPage />);
     await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
 
-    await userEvent.click(screen.getByRole("button", { name: "Forgot?" }));
+    await userEvent.click(screen.getByRole("button", { name: "Forgot it?" }));
 
     expect(clerk.create).not.toHaveBeenCalled();
     // The address survives the change of step -- retyping it would be the form
@@ -181,7 +181,7 @@ describe("a forgotten password", () => {
     clerk.attemptFirstFactor.mockResolvedValue({ status: "complete", createdSessionId: "sess_2" });
     render(<SignInPage />);
     await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
-    await userEvent.click(screen.getByRole("button", { name: "Forgot?" }));
+    await userEvent.click(screen.getByRole("button", { name: "Forgot it?" }));
     await userEvent.click(screen.getByRole("button", { name: "Send code" }));
 
     await userEvent.type(await screen.findByLabelText("Code"), "123456");
@@ -193,7 +193,7 @@ describe("a forgotten password", () => {
 
   it("comes back to the sign-in form", async () => {
     render(<SignInPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Forgot?" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Forgot it?" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Back to sign in" }));
 

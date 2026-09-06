@@ -29,9 +29,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { AtSign, Lock, Mail } from "lucide-react";
 import {
+  CodeField,
   Field,
   FormError,
+  Notice,
   GoogleButton,
   OrDivider,
   SubmitButton,
@@ -58,11 +61,14 @@ function SignInFrame({ children }: { children: React.ReactNode }) {
     <AuthShell
       eyebrow="Sign in"
       title="Welcome back."
-      subtitle="Your meetings, transcripts and notes are where you left them."
+      subtitle="Your meetings, transcripts, briefs and action items are where you left them."
       footer={
         <>
           New here?{" "}
-          <Link href="/sign-up" className="font-medium text-foreground underline-offset-4 hover:underline">
+          <Link
+            href="/sign-up"
+            className="font-headline text-ink underline underline-offset-[3px]"
+          >
             Create an account
           </Link>
         </>
@@ -178,7 +184,7 @@ function SignInForm() {
 
   return (
     <SignInFrame>
-      <div className="space-y-6">
+      <div>
         {stage === "credentials" ? (
           <>
             <GoogleButton
@@ -190,27 +196,22 @@ function SignInForm() {
           </>
         ) : null}
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit}>
           <FormError>{error}</FormError>
 
           {stage === "reset-code" ? (
             <>
-              <p className="text-[13px] text-muted-foreground">
-                We sent a code to <span className="text-foreground">{email}</span>.
-              </p>
-              <Field
-                label="Code"
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                placeholder="123456"
-                required
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-              />
+              <Notice icon={Mail}>
+                A six-digit code is on its way to <b className="font-headline text-ink">{email}</b>.
+              </Notice>
+              <div className="mb-3.5 mt-[26px]">
+                <CodeField label="Code" value={code} onChange={setCode} />
+              </div>
               <Field
                 label="New password"
                 type="password"
                 autoComplete="new-password"
+                icon={Lock}
                 hint="At least 8 characters"
                 required
                 value={password}
@@ -223,6 +224,7 @@ function SignInForm() {
                 label="Email"
                 type="email"
                 autoComplete="email"
+                icon={AtSign}
                 placeholder="you@company.com"
                 required
                 value={email}
@@ -233,6 +235,7 @@ function SignInForm() {
                   label="Password"
                   type="password"
                   autoComplete="current-password"
+                  icon={Lock}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -244,9 +247,9 @@ function SignInForm() {
                         setError("");
                         setPassword("");
                       }}
-                      className="underline-offset-4 hover:text-foreground hover:underline"
+                      className="underline-offset-[3px] hover:text-ink hover:underline"
                     >
-                      Forgot?
+                      Forgot it?
                     </button>
                   }
                 />
@@ -254,9 +257,15 @@ function SignInForm() {
             </>
           )}
 
-          <SubmitButton busy={busy === "form"} disabled={!isLoaded}>
-            {stage === "credentials" ? "Sign in" : stage === "reset-request" ? "Send code" : "Set password and sign in"}
-          </SubmitButton>
+          <div className="mt-6">
+            <SubmitButton busy={busy === "form"} disabled={!isLoaded}>
+              {stage === "credentials"
+                ? "Sign in"
+                : stage === "reset-request"
+                  ? "Send code"
+                  : "Set password and sign in"}
+            </SubmitButton>
+          </div>
 
           {stage !== "credentials" ? (
             <button
@@ -267,7 +276,7 @@ function SignInForm() {
                 setCode("");
                 setPassword("");
               }}
-              className="w-full text-[13px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              className="mt-[18px] w-full text-callout text-ink-3 underline underline-offset-[3px] hover:text-ink"
             >
               Back to sign in
             </button>
