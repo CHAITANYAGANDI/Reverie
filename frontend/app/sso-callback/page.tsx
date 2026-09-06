@@ -360,9 +360,15 @@ export default function SsoCallbackPage() {
    * between two dark screens is not a white one; no text, no mark, no spinner,
    * because every one of those makes plumbing look like a destination.
    */
-  if (phase.state === "working") {
-    return <div className="min-h-screen bg-surface" />;
-  }
+if (phase.state === "working") {
+  return (
+    <div className="min-h-screen bg-surface">
+      <span className="sr-only" role="status">
+        Completing authentication…
+      </span>
+    </div>
+  );
+}
 
   /*
    * And the exception: a refusal nobody chose. This is a real thing to tell
