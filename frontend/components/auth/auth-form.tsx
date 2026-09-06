@@ -15,7 +15,7 @@
  */
 
 import * as React from "react";
-import { Loader2, type LucideIcon } from "lucide-react";
+import { Eye, EyeOff, Loader2, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -55,6 +55,14 @@ const BOX =
  * <p>The label is a sibling of the input rather than its parent. Wrapping would
  * be shorter, but the hint slot holds a real `<button>` on the password field,
  * and a button inside a label fires the label's activation as well as its own.
+ *
+ * <p>Any field of `type="password"` gets a reveal, for the reason the change
+ * password dialog already gives: the alternative is people choosing a password
+ * they can type blind, which is a shorter one. It was missing here because this
+ * box was built with a leading icon slot and no trailing one — the artifact
+ * draws the password field with a padlock and nothing on the right — and
+ * because no browser fills the gap. Only Edge ships a native reveal, and that
+ * one is hidden below so nobody gets two.
  */
 export function Field({
   label,
@@ -70,6 +78,9 @@ export function Field({
   autoComplete: string;
 }) {
   const id = React.useId();
+  const [shown, setShown] = React.useState(false);
+  const secret = props.type === "password";
+
   return (
     <div className="mb-3.5">
       <div className="mb-1.5 flex items-center gap-3">
@@ -83,14 +94,40 @@ export function Field({
         <input
           id={id}
           {...props}
+          /* After the spread, so revealing wins over the declared type. */
+          type={secret && shown ? "text" : props.type}
           className={cn(
             "min-w-0 flex-1 bg-transparent text-body text-ink outline-none",
             "placeholder:text-ink-4 disabled:opacity-50",
             /* See BOX: the indicator moves to the parent, it does not vanish. */
             "focus-visible:shadow-none",
+            /* Edge draws its own reveal inside password inputs. Ours is beside
+               it and does the same job, and two eyes in one field is a bug
+               that only appears in one browser. */
+            "[&::-ms-reveal]:hidden",
             props.className,
           )}
         />
+        {secret ? (
+          <button
+            type="button"
+            /* Named for the field, because the password reset screen has two of
+               these and "Show password" twice says nothing about which. */
+            aria-label={`${shown ? "Hide" : "Show"} ${label.toLowerCase()}`}
+            aria-pressed={shown}
+            onClick={() => setShown((s) => !s)}
+            className={cn(
+              "-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded",
+              "text-ink-4 transition-colors duration-press ease-soft hover:text-ink",
+            )}
+          >
+            {shown ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
+          </button>
+        ) : null}
       </div>
     </div>
   );
