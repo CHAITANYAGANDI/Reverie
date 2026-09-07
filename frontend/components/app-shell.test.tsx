@@ -284,11 +284,34 @@ describe("the side pane", () => {
     expect(aside).toHaveClass("hidden");
   });
 
-  it("shows once a page hands something over", () => {
+  it("stays closed when a page hands something over", async () => {
+    /*
+     * THIS ASSERTED THE OPPOSITE, and the reversal is the correction.
+     *
+     * <p>`open` defaulted to true, so filling the pane opened it — and the one
+     * page that fills it is a meeting, so every READY meeting arrived as a
+     * document beside a chat application. That is the split-pane shape the V2
+     * study exists to remove.
+     *
+     * <p>The content is mounted all the same: the pane is hidden, never
+     * unmounted, so a half-typed question survives and `SidePane` always has
+     * somewhere to render.
+     */
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
 
-    expect(container.querySelector("aside")).not.toHaveClass("hidden");
+    expect(container.querySelector("aside")).toHaveClass("hidden");
     expect(document.getElementById(SIDE_PANE_ID)).toHaveTextContent("Ask this meeting");
+  });
+
+  it("opens on request, and closes again", async () => {
+    // The whole of the new contract: it is a state somebody asks for.
+    const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
+
+    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+    expect(container.querySelector("aside")).not.toHaveClass("hidden");
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
+    expect(container.querySelector("aside")).toHaveClass("hidden");
   });
 });
 
@@ -386,9 +409,11 @@ describe("the search shortcut", () => {
  */
 describe("the side pane's toggle", () => {
   it("is offered once a page has filled the pane", () => {
+    // Offered whether or not it is open -- closed is the default now, so this
+    // is the way back to a chat that has never been shown.
     shell(<SidePane><p>Ask this meeting</p></SidePane>);
 
-    expect(screen.getByRole("button", { name: "Hide the side panel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the side panel" })).toBeInTheDocument();
   });
 
   it("is not offered on a page that has not", () => {
@@ -400,6 +425,7 @@ describe("the side pane's toggle", () => {
 
   it("closes the pane, and says so", async () => {
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
+    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
     expect(container.querySelector("aside")).not.toHaveClass("hidden");
 
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
@@ -411,8 +437,9 @@ describe("the side pane's toggle", () => {
     );
   });
 
-  it("opens it again", async () => {
+  it("opens it again after a close", async () => {
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
+    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
@@ -424,6 +451,7 @@ describe("the side pane's toggle", () => {
     // Destroying it would throw away a half-typed question and leave `SidePane`
     // with nowhere to render. Hidden, never unmounted.
     shell(<SidePane><p>Ask this meeting</p></SidePane>);
+    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
 

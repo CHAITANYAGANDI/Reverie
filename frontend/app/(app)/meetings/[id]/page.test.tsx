@@ -39,8 +39,10 @@ import type {
  * against a temporal-dead-zone binding and the whole suite fails to collect
  * with an error that names the wrong file.
  */
-const { push, refetch, ok, none, mut } = vi.hoisted(() => {
+const { push, refetch, openPane, ok, none, mut } = vi.hoisted(() => {
   const refetch = vi.fn();
+  /** Whatever asked for the chat pane. */
+  const openPane = vi.fn();
   /** An RTK Query result with the flags this page actually reads. */
   function ok<T>(data: T) {
     return {
@@ -57,6 +59,7 @@ const { push, refetch, ok, none, mut } = vi.hoisted(() => {
   return {
     push: vi.fn(),
     refetch,
+    openPane,
     ok,
     none: () => ok(undefined),
     /** A mutation tuple. Nothing here fires one; they only have to exist. */
@@ -75,6 +78,9 @@ let templates: { slug: string; name: string }[];
 let transcriptQuery: "ok" | "error" | "absent";
 /** The flat body a document import has instead of utterances. */
 let transcriptText: string | undefined;
+/** Whether anything has asked for the chat pane yet. */
+let paneOpen: boolean;
+
 /** The folder the meeting is filed in, for the masthead's back link. */
 let folder: { id: string; name: string } | undefined;
 /**
@@ -222,12 +228,38 @@ vi.mock("@/components/action-item-row", () => ({
   ),
 }));
 vi.mock("@/components/export-dialog", () => ({ ExportDialog: () => null }));
-vi.mock("@/components/meeting-menu", () => ({ MeetingMenu: () => null }));
+/*
+ * Stubbed, but no longer to nothing: the page renders this in the masthead now
+ * and Export is an item inside it, so the stub has to carry the trigger and
+ * that item for the placement to be assertable here. What the menu *does* is
+ * pinned in components/meeting-menu.test.tsx.
+ */
+vi.mock("@/components/meeting-menu", () => ({
+  MeetingMenu: ({ onExport }: { onExport: () => void }) => (
+    <div>
+      <button type="button" aria-label="More actions" />
+      <button type="button" role="menuitem" onClick={onExport}>
+        Export…
+      </button>
+    </div>
+  ),
+}));
 vi.mock("@/components/transcript-editor", () => ({
   TranscriptEditor: () => <div data-testid="transcript-editor" />,
 }));
 vi.mock("@/components/selection-menu", () => ({
-  SelectionMenu: () => <div data-testid="selection-menu" />,
+  /*
+   * Stubbed with one working action, because "Ask about this" now has to open
+   * the pane as well as compose into it -- and that is a page behaviour, not a
+   * menu behaviour. The real menu's own logic is its own file's.
+   */
+  SelectionMenu: ({ onAction }: { onAction: (a: string) => void }) => (
+    <div data-testid="selection-menu">
+      <button type="button" onClick={() => onAction("ask")}>
+        Ask about this
+      </button>
+    </div>
+  ),
   isInsideSelectionMenu: () => false,
 }));
 vi.mock("@/components/turn-actions", () => ({
@@ -254,8 +286,18 @@ vi.mock("@/components/speaker-editor", () => ({
 // The side pane is the shell's, and its portal target does not exist here.
 vi.mock("@/components/side-pane", () => ({
   SidePane: () => null,
-  useSidePane: () => ({ occupied: false, open: false, expanded: false }),
+  useSidePane: () => ({ occupied: false, open: paneOpen, expanded: false }),
   toggleSidePaneExpanded: () => {},
+  /*
+   * The chat is a requested state now, so what gets asserted is the request.
+   * `Ask` in the mode row and "Ask about this" on a selection both go through
+   * here. The real pane is stubbed away in this file -- the shell owns it, and
+   * its own tests cover the open and closed rendering.
+   */
+  openSidePane: () => {
+    openPane();
+    paneOpen = true;
+  },
 }));
 vi.mock("@/components/header-slot", () => ({
   HEADER_SLOT_ID: "reverie-header-actions",
@@ -338,6 +380,7 @@ beforeEach(() => {
   actionsQuery = "ok";
   folder = undefined;
   speakers = [];
+  paneOpen = false;
 });
 
 /**
@@ -391,12 +434,21 @@ describe("the masthead", () => {
     expect(screen.queryByText(/42m/)).not.toBeInTheDocument();
   });
 
-  it("offers Copy summary in the spec line, not only behind Export", () => {
-    // The commonest thing anybody does with a summary is paste it into a reply,
-    // and it was two clicks behind a menu named after downloading files.
+  it("does not duplicate Copy summary under the title", () => {
+    /*
+     * THIS ASSERTED THE OPPOSITE. It was promoted out of the menu because
+     * pasting a summary into a reply is the commonest thing anybody does with
+     * one -- but the menu item was never removed, so the same action had two
+     * buttons a centimetre apart and the masthead grew a second control row to
+     * hold one of them.
+     *
+     * <p>It is in `MeetingMenu`, where components/meeting-menu.test.tsx pins
+     * it, and the masthead is facts again.
+     */
     render(<MeetingDetailPage />);
 
-    expect(screen.getByRole("button", { name: /Copy summary/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Copy summary/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("More actions")).toBeInTheDocument();
   });
 });
 
@@ -597,14 +649,38 @@ describe("the measure", () => {
     expect(container.querySelector('.v2-spread[data-margin="empty"]')).toBeInTheDocument();
   });
 
-  it("does not indent the reading-mode switch to it", () => {
-    // A switch and the controls that govern the whole document are chrome, and
-    // chrome indented to the measure reads as part of the text.
+  it("sets the switch and the masthead in the same column as the document", () => {
+    /*
+     * THIS ASSERTED THE OPPOSITE, and the reversal is the correction.
+     *
+     * <p>The argument was that a switch is chrome and chrome indented to the
+     * measure reads as part of the text. That held while the document was
+     * left-aligned under a full-width row. It stopped holding when the chat
+     * became a requested state: with the pane closed the document centres, so
+     * a full-width row left the title and the tabs starting at 24px above a
+     * document starting at 380px -- a document that does not line up with the
+     * thing naming it.
+     *
+     * <p>One column for all of it now, which is what /folders and a folder
+     * already do.
+     */
     const { container } = render(<MeetingDetailPage />);
 
     const list = screen.getByRole("tablist");
-    expect(list.closest(".v2-spread")).toBeNull();
-    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+    const title = screen.getByRole("heading", { level: 1 });
+    const spread = container.querySelector('.v2-spread[data-margin="empty"]');
+
+    expect(spread).toBeInTheDocument();
+    expect(list.closest('.v2-spread[data-margin="empty"]')).toBe(spread);
+    expect(title.closest('.v2-spread[data-margin="empty"]')).toBe(spread);
+  });
+
+  it("applies the measure exactly once", () => {
+    // It was on both `TabsContent` panels and nowhere else. Two of them is how
+    // the summary and the transcript come to disagree about their own width.
+    const { container } = render(<MeetingDetailPage />);
+
+    expect(container.querySelectorAll(".v2-spread")).toHaveLength(1);
   });
 });
 
@@ -677,24 +753,119 @@ describe("the docked player", () => {
 });
 
 /**
- * What the page hands to the shell.
+ * What acts on this meeting, and where it is.
  *
- * <p>Export and the ⋯ menu act on the document being read, so they belong in
- * the header slot rather than in the band — the band is global and carries
- * nothing belonging to the page underneath it.
+ * <p>Export and the ⋯ menu were drawn into the shell's `HeaderSlot`, which is
+ * a full-width row: over a centred 680px document they floated hard right of
+ * the window, reading as application chrome rather than as this meeting's. The
+ * menu is in the masthead now, beside the title, and Export is an item inside
+ * it — one action surface per document, which is what the reference's single
+ * `⋯` is.
  */
-describe("the page's own controls", () => {
-  it("puts Export in the header slot", () => {
+describe("the meeting's own controls", () => {
+  it("puts the action menu beside the title, not in the shell's row", () => {
     render(<MeetingDetailPage />);
 
-    expect(screen.getByTestId("header-slot")).toHaveTextContent("Export");
+    const menu = screen.getByLabelText("More actions");
+    const title = screen.getByRole("heading", { level: 1 });
+    const facts = screen.getByText(/42m/);
+
+    // After the title and before the facts line: on the title's own row,
+    // aligned to the document rather than to the window.
+    expect(title.compareDocumentPosition(menu)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(menu.compareDocumentPosition(facts)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    /*
+     * And the page hands the shell nothing at all: `HeaderSlot` is not
+     * rendered, so the shell's full-width row contributes zero pixels here.
+     * The stub is mounted only when the page uses it.
+     */
+    expect(screen.queryByTestId("header-slot")).not.toBeInTheDocument();
   });
 
-  it("offers no Export before there is anything to export", () => {
+  it("keeps Export reachable, from inside that menu", async () => {
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: /Export/ })).toBeInTheDocument();
+  });
+
+  it("offers the menu on a meeting that failed, which is when it matters most", () => {
+    // Deleting a meeting that failed to process is the commonest thing to want
+    // to do with one.
+    meeting = aMeeting({ status: "FAILED", audioUrl: null });
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByLabelText("More actions")).toBeInTheDocument();
+  });
+
+  it("draws no menu while the meeting is still being made", () => {
+    // Everything in it that needs a transcript is gated off at that point.
     meeting = aMeeting({ status: "TRANSCRIBING", audioUrl: null });
     render(<MeetingDetailPage />);
 
-    expect(screen.getByTestId("header-slot")).not.toHaveTextContent("Export");
+    expect(screen.queryByLabelText("More actions")).not.toBeInTheDocument();
+  });
+
+  it("keeps tagging on the facts line, and only once the meeting is readable", () => {
+    render(<MeetingDetailPage />);
+    expect(screen.getByRole("button", { name: /Tag/ })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The chat is asked for, not assumed.
+ *
+ * <p>`SidePaneState.open` defaulted to true, and the only page that fills the
+ * pane is this one — so every READY meeting arrived as a document beside a chat
+ * application, which is the split-pane shape the V2 study exists to remove.
+ * The reference has one document and an `Ask` control.
+ */
+describe("Ask", () => {
+  it("is on the mode row, at the far end", () => {
+    render(<MeetingDetailPage />);
+
+    const modes = screen.getAllByRole("tablist")[0];
+    const ask = screen.getByRole("button", { name: /^Ask$/ });
+    expect(modes.parentElement).toContainElement(ask);
+  });
+
+  it("opens the meeting's own chat, and does not leave for the workspace one", async () => {
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: /^Ask$/ }));
+
+    expect(openPane).toHaveBeenCalled();
+    // Not a link: /ask is the workspace chat, which knows nothing about this
+    // transcript.
+    expect(screen.queryByRole("link", { name: /^Ask$/ })).not.toBeInTheDocument();
+  });
+
+  it("wires the selection menu to the same handler", async () => {
+    /*
+     * The selection path itself needs a real `Selection` to produce a passage,
+     * which jsdom does not give and synthetic drags do not either -- so what is
+     * asserted here is that the menu is mounted over the transcript and handed
+     * the page's action handler. That handler calls `askAbout`, and `askAbout`
+     * opens the pane; the test above pins the opening.
+     *
+     * <p>The end-to-end selection interaction is on the manual checklist. See
+     * the note in the commit.
+     */
+    segments = [aSegment({ id: "s1", text: "We agreed to ship on the ninth." })];
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    expect(screen.getByTestId("selection-menu")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
+  });
+
+  it("is not a second chat", () => {
+    // One meeting-scoped implementation. The rail is the same component it has
+    // always been; only its default visibility changed.
+    render(<MeetingDetailPage />);
+
+    expect(screen.getAllByRole("button", { name: /^Ask$/ })).toHaveLength(1);
   });
 });
 

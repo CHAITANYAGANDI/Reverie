@@ -7,8 +7,7 @@ import {
   resetSidePane,
   toggleSidePane,
   toggleSidePaneExpanded,
-  useSidePane,
-} from "@/components/side-pane";
+  useSidePane, openSidePane } from "@/components/side-pane";
 
 /**
  * The shell's third column, and how a page fills it.
@@ -142,24 +141,50 @@ describe("SidePane", () => {
   });
 });
 
-describe("collapsing it", () => {
-  it("starts open", () => {
+describe("opening and closing it", () => {
+  it("starts closed", () => {
+    /*
+     * THIS ASSERTED "starts open", and the reversal is the correction.
+     *
+     * <p>The only page that fills this pane is a meeting, so a default of open
+     * meant every READY meeting arrived as a document beside a chat
+     * application — the split-pane shape the V2 study exists to remove. It is
+     * a state somebody asks for now: `Ask` in the meeting's mode row, or "Ask
+     * about this" on a transcript selection.
+     */
     render(<Shell />);
 
-    expect(screen.getByText("open")).toBeInTheDocument();
+    expect(screen.getByText("closed")).toBeInTheDocument();
   });
 
-  it("closes and opens again", async () => {
+  it("opens and closes again", async () => {
     render(<Shell />);
+
+    await act(async () => toggleSidePane());
+    expect(screen.getByText("open")).toBeInTheDocument();
 
     await act(async () => toggleSidePane());
     expect(screen.getByText("closed")).toBeInTheDocument();
+  });
 
-    await act(async () => toggleSidePane());
+  it("opens on request without closing one already open", async () => {
+    /*
+     * `openSidePane` rather than a toggle, because pressing Ask on a chat that
+     * is already open has to leave it open and let the question through. A
+     * toggle would shut it in somebody's face mid-question.
+     */
+    render(<Shell />);
+
+    await act(async () => openSidePane());
+    expect(screen.getByText("open")).toBeInTheDocument();
+
+    await act(async () => openSidePane());
     expect(screen.getByText("open")).toBeInTheDocument();
   });
 
   it("keeps what is in the pane while it is closed", async () => {
+    // Opened first, so the two toggles below are open-then-close rather than
+    // close-then-open.
     render(
       <Shell>
         <SidePane>
@@ -168,6 +193,7 @@ describe("collapsing it", () => {
       </Shell>,
     );
 
+    await act(async () => openSidePane());
     await act(async () => toggleSidePane());
     await act(async () => toggleSidePane());
 
@@ -178,6 +204,9 @@ describe("collapsing it", () => {
 
   it("survives the page underneath changing", async () => {
     const { rerender } = render(<Shell />);
+    // Opened, then closed: the decision this asserts survives is a deliberate
+    // close rather than the default.
+    await act(async () => openSidePane());
     await act(async () => toggleSidePane());
 
     rerender(
@@ -262,14 +291,14 @@ describe("maximising it", () => {
 });
 
 describe("resetSidePane", () => {
-  it("puts it back to empty and open", async () => {
+  it("puts it back to empty and closed", async () => {
     render(<Shell />);
-    await act(async () => toggleSidePane());
+    await act(async () => openSidePane());
 
     await act(async () => resetSidePane());
 
     expect(screen.getByText("empty")).toBeInTheDocument();
-    expect(screen.getByText("open")).toBeInTheDocument();
+    expect(screen.getByText("closed")).toBeInTheDocument();
     expect(screen.getByText("a column")).toBeInTheDocument();
   });
 });

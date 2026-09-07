@@ -73,6 +73,7 @@ import {
   FolderInput,
   Languages,
   Link2,
+  Upload,
   Loader2,
   MoreHorizontal,
   RefreshCw,
@@ -135,6 +136,20 @@ export interface MeetingMenuProps {
   working?: boolean;
 
   onCopySummary: () => void;
+  /**
+   * Open the export dialog.
+   *
+   * <p>Export was a standalone button beside this menu, drawn into the shell's
+   * header row. That row is full width, so over a centred 680px document it sat
+   * hard right of the window and read as application chrome; and two action
+   * surfaces for one document is what the V2 reference reduces to one `⋯`.
+   *
+   * <p>It was promoted to a button once so that a control named Export did
+   * only what it says — copying and erasing moved out of it and into here.
+   * That was an argument about its name, which still holds, and not about its
+   * place.
+   */
+  onExport: () => void;
   onCopyTranscript: () => void;
   onRegenerateSummary: () => void;
   onTranslate: () => void;
@@ -199,6 +214,12 @@ export function MeetingMenu(props: MeetingMenuProps) {
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void copyLink()}>
             <Link2 /> Copy link
+          </DropdownMenuItem>
+          {/* Up: out of Reverie. Not disabled by anything — a failed meeting
+              still exports whatever was kept, and the dialog itself is what
+              says which parts exist. */}
+          <DropdownMenuItem onSelect={props.onExport}>
+            <Upload /> Export…
           </DropdownMenuItem>
 
           {/* The transcript: what was said, who said it, and what language you

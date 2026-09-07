@@ -92,6 +92,7 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
     hasSummary: true,
     canTranslate: true,
     onCopySummary: vi.fn(),
+    onExport: vi.fn(),
     onCopyTranscript: vi.fn(),
     onRegenerateSummary: vi.fn(),
     onTranslate: vi.fn(),
@@ -103,6 +104,14 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
   return props;
 }
 
+/**
+ * Export lives in here now.
+ *
+ * <p>It was a standalone button beside this menu, drawn into the shell's
+ * full-width header row -- so over a centred 680px document it sat hard right
+ * of the window, reading as application chrome. One action surface per
+ * document; the V2 reference has one `⋯`.
+ */
 async function open(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByLabelText("More actions"));
 }
@@ -117,6 +126,29 @@ beforeEach(() => {
 });
 
 describe("MeetingMenu", () => {
+  it("carries Export, so a meeting has one action surface", async () => {
+    const user = userEvent.setup();
+    const props = menu();
+    await open(user);
+
+    await user.click(screen.getByRole("menuitem", { name: /Export/ }));
+
+    expect(props.onExport).toHaveBeenCalled();
+  });
+
+  it("offers Export whatever the meeting's state", async () => {
+    // A failed meeting still exports whatever was kept, and the dialog itself
+    // is what says which parts exist.
+    const user = userEvent.setup();
+    menu({ hasTranscript: false, hasSummary: false });
+    await open(user);
+
+    expect(screen.getByRole("menuitem", { name: /Export/ })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
   it("gathers every operation into one list", async () => {
     const user = userEvent.setup();
     menu();
@@ -125,6 +157,7 @@ describe("MeetingMenu", () => {
     for (const label of [
       "Move…",
       "Copy link",
+      "Export…",
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -151,6 +184,7 @@ describe("MeetingMenu", () => {
     ).toEqual([
       "Move…",
       "Copy link",
+      "Export…",
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -520,6 +554,7 @@ describe("MeetingMenu when the minutes are gone", () => {
     expect(screen.getAllByRole("menuitem").map((el) => el.textContent?.trim())).toEqual([
       "Move…",
       "Copy link",
+      "Export…",
       "Copy transcript",
       "Change language",
       "Copy summary",

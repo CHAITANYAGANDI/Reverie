@@ -70,8 +70,12 @@ import type {
   SummarySection,
 } from "@/lib/types";
 import { useActiveChat } from "@/lib/active-chat";
-import { HeaderSlot } from "@/components/header-slot";
-import { SidePane, toggleSidePaneExpanded, useSidePane } from "@/components/side-pane";
+import {
+  SidePane,
+  openSidePane,
+  toggleSidePaneExpanded,
+  useSidePane,
+} from "@/components/side-pane";
 import { Button } from "@/components/ui/button";
 import { useRecordingJob } from "@/lib/recording-context";
 import { ProcessingCard } from "@/components/processing-card";
@@ -287,6 +291,19 @@ export default function MeetingDetailPage() {
   // so asking about a passage no longer costs the passage. That was the whole
   // reason this had to move the reader somewhere else.
   const askAbout = React.useCallback((text: string, send: boolean) => {
+    /*
+     * ASKING OPENS THE CHAT, because the chat is no longer already open.
+     *
+     * <p>It used to be: the pane defaulted to visible, so a question typed
+     * into it from a transcript selection landed somewhere already on screen.
+     * The pane is a requested state now — see components/side-pane — so
+     * anything that puts a question in it has to ask for it too, or "Ask about
+     * this" would compose a question into a column nobody can see.
+     *
+     * <p>`openSidePane` and not a toggle: asking twice in a row must not shut
+     * the answer to the first question.
+     */
+    openSidePane();
     setComposed({ text, send, nonce: Date.now() });
   }, []);
 
@@ -755,11 +772,63 @@ export default function MeetingDetailPage() {
   // Only offered when there is something to erase. A YouTube import holds no
   // recording of ours, and offering to delete one would imply we had it.
 
+  /*
+   * THE MEETING'S ONE ACTION MENU, and Export is in it now.
+   *
+   * <p>Built here rather than inline because the masthead renders it and
+   * the dialogs it opens keep their state on this page. It used to be
+   * drawn into the shell's `HeaderSlot`, which is a full-width row: over
+   * a centred 680px measure that put it hard right of the window and
+   * reading as application chrome. See where it is rendered.
+   */
+  const meetingMenu = (
+    <MeetingMenu
+      meetingId={id}
+      projectId={m.projectId}
+      hasTranscript={(transcript.data?.segments?.length ?? 0) > 0}
+      hasSummary={ready && Boolean(summary.data)}
+      canTranslate={ready}
+      // Change language and Regenerate grey while either is running.
+      // Both end in the summary being rewritten, and starting a second
+      // one on top of the first is the race this closes.
+      working={regenerating || translating}
+      busy={removeState.isLoading}
+      onCopySummary={() => void onCopySummary()}
+      onCopyTranscript={() => void onCopyTranscript()}
+      onRegenerateSummary={() => void onRegenerateSummary()}
+      onTranslate={() => setPickingLanguage(true)}
+      onReprocess={() => void onReprocess()}
+      reprocessing={reprocessing}
+      onDelete={() => void onDelete()}
+      /* Export, as a menu item rather than a button beside the menu. Same
+         dialog, same capability, one action surface. */
+      onExport={() => setExporting(true)}
+    />
+  );
+
   return (
     /* The docked player floats, so the page has to leave it room; without this
        the last lines of a transcript sit under the bar and can be neither read
        nor corrected. */
-    <div className={cn("space-y-6", docked && "pb-32")}>
+    /*
+     * ONE COLUMN FOR THE WHOLE PAGE, and this is what made the composition
+     * read wrong even after the chrome came off.
+     *
+     * <p>The measure was applied to the two `TabsContent` panels and to nothing
+     * else, so the masthead and the mode row spanned the full page while the
+     * document under them centred. With the chat open that was merely untidy —
+     * everything sat left. With the chat closed, which is now the default, the
+     * document centred to 380px while its own title and its own tabs started at
+     * 24px: a document that does not line up with the thing naming it.
+     *
+     * <p>`.v2-spread[data-margin="empty"]` centres a single 680px column, and it
+     * is what /folders and a folder already use for exactly this. Applied once,
+     * here, so the title, the facts, the mode row, the summary and the
+     * transcript are all in the same column and move together.
+     */
+    <div className="px-4 pb-16 lg:px-6">
+      <div className="v2-spread" data-margin="empty">
+        <div className={cn("min-w-0 space-y-6", docked && "pb-32")}>
       {/* Masthead. The metadata sits in a monospaced rule under the title
           rather than as a row of loose badges: these are facts about one
           document, and setting them as a spec line keeps the title the only
@@ -768,8 +837,12 @@ export default function MeetingDetailPage() {
           The separators are ink-5 — decorative only, never a word anybody has
           to read — which is the one tier of the ink scale that may not carry
           meaning. See app/globals.css §3. */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+      {/* One child now that Export and the menu are not siblings of it, so no
+          `justify-between` to referee. `w-full` because the block has to fill
+          the column: sized to its content, the action menu landed at the width
+          of whichever facts line happened to be longest. */}
+      <div>
+        <div className="min-w-0 w-full">
           {/* No "All meetings" link. The band always says where everything is;
               a second way back, drawn above the title, pushed the one thing
               this page is about down the screen. */}
@@ -794,7 +867,31 @@ export default function MeetingDetailPage() {
             {folder?.name ?? "Library"}
           </Link>
 
-          <MeetingTitle id={id} title={m.title} />
+          {/*
+            THE TITLE, AND THE MEETING'S OWN ACTIONS BESIDE IT.
+            <p>`Export` and the `⋯` menu were rendered into the shell's
+            `HeaderSlot` — a full-width row above the document, so on a centred
+            680px measure they floated hard right, reading as application chrome
+            rather than as this meeting's. Same correction as the folder page:
+            a control for one object belongs beside that object.
+            <p>Export moved *into* the menu rather than beside it. It was
+            promoted to a button once so that a control named Export did only
+            what it says, which was an argument about its name and not about
+            its place; one action surface per document is the V2 rule, and the
+            reference has one `⋯`.
+          */}
+          <div className="flex items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <MeetingTitle id={id} title={m.title} />
+            </div>
+            {/* Rendered whatever the status: deleting a meeting that failed to
+                process is the commonest thing to want to do with one. */}
+            {terminal && (
+              <div className="no-print flex shrink-0 items-center gap-0.5 pt-1">
+                {meetingMenu}
+              </div>
+            )}
+          </div>
           {/*
             THE FACTS, AND THEN THE CONTROLS — two lines rather than one.
             <p>`design-demo/final/18-meeting-brief.html` sets the masthead as
@@ -849,51 +946,42 @@ export default function MeetingDetailPage() {
                   <Youtube className="h-3.5 w-3.5" /> YouTube
                 </a>
               ) : null}
+              {/*
+                Back among the facts, now that they are the only thing left on
+                this line. A tag IS a fact about the document — it is what
+                somebody filed it under — and it was on a second row only
+                because Copy summary and the translation state were there with
+                it. Both are gone: Copy summary was a duplicate of the menu
+                item, and the reading language now sits with the other facts
+                about what is on screen.
+                <p>Not while it is still working. Tagging a meeting you cannot
+                read yet is filing a document you have not seen. It comes back
+                with the transcript.
+              */}
+              {terminal ? <MeetingTags key="tags" id={id} tags={m.tags ?? []} /> : null}
+              {/*
+                Only ever rendered while a translation is on screen, and then it
+                is the one thing telling a reader that the words in front of them
+                are not the ones that were said.
+                <p>Gated here rather than only inside the component: `ReadingIn`
+                returns null on the original, but the *element* is still a child,
+                so `Facts` counted it and hung a separator off the end of the
+                line with nothing after it.
+              */}
+              {readingIn !== ORIGINAL || translating ? (
+                <ReadingIn
+                  key="reading"
+                  sourceLanguage={m.language}
+                  language={readingIn}
+                  translation={showing}
+                  busy={translating}
+                  onShowOriginal={() => void onReadIn(ORIGINAL)}
+                  onRetranslate={() => void onReadIn(readingIn, !!showing?.hasTranscript)}
+                />
+              ) : null}
             </Facts>
           </div>
 
-          {/*
-            The controls that used to sit inside that line. Every one of them
-            is unchanged; only the row is new.
-            <p>No status among them. Anything other than READY is already
-            announced below, and far louder — a progress card while it works, a
-            destructive card with the provider's own message when it fails. A
-            badge reading READY beside a meeting you are plainly reading is a
-            label for the only state that needs none.
-          */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-foot text-ink-3">
-            {/* Not while it is still working. Tagging a meeting you cannot read
-                yet is filing a document you have not seen. It comes back with
-                the transcript. */}
-            {terminal && <MeetingTags id={id} tags={m.tags ?? []} />}
-            {/* Beside the facts rather than only inside the Export menu.
-                Copying the summary is the single commonest thing anybody does
-                with one — it goes into a reply or a doc — and it was two clicks
-                behind a menu named after downloading files, which is the rarer
-                thing. It stays in the menu too, for whoever already knows where
-                it is. */}
-            {ready && (
-              <button
-                type="button"
-                onClick={() => void onCopySummary()}
-                className="no-print inline-flex items-center gap-1.5 transition-colors hover:text-ink"
-              >
-                <ClipboardCopy className="h-3.5 w-3.5" /> Copy summary
-              </button>
-            )}
-            {/* Only ever rendered while a translation is on screen. The picker
-                is behind the ⋯ menu now, so this is the one thing telling a
-                reader that the words in front of them are not the ones that
-                were said. */}
-            <ReadingIn
-              sourceLanguage={m.language}
-              language={readingIn}
-              translation={showing}
-              busy={translating}
-              onShowOriginal={() => void onReadIn(ORIGINAL)}
-              onRetranslate={() => void onReadIn(readingIn, !!showing?.hasTranscript)}
-            />
-          </div>
         </div>
         {/* Up in the top bar, on the same line as search — not beside the
             title. Two rows of controls within an inch of each other, the
@@ -901,86 +989,27 @@ export default function MeetingDetailPage() {
             why it was not the other one. The dialogs and every piece of state
             they need stay here; only the buttons are drawn elsewhere. See
             components/header-slot.tsx. */}
-        <HeaderSlot>
-        {/* Nothing cleared past the chat any more: it is a pane of the shell
-            and the header ends where it begins. What did move out of this row
-            is Import and Record — they made a *different* meeting, at the same
-            end of the same bar as the buttons that act on this one. See
-            lib/chrome.ts. */}
-        <div className="flex items-center gap-2 no-print">
-          {ready && (
-            <>
-              {/* A button, not a menu. Everything that used to hang off it —
-                  copying, erasing — moved onto the one menu that holds every
-                  other operation, so a control named Export now does exactly
-                  what it says. */}
-              <Button variant="outline" size="sm" className="gap-2" onClick={() => setExporting(true)}>
-                {/* Up: out of Reverie. See the Import button in
-                    components/app-shell.tsx for the pairing. */}
-                <Upload className="h-4 w-4" /> Export
-              </Button>
               <ExportDialog
-                open={exporting}
-                onOpenChange={setExporting}
-                meetingId={id}
-                // Handed the data the page already has, so the preview costs no
-                // request and updates the moment a tickbox moves.
-                summary={showing ? undefined : summary.data}
-                actionItems={actions.data ?? []}
-                segments={transcript.data?.segments ?? []}
-                audioContentType={m.contentType}
-                transcriptLines={transcript.data?.segments?.length ?? 0}
-                // The file is written in whatever the page is being read in, so
-                // exporting a translation you are looking at needs no second
-                // choice — and cannot silently give you the English instead.
-                language={readingIn === ORIGINAL ? null : readingIn}
-                languageName={showing?.languageName}
-                sourceLanguageName={
-                  languages.data?.find((l) => l.code === m.language)?.name ?? null
-                }
-                hasAudio={!isDocument && !!m.audioUrl}
+      open={exporting}
+      onOpenChange={setExporting}
+      meetingId={id}
+      // Handed the data the page already has, so the preview costs no
+      // request and updates the moment a tickbox moves.
+      summary={showing ? undefined : summary.data}
+      actionItems={actions.data ?? []}
+      segments={transcript.data?.segments ?? []}
+      audioContentType={m.contentType}
+      transcriptLines={transcript.data?.segments?.length ?? 0}
+      // The file is written in whatever the page is being read in, so
+      // exporting a translation you are looking at needs no second
+      // choice — and cannot silently give you the English instead.
+      language={readingIn === ORIGINAL ? null : readingIn}
+      languageName={showing?.languageName}
+      sourceLanguageName={
+        languages.data?.find((l) => l.code === m.language)?.name ?? null
+      }
+      hasAudio={!isDocument && !!m.audioUrl}
               />
-            </>
-          )}
-          {/* Everything else, in one place and ordered by what it costs to be
-              wrong. Rendered whatever the status, because deleting a meeting
-              that failed to process is the commonest thing to want to do with
-              one.
-
-              Filing is in here too, as Move. It used to sit in the spec line
-              above as a folder picker, which meant every meeting carried a
-              visible "No folder" — a label reading as a problem to fix on the
-              overwhelming majority of meetings, in the one place somebody came
-              to read rather than to tidy. Which folder a meeting is in is a
-              thing you go and change, not a fact about the meeting worth
-              stating beside its date. */}
-          {/* Hidden while processing. Everything in it that needs a
-              transcript is already gated off at that point, so what is left is
-              Move, Copy link and Delete — three actions nobody wants mid-wait,
-              drawn as a menu button in the corner of a page with one card on
-              it. It returns the moment the meeting is READY or FAILED, which
-              is when the rest of it starts to matter. */}
-          {terminal && <MeetingMenu
-            meetingId={id}
-            projectId={m.projectId}
-            hasTranscript={(transcript.data?.segments?.length ?? 0) > 0}
-            hasSummary={ready && Boolean(summary.data)}
-            canTranslate={ready}
-            // Change language and Regenerate grey while either is running.
-            // Both end in the summary being rewritten, and starting a second
-            // one on top of the first is the race this closes.
-            working={regenerating || translating}
-            busy={removeState.isLoading}
-            onCopySummary={() => void onCopySummary()}
-            onCopyTranscript={() => void onCopyTranscript()}
-            onRegenerateSummary={() => void onRegenerateSummary()}
-            onTranslate={() => setPickingLanguage(true)}
-            onReprocess={() => void onReprocess()}
-            reprocessing={reprocessing}
-            onDelete={() => void onDelete()}
-          />}
-        </div>
-        </HeaderSlot>
       </div>
 
       {/* The player, over the transcript and nowhere else.
@@ -1109,73 +1138,102 @@ export default function MeetingDetailPage() {
             {/* Only once there is a summary to rewrite. Offering a template
                 picker over a summary that does not exist yet is a control that
                 cannot do anything. */}
-            {tab === "summary" && hasSummary && (
-              <TemplatePicker meetingId={id} current={summary.data?.templateSlug ?? "general"} />
-            )}
+            {/*
+              THE ONE CONTROL THIS ROW OWES THE READER: the chat, on request.
+              <p>The pane it opens is the same meeting-scoped chat that has
+              always been in it — same conversation, same history, same
+              suggestions, same context, and the same rail the Outline shares.
+              What changed is that it is no longer already open: see
+              components/side-pane.
+              <p>Not a link to /ask. That is the workspace chat, which knows
+              nothing about this transcript.
+              <p>`ml-auto` so it sits at the far end of the row whatever else
+              is on it, which is what makes the row read as
+              `Summary | Transcript ......... Ask`.
+            */}
+            {ready && (
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                {/* Summary-local, and quiet: it acts on the document below
+                    rather than on which document you are reading, so it must
+                    not compete with the two modes or with Ask. Ghost weight,
+                    and only once there is a summary to rewrite. */}
+                {tab === "summary" && hasSummary && (
+                  <TemplatePicker meetingId={id} current={summary.data?.templateSlug ?? "general"} />
+                )}
+                {/* The transcript's counterpart to the template picker, in the same
+                    place for the same reason: it is a mode over the whole document
+                    below, not a control on any one line of it.
 
-            {/* The transcript's counterpart to the template picker, in the same
-                place for the same reason: it is a mode over the whole document
-                below, not a control on any one line of it.
-
-                Only over the original. A translated transcript is derived
-                text — correcting it would edit a copy nothing else reads,
-                leave the words it was translated from untouched, and be
-                overwritten the next time the translation was refreshed. */}
-            {tab === "transcript" && !showing && (transcript.data?.segments?.length ?? 0) > 0 && (
-              editingTranscript ? (
-                /*
-                 * THE MODE, SAID OUT LOUD.
-                 *
-                 * <p>`design-demo/final/21-transcript-editing.html` heads the
-                 * document "Correcting the transcript" with one Done beside it.
-                 * This row carried two unlabelled buttons and nothing naming
-                 * the state, so the only thing telling a reader the transcript
-                 * had become editable was that the paragraphs had.
-                 *
-                 * <p>`role="status"` because it appears without anybody looking
-                 * at this corner, and it is the answer to "why can I type in
-                 * this". Cancel stays: Done keeps what was typed and Cancel is
-                 * the way to abandon it, and the confirmation behind both is
-                 * unchanged — see the editor.
-                 */
-                <div className="flex items-center gap-2.5">
-                  <span role="status" className="text-foot text-ink-3">
-                    Correcting the transcript
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={editStatus.saving}
-                    onClick={() => transcriptEditor.current?.cancel()}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={editStatus.saving}
-                    onClick={() => void transcriptEditor.current?.save()}
-                  >
-                    {editStatus.saving ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                    Done
-                    {/* The count is the point: Done over three unsaved
-                        paragraphs and Done over none are different presses. */}
-                    {editStatus.dirty > 0 ? ` (${editStatus.dirty})` : ""}
-                  </Button>
-                </div>
-              ) : (
-                <Button variant="ghost" size="sm" onClick={() => setEditingTranscript(true)}>
-                  {/* Sentence case, and the same verb as the mode it turns
-                      on: "Correct the transcript" then "Correcting the
-                      transcript". Title Case was the last of the old header's
-                      capitalisation left on this page. */}
-                  <Pencil className="h-4 w-4" /> Correct the transcript
+                    Only over the original. A translated transcript is derived
+                    text — correcting it would edit a copy nothing else reads,
+                    leave the words it was translated from untouched, and be
+                    overwritten the next time the translation was refreshed. */}
+                {tab === "transcript" && !showing && (transcript.data?.segments?.length ?? 0) > 0 && (
+                  editingTranscript ? (
+                    /*
+                     * THE MODE, SAID OUT LOUD.
+                     *
+                     * <p>`design-demo/final/21-transcript-editing.html` heads the
+                     * document "Correcting the transcript" with one Done beside it.
+                     * This row carried two unlabelled buttons and nothing naming
+                     * the state, so the only thing telling a reader the transcript
+                     * had become editable was that the paragraphs had.
+                     *
+                     * <p>`role="status"` because it appears without anybody looking
+                     * at this corner, and it is the answer to "why can I type in
+                     * this". Cancel stays: Done keeps what was typed and Cancel is
+                     * the way to abandon it, and the confirmation behind both is
+                     * unchanged — see the editor.
+                     */
+                    <div className="flex items-center gap-2.5">
+                      <span role="status" className="text-foot text-ink-3">
+                        Correcting the transcript
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={editStatus.saving}
+                        onClick={() => transcriptEditor.current?.cancel()}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={editStatus.saving}
+                        onClick={() => void transcriptEditor.current?.save()}
+                      >
+                        {editStatus.saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        Done
+                        {/* The count is the point: Done over three unsaved
+                            paragraphs and Done over none are different presses. */}
+                        {editStatus.dirty > 0 ? ` (${editStatus.dirty})` : ""}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => setEditingTranscript(true)}>
+                      {/* Sentence case, and the same verb as the mode it turns
+                          on: "Correct the transcript" then "Correcting the
+                          transcript". Title Case was the last of the old header's
+                          capitalisation left on this page. */}
+                      <Pencil className="h-4 w-4" /> Correct the transcript
+                    </Button>
+                  )
+                )}
+                {/* An opener, not a toggle: no `aria-expanded`, because
+                    pressing it on an open chat leaves it open and lets the
+                    question through. The shell's own control is the one that
+                    reports and reverses the state, and it carries
+                    `aria-pressed`. */}
+                <Button variant="ghost" size="sm" className="gap-1.5" onClick={openSidePane}>
+                  <Sparkles className="h-4 w-4" /> Ask
                 </Button>
-              )
+              </div>
             )}
+
           </div>
 
           {/*
@@ -1195,7 +1253,9 @@ export default function MeetingDetailPage() {
            * docs/v2-implementation/feature-parity.md §4.
            */}
           <TabsContent value="summary" className="pt-6">
-            <div className="v2-spread space-y-4" data-margin="empty">
+            {/* The measure is the page's now; this is only the rhythm between
+                the summary, the action items and the insights. */}
+            <div className="space-y-4">
             <SummaryPanel
               meetingId={id}
               // One value rather than `loading` + `pending`, because the two of
@@ -1296,7 +1356,7 @@ export default function MeetingDetailPage() {
           </TabsContent>
 
           <TabsContent value="transcript" className="pt-6">
-            <div className="v2-spread" data-margin="empty">
+            <div>
             {showing ? (
               showing.hasTranscript ? (
                 /* No card. A translated transcript is the same document in
@@ -1436,6 +1496,8 @@ export default function MeetingDetailPage() {
         available={availableTranslations.data}
         busy={translating}
       />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1546,8 +1608,12 @@ function TemplatePicker({ meetingId, current }: { meetingId: string; current: st
   }
 
   return (
-    <div className="flex items-center gap-2 pb-2 no-print">
-      <span className="text-sm text-muted-foreground">Template:</span>
+    <div className="flex items-center gap-1.5 no-print">
+      {/* Quiet, and secondary to the two modes and to Ask. It was `text-sm`
+          beside a 170px bordered trigger, which on the mode row read as a
+          third peer of Summary and Transcript — and it is neither a place nor
+          a question, it is a setting on the document below. */}
+      <span className="text-foot text-ink-4">Template</span>
       <Select value={current} onValueChange={onChange} disabled={rewriting || refusal !== null}>
         {/* The spinner sits beside the word, not in a wrapper around it.
             SelectTrigger styles its direct `span` with `line-clamp-1`, which is
@@ -1561,7 +1627,10 @@ function TemplatePicker({ meetingId, current }: { meetingId: string; current: st
         {/* The reason, on the control itself. There is no room beside it on
             the tab row for a sentence, and a picker that simply stops working
             is the worst of the three options. */}
-        <SelectTrigger className="h-8 w-[170px] gap-2" title={refusal ?? undefined}>
+        <SelectTrigger
+          className="h-7 w-auto min-w-[7.5rem] gap-1.5 border-0 bg-transparent px-2 text-foot text-ink-2 shadow-none hover:bg-white/[0.035] focus:ring-0 focus-visible:ring-0"
+          title={refusal ?? undefined}
+        >
           {rewriting ? (
             <>
               <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
