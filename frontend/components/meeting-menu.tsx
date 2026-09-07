@@ -70,6 +70,7 @@ import {
   Check,
   ClipboardCopy,
   FileText,
+  ListTree,
   FolderInput,
   Languages,
   Link2,
@@ -151,6 +152,14 @@ export interface MeetingMenuProps {
    * place.
    */
   onExport: () => void;
+  /**
+   * Opens the meeting's navigator: topics, voices and marks in one list.
+   *
+   * <p>Here rather than on the mode row, which `18-meeting-brief.png` keeps to
+   * the two reading modes, Ask and this menu. Gated on a transcript because
+   * every row in it is a place in one -- a failed meeting has nowhere to jump.
+   */
+  onJumpTo: () => void;
   /**
    * Reveal the tag input on the meeting's facts line.
    *
@@ -264,6 +273,17 @@ export function MeetingMenu(props: MeetingMenuProps) {
               summary because the summary is written from them. */}
           <DropdownMenuSeparator />
 
+          {/* First in the group, and the only one that navigates rather than
+              acts. `⌘.` is the reference's own shortcut for it and is free --
+              `⌘K` belongs to global search. */}
+          <DropdownMenuItem disabled={!props.hasTranscript} onSelect={props.onJumpTo}>
+            <ListTree /> Jump to…
+            {/* Shown rather than taught, and mono because it is a key -- the
+                same `<kbd>` the band uses for search. */}
+            <kbd className="ml-auto rounded-xs border border-line px-1 font-mono text-[10px] leading-4 text-ink-4">
+              ⌘.
+            </kbd>
+          </DropdownMenuItem>
           <DropdownMenuItem disabled={!props.hasTranscript} onSelect={props.onCopyTranscript}>
             <FileText /> Copy transcript
           </DropdownMenuItem>

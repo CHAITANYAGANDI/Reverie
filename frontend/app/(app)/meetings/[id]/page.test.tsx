@@ -254,10 +254,12 @@ vi.mock("@/components/meeting-menu", async () => {
     MeetingMenu: ({
       onExport,
       onAddTag,
+      onJumpTo,
       extra,
     }: {
       onExport: () => void;
       onAddTag: () => void;
+      onJumpTo: () => void;
       extra?: React.ReactNode;
     }) => (
       <dd.DropdownMenu>
@@ -274,6 +276,10 @@ vi.mock("@/components/meeting-menu", async () => {
           <button type="button" role="menuitem" onClick={onExport}>
             Export…
           </button>
+          {/* A real item, unlike the two above: this one opens a dialog, and
+              Radix has to close the menu for the dialog to be reachable --
+              an open menu makes the rest of the page inert. */}
+          <dd.DropdownMenuItem onSelect={onJumpTo}>Jump to…</dd.DropdownMenuItem>
           {extra}
         </dd.DropdownMenuContent>
       </dd.DropdownMenu>
@@ -895,6 +901,78 @@ describe("the meeting's own controls", () => {
  * application, which is the split-pane shape the V2 study exists to remove.
  * The reference has one document and an `Ask` control.
  */
+/**
+ * The navigator, from the page's side.
+ *
+ * <p>What it is made of is components/jump-to's own test. What is asserted here
+ * is the wiring: that the `⋯` menu opens it, that it goes through the page's one
+ * seek pipeline, and that choosing a timed target from the summary brings the
+ * transcript with it rather than leaving the reader to switch tabs.
+ */
+describe("Jump to", () => {
+  it("opens from the meeting menu", async () => {
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
+
+    expect(screen.getByRole("dialog", { name: "Jump to" })).toBeInTheDocument();
+  });
+
+  it("is not a third reading mode", () => {
+    // It is a dialog on a menu, not a tab. `18-meeting-brief.png` keeps that
+    // row to the two reading modes, Ask and the overflow.
+    render(<MeetingDetailPage />);
+
+    const tabs = screen.getAllByRole("tab").map((t) => t.textContent?.trim());
+    expect(tabs).toEqual(["Summary", "Transcript"]);
+  });
+
+  it("brings the transcript with it when a topic is chosen from the summary", async () => {
+    /*
+     * THE WHOLE POINT OF ROUTING IT THROUGH `playFrom`. Jump to can be opened
+     * over the summary, and a timed target is a place in the transcript — so the
+     * tab change and the seek are one action, not a tab change and then a
+     * request that the reader find the minute themselves.
+     */
+    summary = {
+      ...summary!,
+      sections: [
+        {
+          key: "outline",
+          title: "What was discussed",
+          kind: "outline",
+          text: "",
+          bullets: [],
+          groups: [{ heading: "Moving the beta date", bullets: [], startSeconds: 698 }],
+        },
+      ],
+    };
+    render(<MeetingDetailPage />);
+    expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
+    await userEvent.click(screen.getByRole("option", { name: /Moving the beta date/ }));
+
+    expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("does not open the chat", async () => {
+    // Navigation and asking are different things. The pane stays where the
+    // reader left it, which after 0a3aaa2 is closed.
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
+
+    expect(openPane).not.toHaveBeenCalled();
+  });
+});
+
 describe("Ask", () => {
   it("is on the mode row, at the far end", () => {
     render(<MeetingDetailPage />);

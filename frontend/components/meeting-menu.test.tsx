@@ -93,6 +93,7 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
     canTranslate: true,
     onCopySummary: vi.fn(),
     onExport: vi.fn(),
+    onJumpTo: vi.fn(),
     onAddTag: vi.fn(),
     onCopyTranscript: vi.fn(),
     onRegenerateSummary: vi.fn(),
@@ -104,6 +105,34 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
   render(<MeetingMenu {...props} />);
   return props;
 }
+
+describe("Jump to", () => {
+  it("is offered, with the shortcut it answers to", async () => {
+    const props = menu();
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
+
+    expect(props.onJumpTo).toHaveBeenCalled();
+  });
+
+  it("is closed to a meeting with no transcript", async () => {
+    /*
+     * Every row in the navigator is a place in a transcript: an outline
+     * heading's timestamp, a speaker's first line, a mark's second. A failed
+     * meeting has none of them, so the way in says so rather than opening a
+     * dialog that can only say "nothing to jump to".
+     */
+    menu({ hasTranscript: false });
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: /Jump to/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+});
 
 /**
  * Export lives in here now.
@@ -203,6 +232,8 @@ describe("MeetingMenu", () => {
       "Copy link",
       "Add a tag",
       "Export…",
+      // The shortcut rides in the row, which is why it is in the label here.
+      "Jump to…⌘.",
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -574,6 +605,8 @@ describe("MeetingMenu when the minutes are gone", () => {
       "Copy link",
       "Add a tag",
       "Export…",
+      // The shortcut rides in the row, which is why it is in the label here.
+      "Jump to…⌘.",
       "Copy transcript",
       "Change language",
       "Copy summary",

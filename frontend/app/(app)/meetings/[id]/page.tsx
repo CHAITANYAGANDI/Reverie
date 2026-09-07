@@ -82,6 +82,7 @@ import { Button } from "@/components/ui/button";
 import { useRecordingJob } from "@/lib/recording-context";
 import { ProcessingCard } from "@/components/processing-card";
 import { PaneClose } from "@/components/pane-close";
+import { JumpTo } from "@/components/jump-to";
 import {
   ProcessingSummary,
   ProcessingTranscript,
@@ -237,6 +238,15 @@ export default function MeetingDetailPage() {
    * invoked from, which an uncontrolled Tabs cannot do.
    */
   const [tab, setTab] = React.useState("summary");
+  /*
+   * The navigator, opened from the `⋯` menu or with `⌘.`.
+   *
+   * <p>Page state rather than the menu's, like every other dialog the menu
+   * opens: a dialog inside a Radix menu is unmounted in the same frame the
+   * menu closes. See the export and translation dialogs at the foot of this
+   * component.
+   */
+  const [jumping, setJumping] = React.useState(false);
 
   /**
    * Correcting the whole transcript, as a mode.
@@ -434,9 +444,44 @@ export default function MeetingDetailPage() {
     [audio],
   );
 
+  /**
+   * Bring the line at `seconds` onto the screen.
+   *
+   * <p>Seeking moved the clock and lit the matching line up, but never scrolled
+   * to it -- so a citation, a topic or a mark forty minutes into a recording
+   * highlighted a paragraph the reader could not see. The transcript already
+   * marks every utterance with `data-seg`, which is what the selection code
+   * reads, so the line is findable without a second index of the document.
+   *
+   * <p>In here rather than in the navigator, because it is true of all five
+   * ways of arriving: a chat citation, a clicked timecode, a moment, a deep
+   * link, and now Jump to. One pipeline, one scroll.
+   *
+   * <p>`block: "center"` because the interesting thing about the destination
+   * is usually the sentence after it.
+   */
+  const revealAt = React.useCallback((seconds: number) => {
+    const segs = transcriptRef.current;
+    // The last segment that has started by then: `find` on a reversed copy
+    // rather than a search, because a transcript is small and already sorted.
+    let id: string | undefined;
+    for (const seg of segs) {
+      if ((seg.start ?? 0) > seconds) break;
+      if (seg.id) id = seg.id;
+    }
+    if (!id) return;
+    // After the paint that the tab switch or the seek caused: the element may
+    // not exist yet on the frame the tab changed.
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-seg="${id}"]`);
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, []);
+
   function playFrom(seconds: number) {
     if (tab === "transcript") {
       seekWhenReady(seconds);
+      revealAt(seconds);
       return;
     }
     pendingSeek.current = seconds;
@@ -449,7 +494,8 @@ export default function MeetingDetailPage() {
     if (t == null) return;
     pendingSeek.current = null;
     seekWhenReady(t);
-  }, [tab, seekWhenReady]);
+    revealAt(t);
+  }, [tab, seekWhenReady, revealAt]);
 
   // Deep link from a workspace-chat citation or a semantic search hit:
   // /meetings/{id}?t=132.5 opens the meeting and seeks to that moment.
@@ -542,6 +588,48 @@ export default function MeetingDetailPage() {
   // Also read inside the transcript panel; RTK Query dedupes to one request.
   // Fetched here because the player needs it for "play highlights only".
   const moments = useGetMomentsQuery(id, { skip: !ready });
+  /*
+   * The segments, for `revealAt`.
+   *
+   * <p>A ref so the callback is stable: it is called from an effect keyed on
+   * the tab, and a dependency on the transcript array would re-run that effect
+   * every time the query revalidated.
+   */
+  const transcriptRef = React.useRef<TranscriptSegment[]>([]);
+
+  /*
+   * Whatever the transcript query last returned, for `revealAt`.
+   *
+   * <p>Assigned in an effect rather than during render: writing a ref while
+   * rendering is what React's strict mode double-invoke exists to catch.
+   */
+  const segmentsNow = transcript.data?.segments;
+  React.useEffect(() => {
+    transcriptRef.current = segmentsNow ?? [];
+  }, [segmentsNow]);
+
+  /*
+   * `⌘.` / `Ctrl+.` opens the navigator.
+   *
+   * <p>The shortcut `24-meeting-menu.png` puts beside it, and free: the only
+   * other window-level binding in the app is `⌘K` for global search, which
+   * this must not take. Bound on the window rather than on a control so it
+   * works while the focus is in the transcript, but stood down while a
+   * correction pass is open -- the editor owns the keyboard then.
+   *
+   * <p>Only with a transcript. Every row in the navigator is a place in one.
+   */
+  const canJump = ready && (transcript.data?.segments?.length ?? 0) > 0;
+  React.useEffect(() => {
+    if (!canJump || editingTranscript) return;
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== ".") return;
+      e.preventDefault();
+      setJumping((v) => !v);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canJump, editingTranscript]);
   // And here because minutes open with the decisions. The InsightsPanel asks
   // for the same thing, and RTK Query serves both from one request.
   const insights = useGetInsightsQuery(id, { skip: !ready });
@@ -881,6 +969,7 @@ export default function MeetingDetailPage() {
       meetingId={id}
       projectId={m.projectId}
       hasTranscript={(transcript.data?.segments?.length ?? 0) > 0}
+      onJumpTo={() => setJumping(true)}
       hasSummary={ready && Boolean(summary.data)}
       canTranslate={ready}
       // Change language and Regenerate grey while either is running.
@@ -1588,6 +1677,24 @@ export default function MeetingDetailPage() {
         </SidePane>
         </>
       )}
+
+      {/*
+        THE NAVIGATOR. Opened from the `⋯` menu or with `⌘.`.
+
+        <p>Everything in it is this meeting's own: the summary's outline
+        headings, the voices the transcript actually attributes lines to, and
+        the real marks. `playFrom` is what it jumps with -- the same call a
+        chat citation and a clicked timecode go through -- so it switches to
+        the transcript when it has to and cannot land anywhere they would not.
+      */}
+      <JumpTo
+        open={jumping}
+        onOpenChange={setJumping}
+        sections={summary.data?.sections ?? []}
+        segments={transcript.data?.segments ?? []}
+        moments={moments.data ?? []}
+        onJump={playFrom}
+      />
 
       {/* Opened from the ⋯ menu, mounted here. A dialog inside a Radix menu is
           unmounted in the same frame the menu closes, which is the same reason
