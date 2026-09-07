@@ -34,7 +34,10 @@ export const Switch = React.forwardRef<
     disabled={disabled}
     onClick={() => onCheckedChange(!checked)}
     className={cn(
-      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full",
+      // 36x20 rather than 44x24. A switch is a control beside a label, not a
+      // thing to aim at from across the room, and at the larger size three of
+      // them were the loudest objects in the dialog.
+      "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full",
       "transition-colors duration-press ease-soft",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       checked ? "bg-brand" : "bg-white/[0.14]",
@@ -46,8 +49,9 @@ export const Switch = React.forwardRef<
     <span
       aria-hidden
       className={cn(
-        "block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-press ease-soft",
-        checked ? "translate-x-[1.375rem]" : "translate-x-[0.125rem]",
+        "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-press ease-soft",
+        // 2px inset at rest, and 36 - 16 - 2 at the other end.
+        checked ? "translate-x-[1.125rem]" : "translate-x-[0.125rem]",
       )}
     />
   </button>

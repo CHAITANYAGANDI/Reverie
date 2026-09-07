@@ -290,15 +290,32 @@ export function ExportDialog({
         Three rows and a footer fit at every desktop height; the primitive caps
         itself at the viewport on a phone.
       */}
-      <DialogContent className="max-w-[min(46rem,calc(100vw-2rem))] gap-0 p-0">
-        <DialogHeader className="px-6 pb-5 pt-6 text-left">
-          <DialogTitle className="text-title-l font-headline">Export</DialogTitle>
-          <DialogDescription className="text-body text-ink-3">
+      {/*
+        544px, not 736. Three short rows and a footer never needed the wider
+        frame, and the extra 200px only stretched each card into a band with a
+        switch marooned at the far end of it.
+
+        `sm:p-0` as well as `p-0`, and it is load-bearing. The primitive sets
+        `p-5 sm:p-6`, so a bare `p-0` loses to the `sm:` rule on every screen
+        above 640px: the content kept 24px of the dialog's own padding, my
+        `px-5` sat inside it for 44px of inset, and the footer's rule stopped
+        25px short of both edges instead of spanning them. Measured at 1440:
+        a 494px footer inside a 544px dialog.
+      */}
+      <DialogContent className="max-w-[min(34rem,calc(100vw-2rem))] gap-0 p-0 sm:p-0">
+        <DialogHeader className="px-5 pb-4 pt-5 text-left">
+          {/*
+            `title-1`, not `title-l`. 30px is the size a meeting's own name is
+            set at; the same size on the word "Export" made the heading the
+            largest thing on screen for a dialog with three rows in it.
+          */}
+          <DialogTitle className="text-title-1 font-headline">Export</DialogTitle>
+          <DialogDescription className="text-callout text-ink-3">
             Choose what to take.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 px-6">
+        <div className="space-y-2 px-5">
           {ROWS.map((row) => (
             <Row
               key={row.part}
@@ -317,13 +334,13 @@ export function ExportDialog({
           is gone by the time somebody looks up from the downloads folder.
         */}
         {failures.length > 0 && (
-          <div className="px-6 pt-4" role="status">
+          <div className="px-5 pt-3" role="status">
             {failures.map((failure, i) => (
               <p
                 key={i}
-                className="flex items-start gap-2 text-callout leading-[1.5] text-danger"
+                className="flex items-start gap-1.5 text-foot leading-[1.5] text-danger"
               >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
                 {failure.message}
               </p>
             ))}
@@ -331,9 +348,9 @@ export function ExportDialog({
         )}
 
         {/* A hairline, not a panel. The footer is part of the same surface. */}
-        <div className="mt-6 flex items-center justify-between gap-4 border-t border-line px-6 py-4">
+        <div className="mt-5 flex items-center justify-between gap-4 border-t border-line px-5 py-3.5">
           <div className="min-w-0">
-            <p className="text-body font-headline text-ink">
+            <p className="text-callout font-headline text-ink">
               {count === 0
                 ? "Nothing selected"
                 : `${count} ${count === 1 ? "file" : "files"} selected`}
@@ -343,7 +360,7 @@ export function ExportDialog({
               rather than a choice. A `PDF` badge on every card would be three
               labels for a decision nobody makes.
             */}
-            <p className="truncate text-callout text-ink-4">
+            <p className="truncate text-foot text-ink-4">
               {count === 0
                 ? "Turn on what you want to take."
                 : chosen.map((r) => EXTENSION[r.part]).join(" · ")}
@@ -351,13 +368,13 @@ export function ExportDialog({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="ghost" onClick={clearAll} disabled={busy || count === 0}>
+            <Button variant="ghost" size="sm" onClick={clearAll} disabled={busy || count === 0}>
               Clear
             </Button>
-            <Button onClick={() => void onExport()} disabled={busy || count === 0}>
+            <Button size="sm" onClick={() => void onExport()} disabled={busy || count === 0}>
               {busy ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   {/* Truthful about which wait this is: a conversion is the one
                       that takes a minute, and a button that says "Exporting…"
                       through it reads as stuck. */}
@@ -365,7 +382,7 @@ export function ExportDialog({
                 </>
               ) : (
                 <>
-                  <Upload className="mr-2 h-4 w-4" />
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
                   Export
                 </>
               )}
@@ -400,21 +417,24 @@ function Row({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 rounded-lg px-4 py-4",
+        "flex items-center gap-3 rounded-lg px-3.5 py-3",
         "shadow-[inset_0_0_0_1px_rgb(var(--line-strong))]",
+        // Quiet until it is under the pointer, which is what makes three
+        // bordered rectangles read as a list rather than a form.
+        available && "transition-colors duration-press ease-soft hover:bg-white/[0.02]",
         !available && "opacity-55",
       )}
     >
       <span
         aria-hidden
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand-text"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand-text"
       >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="text-title-3 font-headline text-ink">{row.title}</p>
-        <p className="text-callout leading-[1.5] text-ink-3">
+        <p className="text-body font-headline text-ink">{row.title}</p>
+        <p className="text-foot leading-[1.45] text-ink-3">
           {/* The reason, where the reason exists. A greyed switch with no
               explanation is the thing people report as broken. */}
           {available ? row.description : `${row.title} is not available for this meeting.`}
