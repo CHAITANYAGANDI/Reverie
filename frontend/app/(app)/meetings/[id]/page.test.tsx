@@ -416,7 +416,29 @@ function aSummary(over: Partial<SummaryResponse> = {}): SummaryResponse {
   };
 }
 
+/**
+ * What `matchMedia("(min-width: 640px)")` should answer.
+ *
+ * <p>`vitest.setup.ts` reports `matches: false` for everything except
+ * `prefers-reduced-motion`, which is the right global default and the wrong
+ * one for the two tests that care whether a submenu has room to open. It says
+ * per-file overrides are expected; this is one.
+ */
+function wide(yes: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    media: query,
+    matches: /prefers-reduced-motion/.test(query) ? true : yes,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 beforeEach(() => {
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
   meeting = aMeeting();
   segments = [aSegment()];
@@ -1463,9 +1485,28 @@ describe("rewriting the summary", () => {
       { slug: "general", name: "General" },
       { slug: "standup", name: "Standup" },
     ];
+    /*
+     * WIDE, so the templates are behind one row. The narrow shape is the next
+     * test — see `wide()` and the note on `useRoomToTheSide`.
+     */
+    wide(true);
     const { unmount } = render(<MeetingDetailPage />);
     await userEvent.click(screen.getByLabelText("More actions"));
-    expect(screen.getByText("Summary template")).toBeInTheDocument();
+
+    /*
+     * ONE ROW, AND THE NAMES BEHIND IT.
+     *
+     * <p>Eight templates inline were more than half the menu and pushed
+     * Reprocess and Delete off the bottom of a laptop window. The row says
+     * which one is in use so that closing the submenu does not lose it.
+     */
+    const trigger = screen.getByRole("menuitem", { name: /Templates/ });
+    expect(trigger).toHaveTextContent("General");
+    expect(screen.queryByRole("menuitem", { name: /Standup/ })).not.toBeInTheDocument();
+
+    // And they are all there once it is asked for.
+    await userEvent.click(trigger);
+    expect(await screen.findByText("Summary template")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Standup/ })).toBeInTheDocument();
     unmount();
 
@@ -1474,7 +1515,32 @@ describe("rewriting the summary", () => {
     summary = undefined;
     meeting = aMeeting({ status: "SUMMARIZING" });
     render(<MeetingDetailPage />);
-    expect(screen.queryByText("Summary template")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Templates/ })).not.toBeInTheDocument();
+  });
+
+  it("puts the templates in the menu where there is no room beside it", async () => {
+    /*
+     * MEASURED AT 390. A submenu opens to the side, and on a phone there is no
+     * side: the menu is 246px wide against the document's right edge, so a
+     * 160px panel needs either 517px to its right or a negative x to its left.
+     * Radix flips it left and does not clamp the main axis, so the names were
+     * drawn half off the screen — "neral", "tailed", "ecutive".
+     *
+     * <p>So below `sm` they are rows in the menu again, which is only
+     * reasonable because the menu now scrolls.
+     */
+    templates = [
+      { slug: "general", name: "General" },
+      { slug: "standup", name: "Standup" },
+    ];
+    wide(false);
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.queryByRole("menuitem", { name: /Templates/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Summary template")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Standup/ })).toBeInTheDocument();
   });
 
   it("does not offer it over a transcript, which it cannot change", async () => {

@@ -31,6 +31,7 @@ import {
   ListChecks,
   MessageSquare,
   Square,
+  FileSliders,
 } from "lucide-react";
 import {
   useGetMeetingQuery,
@@ -123,6 +124,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Facts } from "@/components/v2/group";
 import { MeetingMenu } from "@/components/meeting-menu";
@@ -1824,6 +1828,39 @@ function MeetingRail({
  * <p>Same query, same mutation, same shared `fixedCacheKey`, same allowance
  * refusal. Only the surface changed.
  */
+/**
+ * Whether a submenu has room to open beside the menu it belongs to.
+ *
+ * <h2>Why this is measured rather than assumed</h2>
+ *
+ * <p>A submenu opens to the side, and at 390px there is no side to open on:
+ * the `⋯` menu is 246px wide against the document's right edge, so a 160px
+ * panel needs either 517px to its right or a negative x to its left. Radix
+ * flips it left and does not clamp the main axis, so the template names were
+ * drawn half off the screen -- "neral", "tailed", "ecutive".
+ *
+ * <p>So below `sm` the templates go back to being rows in the menu itself,
+ * which is only reasonable because that menu now scrolls. Above it they are
+ * one row with a chevron.
+ *
+ * <p>This is the first `matchMedia` in the app, and it is here rather than in
+ * `lib/` because it is the only thing that needs it. It reports desktop until
+ * it has measured, which is what the server renders and what all but one of
+ * the app's breakpoints assume -- so hydration matches, and a phone corrects
+ * itself on the first effect.
+ */
+function useRoomToTheSide(): boolean {
+  const [room, setRoom] = React.useState(true);
+  React.useEffect(() => {
+    const q = window.matchMedia("(min-width: 640px)");
+    const read = () => setRoom(q.matches);
+    read();
+    q.addEventListener("change", read);
+    return () => q.removeEventListener("change", read);
+  }, []);
+  return room;
+}
+
 function TemplateItems({ meetingId, current }: { meetingId: string; current: string }) {
   const { data: templates } = useGetSummaryTemplatesQuery();
   // Shared with the menu's own Regenerate and with the banner -- see the page's
@@ -1834,6 +1871,7 @@ function TemplateItems({ meetingId, current }: { meetingId: string; current: str
   // Changing the template *is* a rewrite -- the same request Regenerate makes --
   // so the same allowance closes it.
   const refusal = aiRefusal(useAllowance(), "summary");
+  const room = useRoomToTheSide();
 
   if (!templates || templates.length === 0) return null;
 
@@ -1847,27 +1885,71 @@ function TemplateItems({ meetingId, current }: { meetingId: string; current: str
     }
   }
 
+  /*
+   * ONE ROW, NOT EIGHT.
+   *
+   * <p>Inline, the templates were more than half the menu: eight names under a
+   * label, above the eleven actions the `⋯` exists for, which pushed Reprocess
+   * and Delete off the bottom of a laptop window. They are one choice, made
+   * rarely, so they sit behind one row that says which is in use.
+   *
+   * <p>The label moved onto the trigger, where "Rewriting the summary…" is
+   * still visible with the submenu shut -- the state matters most to somebody
+   * who has just closed it.
+   */
+  const chosen = templates.find((t) => t.slug === current);
+
+  const label = (
+    <DropdownMenuLabel className="text-foot font-normal text-ink-4">
+      {rewriting ? "Rewriting the summary…" : "Summary template"}
+    </DropdownMenuLabel>
+  );
+  const items = templates.map((t) => (
+    <DropdownMenuItem
+      key={t.slug}
+      // The reason on the item itself, because there is nowhere in a menu
+      // for a sentence and an option that simply stops working is worse.
+      title={refusal ?? undefined}
+      disabled={rewriting || refusal !== null}
+      onSelect={() => void onChange(t.slug)}
+    >
+      {/* A tick on the one in use, and reserved space on the rest, so the
+          names line up down the menu. */}
+      <Check className={cn("h-4 w-4", t.slug !== current && "opacity-0")} />
+      {t.name}
+    </DropdownMenuItem>
+  ));
+
+  // No side to open on. The same rows, in the menu, as they were before.
+  if (!room) {
+    return (
+      <>
+        {label}
+        {items}
+      </>
+    );
+  }
+
   return (
-    <>
-      <DropdownMenuLabel className="text-foot font-normal text-ink-4">
-        {rewriting ? "Rewriting the summary…" : "Summary template"}
-      </DropdownMenuLabel>
-      {templates.map((t) => (
-        <DropdownMenuItem
-          key={t.slug}
-          // The reason on the item itself, because there is nowhere in a menu
-          // for a sentence and an option that simply stops working is worse.
-          title={refusal ?? undefined}
-          disabled={rewriting || refusal !== null}
-          onSelect={() => void onChange(t.slug)}
-        >
-          {/* A tick on the one in use, and reserved space on the rest, so the
-              names line up down the menu. */}
-          <Check className={cn("h-4 w-4", t.slug !== current && "opacity-0")} />
-          {t.name}
-        </DropdownMenuItem>
-      ))}
-    </>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        title={refusal ?? undefined}
+        disabled={rewriting || refusal !== null}
+      >
+        <FileSliders />
+        <span className="flex-1">Templates</span>
+        {/* Which one, on the closed row: a submenu that hides the current
+            value makes you open it to find out what you already have. */}
+        {!rewriting && chosen && (
+          <span className="text-cap text-ink-4">{chosen.name}</span>
+        )}
+        {rewriting && <span className="text-cap text-ink-4">Rewriting…</span>}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        {label}
+        {items}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }
 
