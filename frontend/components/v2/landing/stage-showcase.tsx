@@ -263,12 +263,12 @@ function Window({
           <BrandMark size={18} />
         </span>
         <span className="ml-1 flex items-center">
-          {["Now", "Library", "Ask"].map((place) => (
+          {["Home", "Library", "Ask"].map((place) => (
             <span
               key={place}
               className={cn(
                 "relative flex h-band items-center px-[11px] text-body",
-                place === "Now"
+                place === "Home"
                   ? "font-headline text-ink after:absolute after:inset-x-[11px] after:bottom-0 after:h-[2px] after:rounded-t-[1px] after:bg-ink after:content-['']"
                   : "text-ink-3",
               )}

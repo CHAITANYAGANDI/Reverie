@@ -303,7 +303,7 @@ describe("the product preview", () => {
     const { container } = render(<LandingPage />);
 
     const preview = container.querySelector('[aria-hidden="true"].rounded-xl')!;
-    expect(preview).toHaveTextContent("Now");
+    expect(preview).toHaveTextContent("Home");
     expect(preview).toHaveTextContent("Library");
     expect(preview).toHaveTextContent("Ask");
     // Memory was the fourth destination in the concept and has no schema.

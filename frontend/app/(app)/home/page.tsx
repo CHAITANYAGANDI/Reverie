@@ -57,13 +57,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NowConversationRow } from "@/components/v2/now/conversation-row";
 import { NowActionItems } from "@/components/v2/now/action-items";
 import { AskLauncher } from "@/components/v2/now/ask-launcher";
-import {
-  DateFilter,
-  ANY_TIME,
-  restoreWindow,
-  type DateWindow,
-} from "@/components/date-filter";
-import { useStickyPreference, type PreferenceCodec } from "@/lib/preferences";
 import { isTerminal } from "@/lib/format";
 import { groupByDay } from "@/lib/days";
 import { homeListState } from "@/lib/home-list-state";
@@ -81,33 +74,24 @@ import { LIBRARY, recordHref } from "@/lib/routes";
  */
 const RECENT_SIZE = 20;
 
-const WHEN_CODEC: PreferenceCodec<DateWindow> = {
-  // The choice, not the window. Storing the instants would pin "Last 7 days" to
-  // the week it was picked and leave "Today" labelling a day that has passed.
-  save: (value) => value.choice ?? null,
-  load: (raw) => restoreWindow(raw),
-};
-
 export default function HomePage() {
-  // The window is remembered until sign-out. This is a page people leave and
-  // come back to constantly, and a filter that reset on every return meant
-  // narrowing the list was work you did once per visit rather than once.
-  const whenPref = useStickyPreference<DateWindow>("home.when", ANY_TIME, WHEN_CODEC);
-  const { value: when, set: setWhen } = whenPref;
-  const restored = whenPref.ready;
-
   const meetings = useGetMeetingsQuery(
     {
       page: 0,
       size: RECENT_SIZE,
-      from: when.from ?? undefined,
-      to: when.to ?? undefined,
       // NO `unfiled`. It is the parameter this page used to send and the reason
       // its name was a lie: a meeting recorded inside a folder was filed there
       // and disappeared from Recent, which is not what recent means.
+      //
+      // AND NO `from`/`to`. This page had a date window of its own, remembered
+      // until sign-out. It is gone: the list is the newest RECENT_SIZE
+      // conversations, and a date filter over a fixed-size recency list can
+      // only ever subtract from it -- it cannot surface anything the
+      // unfiltered list does not already show. Narrowing by date is Library's,
+      // where it is narrowing the whole archive and can therefore find
+      // something. See docs/v2-implementation/feature-parity.md.
     },
     {
-      skip: !restored,
       /*
        * Ask again every time Now is opened. A meeting's status is the one field
        * in this list that changes without anybody touching the list, and the
@@ -127,7 +111,10 @@ export default function HomePage() {
    * had none.
    */
   const listState = homeListState({
-    restored,
+    // Nothing to restore any more, so the list is never waiting on a
+    // preference before it may ask. `homeListState` keeps the flag because
+    // Library still has one.
+    restored: true,
     isUninitialized: meetings.isUninitialized,
     isLoading: meetings.isLoading,
     isFetching: meetings.isFetching,
@@ -191,17 +178,6 @@ export default function HomePage() {
   }, [failed, making, days]);
 
   const showing = listState === "list";
-  /*
-   * Whether anything is narrowing the list.
-   *
-   * <p>Read off the window's bounds, not off `when.choice` — the default window
-   * carries a choice too (`{ kind: "preset", key: "any" }`), so a truthiness
-   * test on it says "narrowed" always. That is the same predicate `EmptyState`
-   * has always used to decide which of its two screens to draw, and the two
-   * must agree: one deciding the account is empty while the other blames a date
-   * window is a page arguing with itself.
-   */
-  const narrowed = when.from !== null || when.to !== null;
 
   return (
     /*
@@ -213,7 +189,11 @@ export default function HomePage() {
     <div className="px-4 pb-16 lg:px-6">
       <div className="v2-spread" data-margin={showing ? undefined : "empty"}>
       <div className="min-w-0">
-        <Masthead meetings={data?.content} empty={listState === "empty" && !narrowed} />
+        {/* `empty` is unqualified now. With no window there is only one way
+            for this list to be empty -- the account is -- where before the
+            masthead had to distinguish that from a date range that happened to
+            return nothing. */}
+        <Masthead meetings={data?.content} empty={listState === "empty"} />
 
         {/* The one functional surface in the measure, and it is a door to the
             workspace Ask rather than a chat of its own. */}
@@ -230,38 +210,11 @@ export default function HomePage() {
             <HomeLoadError onRetry={() => void meetings.refetch()} />
           </div>
         ) : listState === "empty" ? (
-          <>
-            {/*
-              THE FILTER OUTLIVES THE LIST IT EMPTIED.
-              <p>Putting it on the first section heading read well and hid it
-              exactly when it was needed: a window that returns nothing renders
-              no headings, so the only control that could widen it disappeared
-              with the rows. It has one home above the sections instead, and it
-              is drawn whenever a window is narrowing anything — the
-              first-minute screen is the one case with nothing to narrow.
-            */}
-            {narrowed && (
-              <div className="mt-9">
-                <FilterRow value={when} onChange={setWhen} />
-              </div>
-            )}
-            <EmptyState when={when} onClearDate={() => setWhen(ANY_TIME)} />
-          </>
+          <EmptyState />
         ) : (
           <div className="mt-9">
-            {/*
-              The filter rides the first heading, whichever that turns out to
-              be. Given a row of its own it floated in the whitespace between
-              the launcher and the list, attached to nothing; the reference puts
-              asides on the group head, on the same baseline as its label.
-            */}
-            {sections.map((section, i) => (
-              <Group
-                key={section.key}
-                heading={section.heading}
-                note={section.note}
-                aside={i === 0 ? <DateFilter value={when} onChange={setWhen} /> : undefined}
-              >
+            {sections.map((section) => (
+              <Group key={section.key} heading={section.heading} note={section.note}>
                 <Rows meetings={section.items} />
               </Group>
             ))}
@@ -305,21 +258,6 @@ export default function HomePage() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/** The one question the list cannot answer about itself. */
-function FilterRow({
-  value,
-  onChange,
-}: {
-  value: DateWindow;
-  onChange: (next: DateWindow) => void;
-}) {
-  return (
-    <div className="mb-4 flex justify-end">
-      <DateFilter value={value} onChange={onChange} />
     </div>
   );
 }
@@ -491,32 +429,16 @@ function HomeLoadError({ onRetry }: { onRetry: () => void }) {
  * and every claim in the block under it was checked against production before
  * it was written down.
  */
-function EmptyState({ when, onClearDate }: { when: DateWindow; onClearDate: () => void }) {
-  if (when.from !== null || when.to !== null) {
-    return (
-      <div className="mt-9">
-        <p className="flex items-center gap-2 text-body font-headline text-ink">
-          <CalendarDays className="h-4 w-4 text-ink-4" aria-hidden />
-          {/* "from" rather than "in", and the label verbatim: it reads correctly
-              for all three shapes the window can take. */}
-          Nothing from {when.label}
-        </p>
-        <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
-          There are no conversations in this stretch of time. Your other
-          conversations are still here.
-        </p>
-        <div className="mt-4 flex gap-2">
-          <Button variant="outline" size="sm" onClick={onClearDate}>
-            Show any time
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href={LIBRARY}>Go to Library</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
+function EmptyState() {
+  /*
+   * ONE SCREEN, WHERE THERE WERE TWO.
+   *
+   * <p>This used to branch: a date window that returned nothing got "Nothing
+   * from {label}" with a way to widen it, and only a genuinely empty account
+   * got the first-minute screen. With the window gone there is one way for
+   * this list to be empty and it is the account, so the branch and the widen
+   * button went with it.
+   */
   return (
     <div>
       <div className="flex flex-wrap gap-2.5">

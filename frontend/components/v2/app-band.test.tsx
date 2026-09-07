@@ -97,13 +97,13 @@ describe("what is always there", () => {
      * its full name — a bare verb beside two nouns reads as a control that got
      * into the wrong row.
      */
-    expect(names).toEqual(["Now", "Library", "Ask Reverie"]);
+    expect(names).toEqual(["Home", "Library", "Ask Reverie"]);
   });
 
   it("sends each place to its own page", () => {
     band();
 
-    expect(screen.getByRole("link", { name: "Now" })).toHaveAttribute("href", "/home");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
     expect(screen.getByRole("link", { name: "Ask Reverie" })).toHaveAttribute("href", "/ask");
   });
@@ -154,7 +154,7 @@ describe("marking where you are", () => {
     band({ pathname: "/library" });
 
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Now" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "Ask Reverie" })).not.toHaveAttribute("aria-current");
   });
 
@@ -172,7 +172,7 @@ describe("marking where you are", () => {
   it("marks nothing on a page that is not a place", () => {
     band({ pathname: "/record" });
 
-    for (const name of ["Now", "Library", "Ask Reverie"]) {
+    for (const name of ["Home", "Library", "Ask Reverie"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });

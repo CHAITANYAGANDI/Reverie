@@ -26,7 +26,7 @@ import { ASK, FOLDERS, HOME, LIBRARY, folderIdFrom, isFolderListPath } from "@/l
 
 export { ASK, HOME, LIBRARY };
 
-export type PlaceId = "now" | "library" | "ask";
+export type PlaceId = "home" | "library" | "ask";
 
 export interface Place {
   /** Which of the three, or null where the path is in none of them. */
@@ -63,7 +63,7 @@ export function placeFor(pathname: string | null | undefined): Place {
   const path = bare(pathname);
   if (!path) return NOWHERE;
 
-  if (path === HOME || path === `${HOME}/`) return { id: "now", nested: false };
+  if (path === HOME || path === `${HOME}/`) return { id: "home", nested: false };
   if (path === LIBRARY || path === `${LIBRARY}/`) return { id: "library", nested: false };
   if (path === ASK || path === `${ASK}/`) return { id: "ask", nested: false };
 

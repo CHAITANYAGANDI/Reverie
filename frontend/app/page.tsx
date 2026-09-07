@@ -269,7 +269,7 @@ function Preview() {
           </span>
           <span className="ml-1 flex items-center">
             <span className="relative flex h-band items-center px-[11px] text-body font-headline text-ink after:absolute after:inset-x-[11px] after:bottom-0 after:h-[2px] after:rounded-t-[1px] after:bg-ink after:content-['']">
-              Now
+              Home
             </span>
             <span className="flex h-band items-center px-[11px] text-body text-ink-3">
               Library

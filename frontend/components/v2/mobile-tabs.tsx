@@ -43,7 +43,7 @@ import { placeFor, type PlaceId } from "@/lib/places";
 import { useStartRecording } from "@/components/v2/record-action";
 
 const TABS: { id: PlaceId; href: string; label: string; icon: typeof Home }[] = [
-  { id: "now", href: HOME, label: "Now", icon: Home },
+  { id: "home", href: HOME, label: "Home", icon: Home },
   { id: "library", href: LIBRARY, label: "Library", icon: LibraryIcon },
   { id: "ask", href: ASK, label: "Ask", icon: Sparkles },
 ];

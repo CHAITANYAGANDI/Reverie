@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, act } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { MeetingResponse, MeetingListQuery, Page } from "@/lib/types";
 
@@ -45,17 +45,6 @@ const query = vi.hoisted(() => ({ last: null as MeetingListQuery | null }));
 const refetch = vi.hoisted(() => vi.fn());
 
 let rows: MeetingResponse[];
-/**
- * What a *narrowed* query answers with, when that differs.
- *
- * <p>Needed because the date filter now lives above the sections rather than on
- * a section heading, and is drawn only where there is something to narrow — a
- * filter on the first-minute screen is a control over an account with nothing
- * in it. So "narrow the list until it is empty" has to be driven the way it
- * actually happens: a list, then a window that returns nothing. Setting `rows`
- * to `[]` before the first render tests a path the product does not have.
- */
-let narrowedRows: MeetingResponse[] | null;
 /** How many exist behind the page. Drives the "showing the newest N" line. */
 let total: number | null;
 let loading: boolean;
@@ -131,8 +120,7 @@ vi.mock("@/lib/api", () => ({
     // An error keeps whatever was cached -- RTK does not throw the last good
     // page away -- so `noData` is what separates "failed with nothing" from
     // "failed over meetings already on screen".
-    const answering = q.from && narrowedRows ? narrowedRows : rows;
-    const data = noData ? undefined : aPage(answering, total ?? answering.length);
+    const data = noData ? undefined : aPage(rows, total ?? rows.length);
     return result(data, { isFetching: fetching, isError: errored });
   },
   // The masthead's greeting. Settings first, then the identity provider, then
@@ -202,12 +190,6 @@ function lastQuery(): MeetingListQuery | null {
   return query.last;
 }
 
-/** Narrow the list to a window, through the control somebody actually uses. */
-async function pickWindow(label: RegExp) {
-  await userEvent.click(screen.getByRole("button", { name: /Any time|Today|Last 7 days/ }));
-  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: label }));
-}
-
 beforeEach(() => {
   query.last = null;
   refetch.mockClear();
@@ -216,7 +198,6 @@ beforeEach(() => {
   errored = false;
   noData = false;
   rows = [aMeeting()];
-  narrowedRows = null;
   total = null;
   displayName = null;
   // The window outlives a page now, so without this it would outlive a test and
@@ -240,27 +221,17 @@ beforeEach(() => {
  * narrowed in the browser over rows that had already come back.
  *
  * <p>This test is load-bearing for the whole file. Three empty-state screens
- * were deleted along with the filter, on the grounds that nothing here can hide
- * a meeting any more. If the parameter ever comes back, that stops being true
- * and the screens are needed again — so this is the guard that has to fail
- * first.
+ * were deleted along with `unfiled`, and a fourth went with the date window,
+ * on the grounds that nothing here can hide a meeting any more. This page now
+ * sends `page` and `size` and nothing else. If any narrowing parameter comes
+ * back, that stops being true and those screens are needed again — so this is
+ * the guard that has to fail first.
  */
 describe("what Home asks for", () => {
   it("never asks the server to hide filed conversations", () => {
     render(<HomePage />);
 
     expect(lastQuery()?.unfiled).toBeUndefined();
-  });
-
-  it("still does not, once a date window is chosen", async () => {
-    // Two narrowings over one list, and rebuilding the query object per control
-    // is how the other one comes back.
-    render(<HomePage />);
-
-    await pickWindow(/Last 7 days/);
-
-    expect(lastQuery()?.unfiled).toBeUndefined();
-    expect(lastQuery()?.from).toBeTruthy();
   });
 
   it("asks for a short page, which is what makes it recent", () => {
@@ -450,35 +421,16 @@ describe("the masthead", () => {
  * make it.
  */
 describe("when there is nothing to show", () => {
-  it("blames the date window when there is one", async () => {
-    // A list, then a window that empties it. Which is the only way anybody
-    // reaches this screen.
-    narrowedRows = [];
-
-    render(<HomePage />);
-    await pickWindow(/^Today/);
-
-    expect(screen.getByText(/Nothing from Today/)).toBeInTheDocument();
-    // Not the first-recording screen. A filter that empties the list has to say
-    // so, or an archive that is merely narrowed reads as one that lost
-    // everything.
-    expect(screen.queryByRole("link", { name: /Record a meeting/ })).not.toBeInTheDocument();
-  });
-
-  it("offers both ways out of a narrowed list", async () => {
-    narrowedRows = [];
-
-    render(<HomePage />);
-    await pickWindow(/^Today/);
-
-    expect(screen.getByRole("button", { name: "Show any time" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to Library" })).toHaveAttribute(
-      "href",
-      "/library",
-    );
-  });
-
-  it("says the account is empty only when nothing is narrowing the list", async () => {
+  /*
+   * ONE EMPTY SCREEN, WHERE THERE WERE TWO.
+   *
+   * <p>Two tests stood here: a window that emptied the list said "Nothing from
+   * Today" and offered a way to widen it, and only a genuinely empty account
+   * got the first-minute screen. The window is gone, so there is one way for
+   * this list to be empty and it is the account — which is what makes the
+   * remaining assertion unconditional rather than a branch.
+   */
+  it("says the account is empty, because that is the only way it can be", async () => {
     rows = [];
 
     render(<HomePage />);
@@ -520,118 +472,6 @@ describe("when there is nothing to show", () => {
   });
 });
 
-/**
- * A filter you set once.
- *
- * <p>Home is a page people leave and come back to all day — open a meeting,
- * come back, open another — and the control above the list used to reset every
- * time. Narrowing to last week was work you redid on every return.
- *
- * <p>So the choice is remembered, and the exception is the requirement: signing
- * out puts it back to the default. `unmount` then `render` here is literally
- * leaving Home and returning to it; the sign-in changing is somebody signing out
- * and back in.
- *
- * <p>These used to be asked of the scope picker, which was the control the
- * production report named. It is gone; the machinery is not, and neither is the
- * defect it was reported for — a value stored under session 1 being reported as
- * ready under session 2. The date window goes through the identical
- * `useStickyPreference`, so it is what asks now.
- */
-describe("filters that stay where you left them", () => {
-  it("opens on the date window you chose last time", async () => {
-    const visit = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    expect(lastQuery()?.from).toBeTruthy();
-    visit.unmount();
-
-    render(<HomePage />);
-
-    // The label, and a lower bound actually reaching the server. A restored
-    // label over an unfiltered query is the version of this that looks right.
-    expect(screen.getByRole("button", { name: /Last 7 days/ })).toBeInTheDocument();
-    expect(lastQuery()?.from).toBeTruthy();
-  });
-
-  it("does not treat the previous sign-in's choice as this one's", async () => {
-    // The half of the production report that was a real defect rather than a
-    // product choice: a stored value belonging to session 1, still reported as
-    // ready under session 2, decided the first query of the new sign-in.
-    const visit = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    visit.unmount();
-
-    auth.sessionKey = "sess_2";
-    query.last = null;
-    render(<HomePage />);
-
-    expect(lastQuery()?.from).toBeFalsy();
-  });
-
-  it("remembers going back to the default just as firmly", async () => {
-    const first = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    first.unmount();
-
-    const second = render(<HomePage />);
-    await pickWindow(/Any time/);
-    second.unmount();
-
-    // Choosing the default is a choice. Were it treated as "no opinion", the
-    // next visit would reinstate last week and the control would quietly undo
-    // what somebody had just told it.
-    query.last = null;
-    render(<HomePage />);
-    expect(lastQuery()?.from).toBeFalsy();
-    expect(screen.getByRole("button", { name: /Any time/ })).toBeInTheDocument();
-  });
-
-  it("goes back to the defaults after a sign-out and sign-in", async () => {
-    const visit = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    expect(lastQuery()?.from).toBeTruthy();
-    visit.unmount();
-
-    // A new session is what signing out and back in produces — as the same
-    // person or as somebody else.
-    auth.sessionKey = "sess_2";
-    query.last = null;
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Any time/ })).toBeInTheDocument();
-    expect(lastQuery()?.from).toBeFalsy();
-  });
-
-  it("asks the server once, with the filter it restored", async () => {
-    const visit = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    visit.unmount();
-
-    query.last = null;
-    render(<HomePage />);
-
-    // Storage cannot be read while rendering, so the first render necessarily
-    // holds the default. Asking then would fetch the whole list and fetch it
-    // again narrowed -- two requests and a list that changes under the reader.
-    expect(lastQuery()?.from).toBeTruthy();
-  });
-
-  it("does not drift when you leave for a meeting and return", () => {
-    // The page is left and returned to all day. Whatever it asks for on the way
-    // in, it has to ask for the same thing on the way back -- including the
-    // parameter it must never send.
-    const visit = render(<HomePage />);
-    expect(lastQuery()?.size).toBe(20);
-    visit.unmount();
-
-    query.last = null;
-    render(<HomePage />);
-
-    expect(lastQuery()?.size).toBe(20);
-    expect(lastQuery()?.unfiled).toBeUndefined();
-    expect(lastQuery()?.from).toBeFalsy();
-  });
-});
 
 /**
  * Never tell somebody their archive is empty because a request failed.
@@ -870,54 +710,6 @@ describe("a meeting that is still processing", () => {
   });
 });
 
-/**
- * A sign-in change under a page that is already open.
- *
- * <p>The other tests here start a fresh render for each session, which is what
- * a full page load does. Production does not always do that: signing out and
- * back in are both client navigations, so Home can be re-rendered under a new
- * `sessionKey` without ever unmounting — and that is the render in which the
- * previous session's remembered preference was still being reported as ready.
- */
-describe("when the sign-in changes under an open page", () => {
-  it("never asks with the previous session's filter", async () => {
-    const view = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-    expect(lastQuery()?.from).toBeTruthy();
-
-    query.last = null;
-    auth.sessionKey = "sess_2";
-    await act(async () => {
-      view.rerender(<HomePage />);
-    });
-
-    expect(lastQuery()?.from).toBeFalsy();
-  });
-
-  it("starts the new sign-in on the default window", async () => {
-    const view = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-
-    auth.sessionKey = "sess_2";
-    await act(async () => {
-      view.rerender(<HomePage />);
-    });
-
-    expect(screen.getByRole("button", { name: /Any time/ })).toBeInTheDocument();
-  });
-
-  it("keeps an explicit choice while the sign-in does not change", async () => {
-    const view = render(<HomePage />);
-    await pickWindow(/Last 7 days/);
-
-    await act(async () => {
-      view.rerender(<HomePage />);
-    });
-
-    expect(screen.getByRole("button", { name: /Last 7 days/ })).toBeInTheDocument();
-    expect(lastQuery()?.from).toBeTruthy();
-  });
-});
 
 /**
  * The composition Now was corrected to, and the things it must never grow back.

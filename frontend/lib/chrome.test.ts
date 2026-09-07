@@ -132,13 +132,13 @@ describe("the folder whose actions belong beside the page", () => {
  */
 describe("which place a page is in", () => {
   it("puts each of the three on itself", () => {
-    expect(placeFor("/home")).toEqual({ id: "now", nested: false });
+    expect(placeFor("/home")).toEqual({ id: "home", nested: false });
     expect(placeFor("/library")).toEqual({ id: "library", nested: false });
     expect(placeFor("/ask")).toEqual({ id: "ask", nested: false });
   });
 
   it("tolerates a trailing slash, which a link can carry", () => {
-    expect(placeFor("/home/")).toEqual({ id: "now", nested: false });
+    expect(placeFor("/home/")).toEqual({ id: "home", nested: false });
     expect(placeFor("/library/")).toEqual({ id: "library", nested: false });
     expect(placeFor("/ask/")).toEqual({ id: "ask", nested: false });
   });

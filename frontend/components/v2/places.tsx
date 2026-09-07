@@ -29,7 +29,7 @@ import { ASK, HOME, LIBRARY, placeFor, type PlaceId } from "@/lib/places";
  * two nouns reads as a control that got into the wrong row.
  */
 const PLACES: { id: PlaceId; href: string; label: string }[] = [
-  { id: "now", href: HOME, label: "Now" },
+  { id: "home", href: HOME, label: "Home" },
   { id: "library", href: LIBRARY, label: "Library" },
   { id: "ask", href: ASK, label: "Ask Reverie" },
 ];

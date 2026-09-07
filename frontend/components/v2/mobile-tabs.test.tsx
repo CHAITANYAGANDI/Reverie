@@ -60,13 +60,13 @@ describe("the destinations", () => {
     tabs();
 
     const names = screen.getAllByRole("link").map((el) => el.textContent);
-    expect(names).toEqual(["Now", "Library", "Ask"]);
+    expect(names).toEqual(["Home", "Library", "Ask"]);
   });
 
   it("go where the band's do", () => {
     tabs();
 
-    expect(screen.getByRole("link", { name: "Now" })).toHaveAttribute("href", "/home");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
     expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
   });
