@@ -111,9 +111,27 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
           <FindButton />
         </div>
 
-        <div className="flex items-center justify-end gap-1">
+        {/*
+          `col-start-3`, and it is load-bearing below `sm`.
+          <p>The centre column's content is `hidden` on a phone, which takes it
+          out of grid placement altogether -- so these controls were
+          auto-placed into the *middle* track and the third track sat empty
+          against the right edge. Measured at 390: the group ended at x=265 of
+          390, with 125px of nothing to the right of the avatar.
+          <p>Naming the column fixes them to it whatever drops out.
+        */}
+        <div className="col-start-3 flex items-center justify-end gap-1">
         {create && (
-          <>
+          /*
+            THE TWO WAYS TO MAKE A MEETING, GROUPED AND OFF THE EDGE.
+            <p>They were loose children of the row at its `gap-1`, so Record
+            sat four pixels from the plus and the plus four from the divider:
+            three controls in a row with nothing to say which two belonged
+            together. `gap-2` separates the pair, and `mr-3` pushes the pair
+            clear of the account controls -- recording and importing are about
+            the work, and the bell and the avatar are about you.
+          */
+          <div className="mr-3 flex items-center gap-2">
             {/*
               QUIET, NOT BRAND-FILLED.
               <p>This was a filled iris pill, which made the loudest thing in
@@ -134,7 +152,10 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
               // answers.
               title={record.refusal ?? undefined}
               className={cn(
-                "hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-foot font-headline text-ink md:flex",
+                // 36px, level with the import control beside it. At 32 the
+                // two were a pill and a slightly shorter square, which reads
+                // as a misalignment rather than as a pair.
+                "hidden h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-foot font-headline text-ink md:flex",
                 "shadow-[inset_0_0_0_1px_rgb(var(--edge))]",
                 "transition-colors duration-press ease-soft hover:bg-surface-hover",
               )}
@@ -153,9 +174,9 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
                 whatever is on screen. /upload still exists for the fuller form
                 — filing straight into a folder — and for direct links. */}
             <BandIcon label="Import a recording" onClick={onImport}>
-              <Plus className="h-4 w-4" />
+              <Plus className="h-[18px] w-[18px]" />
             </BandIcon>
-          </>
+          </div>
         )}
 
         {/* Drawn only when there is something on both sides of it. Without the
@@ -226,7 +247,19 @@ function FindButton() {
   );
 }
 
-/** An icon control in the band. 32px, which is the tap target 48px allows for. */
+/**
+ * The import control.
+ *
+ * <p>36px and outlined, where it was a 32px bare glyph. It is one of the two
+ * things in this band that makes a meeting, and beside an outlined Record
+ * button a plus with no edge at all read as a decoration rather than a
+ * control — so it now carries the same `--edge` stroke, which is the token for
+ * the visible boundary of anything operable.
+ *
+ * <p>Still square rather than a labelled pill: Record earns its word because
+ * it starts something irreversible, and a second word here would make the pair
+ * the loudest thing in a band that is on every page.
+ */
 function BandIcon({
   label,
   onClick,
@@ -242,7 +275,11 @@ function BandIcon({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
+      className={
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-3 " +
+        "shadow-[inset_0_0_0_1px_rgb(var(--edge))] " +
+        "transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
+      }
     >
       {children}
     </button>
