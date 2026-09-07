@@ -12,9 +12,8 @@
  * real thing that belongs in a margin, which is the list you keep for yourself.
  *
  * <p>It is <b>the same query and the same mutations</b> as the panel it
- * replaced — they simply live one level up now, in `useActionItems`, because
- * Home has to know whether this margin has anything in it before it can decide
- * whether to draw a column for it. See components/v2/now/use-action-items.
+ * replaced — they live one level up now, in `useActionItems`. See
+ * components/v2/now/use-action-items.
  *
  * <p><b>Only what somebody typed.</b> A commitment made in a meeting is read on
  * that meeting, beside the sentence it came from, and ticked off there. That
@@ -22,20 +21,44 @@
  * asks for standalone items only, so a branch for a meeting title here would
  * describe a state this list cannot be in.
  *
- * <p>Fields are shown only where they exist. A standalone item carries a title,
- * a status, and an owner and due date where somebody set them — so nothing here
- * is fabricated to match a screenshot that had more. There is no "view all",
- * because there is no page to view them all on; and no promotional card under
- * the list, because when the list ends the margin ends.
+ * <h2>The column does not collapse</h2>
+ *
+ * <p>It used to. An account with no standalone items drew no margin at all, and
+ * Home re-centred itself on the conversation list — so the page had two
+ * different compositions depending on a list most people's is empty, and adding
+ * the first item moved every row on the screen. The heading, both counts and
+ * the rule are drawn from the first render now, including at zero, and the
+ * geometry is the same in every state this can be in: loading, failed, empty
+ * and full. What changes is the sentence under the rule.
+ *
+ * <p>There is still no "view all", because there is no page to view them all
+ * on — `app/(app)` has no action-items route, and a link to nowhere for the
+ * sake of matching a screenshot is worse than the gap. And no promotional card
+ * under the list: when the list ends, the margin ends.
+ *
+ * <h2>Scale</h2>
+ *
+ * <p>An 18px title over a 16px owner, a 24px checkbox, a 22px heading and a
+ * 40px pill — Home's scale rather than the interface's, from the approved
+ * reference. See `.v2-home-*` in app/globals.css. Nothing else in the product
+ * uses these sizes, which is why they are scoped to Home's tree.
  */
 
 import * as React from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, MoreHorizontal, Plus } from "lucide-react";
 import type { ActionItemResponse } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dueLabel, dueTone } from "@/lib/due";
+import { useDeleteActionItemMutation } from "@/lib/api";
+import { toast } from "sonner";
+import { dueColumn, dueTone } from "@/lib/due";
 import { cn } from "@/lib/utils";
 import { ResourceLoadError } from "@/components/resource-load-error";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { ActionItems } from "@/components/v2/now/use-action-items";
 
 /** Which of the two lists is on screen. Local, and nothing else's business. */
@@ -49,6 +72,10 @@ export function NowActionItems({ items }: { items: ActionItems }) {
   const [view, setView] = React.useState<View>("open");
 
   const showing = view === "open" ? open : done;
+  /* Nothing has arrived yet, or the request failed. Both hide the counts --
+     "Open (0)" while a request is in flight is a claim about somebody's list
+     made from the absence of an answer -- and neither hides the heading. */
+  const unsettled = state === "loading" || state === "error";
 
   async function commit() {
     const title = draft;
@@ -61,17 +88,28 @@ export function NowActionItems({ items }: { items: ActionItems }) {
 
   return (
     <section aria-labelledby="now-actions">
-      <div className="flex items-baseline gap-3">
-        <h2 id="now-actions" className="v2-label">
+      {/* THE HEADING, at the size of the thing it names.
+          <p>It was `.v2-label` — 11.5px at 560, the same treatment as "Today,
+          Sep 7" over a group of rows. That label is for a group inside a
+          region; this is the region. `items-start` rather than `items-baseline`
+          because Add is six pixels smaller and baseline-aligning them left it
+          sitting low against a 22px heading. */}
+      <div className="flex items-start gap-3">
+        <h2 id="now-actions" className="text-title-1 font-headline text-ink">
           Action items
         </h2>
-        {!adding && state !== "loading" && state !== "error" && (
+        {!adding && !unsettled && (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="ml-auto flex items-center gap-1 text-foot text-ink-4 transition-colors duration-press ease-soft hover:text-ink-2"
+            className={cn(
+              "v2-home-sub ml-auto flex shrink-0 items-center gap-1.5 pt-0.5",
+              // Iris as a word, which is what `--brand-text` is for. The one
+              // affordance in this column and the only coloured thing in it.
+              "text-brand-text transition-opacity duration-press ease-soft hover:opacity-80",
+            )}
           >
-            <Plus className="h-3 w-3" aria-hidden /> Add
+            <Plus className="h-[18px] w-[18px]" aria-hidden /> Add
           </button>
         )}
       </div>
@@ -83,10 +121,12 @@ export function NowActionItems({ items }: { items: ActionItems }) {
         finished ones was thirteen rows of which four mattered. Two views of
         one array, switched locally: no request, no route, no state anybody
         else can see.
-        <p>Drawn only once there is something to switch between. A tab bar over
-        an empty account is chrome describing nothing.
+        <p>Drawn at zero as well as at four. The switch is part of this
+        region's shape rather than a thing that appears once there is enough to
+        justify it, and `Open (0) / Completed (0)` is a true and useful pair of
+        facts about an empty list.
       */}
-      {state !== "loading" && state !== "error" && (open.length > 0 || done.length > 0) && (
+      {!unsettled && (
         /*
           Two pressed-state buttons, not a `role="tablist"`. A tablist owes the
           reader arrow-key navigation between its tabs and an `aria-controls`
@@ -95,17 +135,24 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           where one is currently in effect, and it needs no keyboard contract
           beyond the one a button already has.
         */
-        <div className="mt-3 flex items-center gap-1">
+        <div className="mt-5 flex items-center gap-1">
           <Tab on={view === "open"} onSelect={() => setView("open")} label="Open" count={open.length} />
           <Tab on={view === "done"} onSelect={() => setView("done")} label="Completed" count={done.length} />
         </div>
       )}
 
-      <div className="mt-3 border-t border-line pt-3">
+      {/* The one rule in this column, and it is the same hairline the
+          conversation list uses between rows. `mt-6` when the switch is not
+          drawn, so the rule does not ride up under the heading while the
+          request is still out. */}
+      <div
+        data-actions-rule
+        className={cn("border-t border-line pt-6", unsettled ? "mt-6" : "mt-2.5")}
+      >
         {adding && (
-          <div className="mb-3 flex items-center gap-2.5">
+          <div className="mb-8 flex items-start gap-5">
             <span
-              className="h-3.5 w-3.5 shrink-0 rounded-[3.5px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
+              className="mt-0.5 h-6 w-6 shrink-0 rounded-[6px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
               aria-hidden
             />
             <input
@@ -124,18 +171,18 @@ export function NowActionItems({ items }: { items: ActionItems }) {
               onBlur={() => void commit()}
               placeholder="What needs doing?"
               aria-label="New action item"
-              className="h-7 flex-1 bg-transparent text-callout text-ink outline-none placeholder:text-ink-4"
+              className="v2-home-sub h-6 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4"
             />
             {items.creating && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-4" aria-hidden />
+              <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-ink-4" aria-hidden />
             )}
           </div>
         )}
 
         {state === "loading" ? (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-3/4" />
           </div>
         ) : state === "error" ? (
           <ResourceLoadError
@@ -145,17 +192,24 @@ export function NowActionItems({ items }: { items: ActionItems }) {
             retrying={items.retrying}
           />
         ) : showing.length === 0 ? (
-          /* Quiet and truthful, and different per view: "nothing on your list"
-             is wrong under Completed, where the truth is that nothing has been
-             finished yet. Reached only from a settled response, so both are
+          /* Quiet and truthful, and one of three rather than one of two.
+             "Nothing on your list" is wrong under Completed, where the truth
+             is that nothing has been finished yet -- and it is also wrong
+             under Open when everything on the list happens to be done, which
+             is the case the always-drawn switch made reachable. Every branch
+             is reached only from a settled response, so all three are
              statements about the list rather than about the network. */
-          <p className="text-callout leading-[1.45] text-ink-4">
-            {view === "open"
-              ? "Nothing on your list. What a meeting committed you to stays on that meeting."
-              : "Nothing finished yet."}
+          <p className="v2-home-meta text-ink-4">
+            {view === "done"
+              ? "Nothing finished yet."
+              : done.length > 0
+                ? "No open action items."
+                : "Nothing on your list. What a meeting committed you to stays on that meeting."}
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          /* 32px between rows. With a 24px title line and a 22px owner line
+             under it that is an 82px pitch, which is the reference's. */
+          <ul className="flex flex-col gap-8">
             {showing.map((item) => (
               <Row key={item.id} item={item} onToggle={() => void items.toggle(item)} />
             ))}
@@ -171,6 +225,11 @@ export function NowActionItems({ items }: { items: ActionItems }) {
  *
  * <p>The count is `array.length` and nothing else — it cannot disagree with
  * the rows underneath because it is the same array.
+ *
+ * <p>The reference draws the one in effect as a filled pill about 110 by 40 and
+ * the other as bare text on the same line. Only the active one gets a fill: two
+ * filled pills side by side is a segmented control, which says both are
+ * settings rather than that one is the current view.
  */
 function Tab({
   on,
@@ -189,10 +248,14 @@ function Tab({
       aria-pressed={on}
       onClick={onSelect}
       className={cn(
-        "rounded-md px-2 py-1 text-foot transition-colors duration-press ease-soft",
+        "v2-home-meta flex h-10 items-center rounded-full px-4 transition-colors duration-press ease-soft",
         on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-4 hover:text-ink-2",
       )}
     >
+      {/* One plain space between them. `&nbsp;` here put U+00A0 into the
+          accessible name, which reads identically on screen and does not match
+          `/Open \(4\)/` -- the name three tests in this component's suite and
+          one in Home's are written against. */}
       {label} <span className="tabular">({count})</span>
     </button>
   );
@@ -203,38 +266,103 @@ function Tab({
  *
  * <p>A real checkbox, because it is one — a styled `<span>` with a click
  * handler is the commonest way a list like this stops working for a keyboard.
- * It is sized and positioned like the reference's, which draws a 12px rounded
- * square on the row's first line.
+ * 24px, from the reference, which is also comfortably past the 24px minimum a
+ * pointer target wants.
+ *
+ * <p>Four columns, and two of them are drawn only when there is something in
+ * them: the owner line where somebody set an owner, and the due date where
+ * there is a deadline. Nothing is invented to fill the shape — a standalone
+ * item carries a title, a status, and an owner and a date where they were
+ * given.
  */
 function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => void }) {
   const done = item.status === "DONE";
-  const due = dueLabel(item);
+  const due = dueColumn(item);
 
   return (
-    <li className="flex items-start gap-2.5">
+    <li className="flex items-start gap-5">
       <input
         type="checkbox"
         checked={done}
         onChange={onToggle}
         aria-label={done ? `Reopen ${item.title}` : `Complete ${item.title}`}
-        className="mt-[3px] h-3.5 w-3.5 shrink-0 accent-[hsl(var(--brand))]"
+        className="mt-0.5 h-6 w-6 shrink-0 accent-[hsl(var(--brand))]"
       />
       <span className="min-w-0 flex-1">
         <span
-          className={cn(
-            "block text-callout leading-[1.45] text-ink-2",
-            done && "text-ink-4 line-through",
-          )}
+          data-task-title
+          className={cn("v2-home-sub block text-ink-2", done && "text-ink-4 line-through")}
         >
           {item.title}
         </span>
-        {(due || item.ownerName) && (
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-foot text-ink-5">
-            {due && <span className={dueTone(item.dueStatus)}>{due}</span>}
-            {item.ownerName && <span>{item.ownerName}</span>}
+        {item.ownerName && (
+          <span data-task-owner className="v2-home-meta mt-1 block truncate text-ink-4">
+            {item.ownerName}
           </span>
         )}
       </span>
+      {/* The trailing pair, right-aligned against the column's edge. The menu
+          is a fixed width and the date is `shrink-0`, so the dates form a
+          right-aligned column whatever they say and a row with no date leaves
+          the menu where it was. */}
+      <span className="flex shrink-0 items-start gap-3">
+        {due && (
+          <span
+            data-task-due
+            className={cn("v2-home-meta whitespace-nowrap", dueTone(item.dueStatus))}
+          >
+            {due}
+          </span>
+        )}
+        <ItemMenu item={item} />
+      </span>
     </li>
+  );
+}
+
+/**
+ * The overflow menu, with the one thing it can actually do.
+ *
+ * <p>The reference draws a `⋯` on every row. It is here because there is a real
+ * action behind it — `DELETE /action-items/{id}`, which the meeting page's own
+ * row has offered since standalone items existed — and it would not be here
+ * otherwise. A decorative `⋯` that opens an empty menu is a control that lies
+ * about what a row can do.
+ *
+ * <p>One item, and no confirmation dialog, which is the behaviour the meeting
+ * page already has for the same call. Opening a menu and choosing Delete is two
+ * deliberate actions, and what is lost is a line of text somebody typed.
+ */
+function ItemMenu({ item }: { item: ActionItemResponse }) {
+  const [remove, { isLoading: deleting }] = useDeleteActionItemMutation();
+
+  async function onDelete() {
+    try {
+      await remove(item.id).unwrap();
+      toast.success("Deleted.");
+    } catch {
+      toast.error("Couldn't delete that.");
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`More for ${item.title}`}
+        disabled={deleting}
+        className="flex h-6 w-8 shrink-0 items-center justify-center rounded-md text-ink-4 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink-2 disabled:opacity-50"
+      >
+        {deleting ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem className="text-danger" onSelect={() => void onDelete()}>
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

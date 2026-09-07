@@ -41,6 +41,23 @@ import type { MeetingResponse, MeetingListQuery, Page } from "@/lib/types";
  * is `app/(app)/library/page.test.tsx`.
  */
 const query = vi.hoisted(() => ({ last: null as MeetingListQuery | null }));
+/*
+ * EVERY PER-MEETING REQUEST THIS PAGE MAKES.
+ *
+ * <p>Recorded so a list of twenty rows can be asserted to cost the same two
+ * calls as a list of one. The reference draws a sentence of summary under each
+ * title and there is no summary on the list payload, so the tempting fix is a
+ * request per row -- which on Home is twenty round trips before the page is
+ * readable. Entries with `skip` are not requests: a finished meeting opens no
+ * poll, and `useLiveMeetingStatus` passes `skip: done` for exactly that.
+ */
+const perMeeting = vi.hoisted(() => ({ calls: [] as { id: string; skip: boolean }[] }));
+/*
+ * What state the margin's query is in. Its own file drives the component
+ * directly; here it decides which of loading, failed and settled Home is
+ * laying out around -- the geometry has to be the same in all three.
+ */
+const actionItems = vi.hoisted(() => ({ state: "ready" as "ready" | "loading" | "error" }));
 /** The retry button is wired to this. */
 const refetch = vi.hoisted(() => vi.fn());
 
@@ -99,8 +116,12 @@ function result<T>(data: T | undefined, opts: {
 vi.mock("@/lib/api", () => ({
   // The per-meeting poll that a processing row runs underneath its socket
   // subscription. Home lists meetings; only the rows that are still being
-  // processed reach for this, and none of these tests is about one.
-  useGetMeetingQuery: () => ({ data: undefined }),
+  // processed reach for this, and none of these tests is about one -- so what
+  // it is here for is to be counted. See `perMeeting` above.
+  useGetMeetingQuery: (id: string, options?: { skip?: boolean }) => {
+    perMeeting.calls.push({ id, skip: options?.skip === true });
+    return { data: undefined };
+  },
   useGetMeetingsQuery: (q: MeetingListQuery, options?: { skip?: boolean }) => {
     if (options?.skip) {
       return {
@@ -134,21 +155,34 @@ vi.mock("@/lib/api", () => ({
    * answered.
    *
    * <p>Settled, and empty by default, because most of these tests are not
-   * about it — the action items have their own file. Empty is also the state
-   * that decides Home's composition: with nothing on the list there is no
-   * second column, so a test that wants the spread sets `tasks`.
+   * about it — the action items have their own file. Empty no longer decides
+   * Home's composition: the margin is drawn either way now, which is the
+   * correction the describe block at the bottom of this file is about.
    */
-  useGetActionItemsQuery: () => ({
-    data: { content: tasks, totalElements: tasks.length },
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    isSuccess: true,
-    isUninitialized: false,
-    refetch: () => {},
-  }),
+  useGetActionItemsQuery: () => {
+    const loadingNow = actionItems.state === "loading";
+    const erroredNow = actionItems.state === "error";
+    return {
+      // Undefined rather than an empty page in both unsettled states, because
+      // that is what RTK holds and it is the distinction `resourceState`
+      // exists to keep: no answer is not the answer "none".
+      data: loadingNow || erroredNow ? undefined : { content: tasks, totalElements: tasks.length },
+      isLoading: loadingNow,
+      isFetching: loadingNow,
+      isError: erroredNow,
+      isSuccess: !loadingNow && !erroredNow,
+      isUninitialized: false,
+      refetch: () => {},
+    };
+  },
   usePatchActionItemMutation: () => [vi.fn(), { isLoading: false }],
   useCreateStandaloneActionItemMutation: () => [vi.fn(), { isLoading: false }],
+  // The margin's row menu. One real action behind a real endpoint, which is
+  // the only reason the menu is drawn -- see components/v2/now/action-items.
+  useDeleteActionItemMutation: () => [
+    vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+    { isLoading: false },
+  ],
 }));
 
 // `isLoaded` and `sessionKey` are not decoration: the date window is remembered
@@ -196,8 +230,15 @@ function lastQuery(): MeetingListQuery | null {
   return query.last;
 }
 
+/** The per-meeting requests that were actually made, skips excluded. */
+function perMeetingCalls(): { id: string; skip: boolean }[] {
+  return perMeeting.calls.filter((c) => !c.skip);
+}
+
 beforeEach(() => {
   query.last = null;
+  perMeeting.calls = [];
+  actionItems.state = "ready";
   refetch.mockClear();
   loading = false;
   fetching = false;
@@ -241,6 +282,37 @@ describe("what Home asks for", () => {
     expect(lastQuery()?.unfiled).toBeUndefined();
   });
 
+  it("keeps showing a conversation that has been filed into a folder", () => {
+    /*
+     * THE GUARANTEE, AS A ROW RATHER THAN AS A SENTENCE.
+     *
+     * <p>This is the bug in the form somebody would actually hit it: record a
+     * meeting inside a folder, and under `unfiled=true` it was filed there and
+     * gone from the page called Recent. `projectId` is what "filed" means on
+     * the wire -- see `MeetingListQuery.unfiled` -- so a row carrying one must
+     * still be on this page.
+     *
+     * <p>The lede used to say so in words and no longer does; the approved
+     * copy is the reference's sentence. This assertion and the two beside it
+     * are what hold the promise now, which is the right place for it: prose
+     * cannot fail when the query changes underneath it.
+     */
+    rows = [
+      aMeeting({ id: "mtg_filed", title: "Filed away", projectId: "prj_1" }),
+      aMeeting({ id: "mtg_loose", title: "Never filed", projectId: null }),
+    ];
+    render(<HomePage />);
+
+    expect(screen.getByRole("link", { name: /Filed away/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Never filed/ })).toBeInTheDocument();
+    // And nothing that could have hidden either of them went over the wire.
+    expect(lastQuery()?.unfiled).toBeUndefined();
+    expect(lastQuery()?.from).toBeUndefined();
+    expect(lastQuery()?.to).toBeUndefined();
+    // The whole query, so a new narrowing parameter cannot arrive unnoticed.
+    expect(Object.keys(lastQuery() ?? {}).sort()).toEqual(["page", "size"]);
+  });
+
   it("asks for a short page, which is what makes it recent", () => {
     // The bound is the difference between this page and Library — both ask the
     // same question of the same endpoint, and this one asks for the top of the
@@ -276,10 +348,25 @@ describe("what Home asks for", () => {
  * does not name itself, one level along.
  */
 describe("the lines that explain the list", () => {
-  it("says that filing a conversation does not hide it from here", () => {
+  it("says what the page is, in the approved words", () => {
+    /*
+     * MOVED, NOT DROPPED. This used to assert `/wherever they are filed/` in
+     * the lede -- the clause that replaced `unfiled=true`, kept in the copy on
+     * the grounds that it was the page's one statement of the guarantee.
+     *
+     * <p>It was the wrong place for it. A subtitle restating a guarantee does
+     * not hold the guarantee: the query does, and to somebody who never saw
+     * the bug the clause reads as an odd thing to volunteer. So the assertion
+     * is on the real behaviour now, in `what Home asks for` above -- the wire
+     * carries no narrowing parameter, and a conversation that HAS been filed
+     * still appears in the list -- and what is checked here is the copy, which
+     * is the approved sentence exactly.
+     */
     render(<HomePage />);
 
-    expect(screen.getByText(/wherever they are filed/i)).toBeInTheDocument();
+    expect(
+      screen.getByText("Recent conversations and anything that needs your attention."),
+    ).toBeInTheDocument();
   });
 
   it("no longer claims the list is what is outside your folders", () => {
@@ -733,13 +820,59 @@ describe("a meeting that is still processing", () => {
  * where its content stops.
  */
 describe("the shape of Now", () => {
-  it("lays the page out as a measure and a margin", async () => {
+  it("lays the page out on Home's own frame, not the reading spread", async () => {
+    /*
+     * `.v2-spread` is built around `--measure`, the 680px reading column, and
+     * this page widened it to 780 with a variable override. Home reads nothing
+     * -- it is a list of rows and a margin -- and at the reference width the
+     * spread put the whole composition in the middle of the window with 236px
+     * of nothing down each side. `.v2-home` is the frame with the reference's
+     * numbers in it; see app/globals.css.
+     */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    // 680 + 40 + 400, centred, collapsing to the measure alone below 1160px.
-    // The page used to state its own 768px width and leave the rest to a pane.
-    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+    expect(container.querySelector(".v2-home")).toBeInTheDocument();
+    expect(container.querySelector(".v2-spread")).toBeNull();
+    // And no `--measure` override left behind on it.
+    expect(container.innerHTML).not.toContain("--measure:");
+  });
+
+  it("puts the two regions in one grid row, so neither spans the other", async () => {
+    /*
+     * The masthead used to carry `min-[1160px]:col-span-2`, which is why the
+     * margin began under the Ask launcher rather than beside the greeting --
+     * and why the drawing before that needed a 186px spacer to fake the
+     * alignment by hand. Both are gone, and both must stay gone: the alignment
+     * is the grid's now and cannot drift.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const frame = container.querySelector(".v2-home");
+    expect(frame).toBeInTheDocument();
+    expect(frame!.innerHTML).not.toContain("col-span-2");
+    // Two children, and the second is the margin.
+    expect(frame!.children).toHaveLength(2);
+    expect(frame!.children[1].hasAttribute("data-home-margin")).toBe(true);
+  });
+
+  it("lays one wash behind the whole page rather than one per column", async () => {
+    /*
+     * A gradient per region puts a seam down the middle of the page, and a
+     * fill behind the margin makes it a panel -- which is the one thing this
+     * composition is not. One element, before the frame, so ordinary paint
+     * order puts it underneath without a `z-index` anywhere.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const washes = container.querySelectorAll(".v2-ambient");
+    expect(washes).toHaveLength(1);
+    expect(washes[0].getAttribute("aria-hidden")).toBe("true");
+    expect(washes[0].className).toContain("pointer-events-none");
+    // Behind, not inside: the frame is its next sibling.
+    expect(washes[0].nextElementSibling?.className).toContain("v2-home");
   });
 
   it("mounts no side pane, so the margin cannot become a second application", async () => {
@@ -789,30 +922,50 @@ describe("the shape of Now", () => {
     expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
   });
 
-  it("draws no margin at all when there is nothing on the list", async () => {
+  it("keeps the margin at zero items, and does not re-centre the page", async () => {
     /*
-     * THE SPARSE ACCOUNT, WHICH IS THE REAL ONE. One meeting and no standalone
-     * items used to leave a 376px column of nothing beside the list, under a
-     * heading and a truthful sentence explaining that it was empty. A column
-     * that exists to say it is empty is worse than no column: the list stops
-     * being centred to make room for it.
+     * INVERTED, DELIBERATELY. This used to assert the opposite: no standalone
+     * items drew no margin at all and the conversation list re-centred, on the
+     * grounds that a column existing to say it is empty is worse than no
+     * column.
+     *
+     * <p>That gave Home two different compositions decided by a list most
+     * accounts' is empty -- so adding the first action item moved every row on
+     * the screen, and the page somebody uses twenty times a day changed shape
+     * under them. The column is part of Home's frame now. What is empty is the
+     * list inside it, and the sentence says so.
      */
     tasks = [];
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    expect(screen.queryByRole("heading", { name: "Action items" })).not.toBeInTheDocument();
-    // And the spread collapses to one centred column, which is the same
-    // mechanism Library uses when its margin has nothing in it.
-    expect(container.querySelector(".v2-spread")).toHaveAttribute("data-margin", "empty");
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    // Both counts, at zero. They are facts about the list, and true ones.
+    expect(screen.getByRole("button", { name: /Open \(0\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Completed \(0\)/ })).toBeInTheDocument();
+    // The frame is the same frame, with the margin in it either way.
+    expect(container.querySelector("[data-home-margin]")).toBeInTheDocument();
   });
 
-  it("spreads into two columns once the list has something on it", async () => {
-    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
-    const { container } = render(<HomePage />);
+  it("keeps the margin while the list is still loading, and when it fails", async () => {
+    // The geometry has to be stable across every state this column can be in,
+    // or the page moves as answers arrive.
+    tasks = [];
+    actionItems.state = "loading";
+    const { container, unmount } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    expect(container.querySelector("[data-home-margin]")).toBeInTheDocument();
+    // Nothing is claimed about the counts before an answer arrives.
+    expect(screen.queryByRole("button", { name: /Open \(/ })).not.toBeInTheDocument();
+    unmount();
 
-    expect(container.querySelector(".v2-spread")).not.toHaveAttribute("data-margin");
+    actionItems.state = "error";
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't load your action items/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open \(/ })).not.toBeInTheDocument();
   });
 
   it("carries no filter row where the reference draws one", async () => {
@@ -845,8 +998,26 @@ describe("the shape of Now", () => {
 
     expect(screen.queryByText(/stay on top of your work/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/learn more/i)).not.toBeInTheDocument();
-    // And no link to a page of all action items, because there is no such page.
+    /* And no link to a page of all action items. The reference ends the column
+       with one; `app/(app)` has no action-items route, so it would go nowhere.
+       Re-audited for this correction -- see the report. */
     expect(screen.queryByText(/view all action items/i)).not.toBeInTheDocument();
+  });
+
+  it("puts no card, fill or border behind either region", async () => {
+    /*
+     * The page feels full because of geometry, type and two hairlines. A panel
+     * behind the margin would make it the bordered side pane this composition
+     * replaced, and a card behind the list would bring back the V1 shape.
+     */
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const margin = container.querySelector("[data-home-margin]")!;
+    for (const banned of ["rounded-", "bg-surface", "bg-white/", "border ", "border-"]) {
+      expect(margin.getAttribute("class") ?? "").not.toContain(banned);
+    }
   });
 
   it("says nothing the product cannot do", async () => {
@@ -885,6 +1056,43 @@ describe("the shape of Now", () => {
     expect(row.className).not.toContain("border");
     // And it still goes where it always went.
     expect(row).toHaveAttribute("href", "/meetings/mtg_a");
-    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+    expect(container.querySelector(".v2-home")).toBeInTheDocument();
+  });
+
+  it("draws its rows at Home's size, which Library's are not", async () => {
+    /*
+     * `size="home"`: a 24px glyph in a column of its own, a 20px title and 28px
+     * of air above and below. The archive keeps the compact 15px row -- a
+     * hundred of Home's would be a very long page -- and the default on the
+     * component is `"list"`, so this assertion is what would fail if Home
+     * stopped asking.
+     */
+    // With a duration, because the metadata line is drawn only when there is
+    // a fact to put in it -- a row with nothing to say renders no empty line.
+    rows = [aMeeting({ id: "mtg_a", title: "Tuesday design review", durationSeconds: 1920 })];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    expect(row.className).toContain("py-7");
+    expect(row.querySelector("[data-row-title]")?.className).toContain("v2-home-title");
+    expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-home-meta");
+    // A 24px glyph in its own column, which is the indent the reference draws.
+    expect(row.querySelector("svg")?.getAttribute("class")).toContain("h-6");
+  });
+
+  it("asks for nothing per row, so a wide list is still one request", async () => {
+    /*
+     * The reference draws a sentence of summary under every title. There is no
+     * summary on `MeetingResponse` and no speaker count either, and the only
+     * ways to put them on screen are a request per row or an invention. This
+     * is the guard against the first: twenty rows, and the page still makes
+     * exactly the two calls it makes with one.
+     */
+    rows = Array.from({ length: 20 }, (_, i) => aMeeting({ id: `mtg_${i}`, title: `Meeting ${i}` }));
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(perMeetingCalls()).toHaveLength(0);
   });
 });

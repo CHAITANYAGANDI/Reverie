@@ -3,6 +3,22 @@ import * as React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+/*
+ * The one thing in this component that still reaches for the store directly.
+ *
+ * <p>`add` and `toggle` arrive as props, because Home owns the query. Delete
+ * does not: it belongs to one row rather than to the list, nothing above needs
+ * to know about it, and lifting it would put a third callback on the
+ * controller for the sake of symmetry. The real hook is
+ * `useDeleteActionItemMutation`, which is what the meeting page's own row has
+ * used since standalone items existed.
+ */
+const del = vi.hoisted(() => ({ fn: vi.fn(), unwrap: vi.fn() }));
+vi.mock("@/lib/api", () => ({
+  useDeleteActionItemMutation: () => [del.fn, { isLoading: false }],
+}));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 import { NowActionItems } from "@/components/v2/now/action-items";
 import type { ActionItems } from "@/components/v2/now/use-action-items";
 import type { ActionItemResponse } from "@/lib/types";
@@ -47,7 +63,6 @@ function controller(over: Partial<ActionItems> = {}): ActionItems {
     state: over.state ?? "ready",
     open,
     done,
-    occupied: over.occupied ?? true,
     add,
     toggle,
     creating: false,
@@ -64,6 +79,8 @@ beforeEach(() => {
   add = vi.fn().mockResolvedValue(undefined);
   toggle = vi.fn().mockResolvedValue(undefined);
   refetch = vi.fn();
+  del.unwrap = vi.fn().mockResolvedValue(undefined);
+  del.fn = vi.fn(() => ({ unwrap: del.unwrap }));
 });
 
 describe("the two views", () => {
@@ -109,11 +126,41 @@ describe("the two views", () => {
     expect(screen.getByText("Book the room")).toBeInTheDocument();
   });
 
-  it("draws no switch at all on an empty list", () => {
-    // A tab bar over nothing is chrome describing nothing.
+  it("draws both counts at zero, which is the correction", () => {
+    /*
+     * INVERTED. This used to assert the opposite -- no switch at all on an
+     * empty list, on the grounds that a tab bar over nothing is chrome
+     * describing nothing.
+     *
+     * <p>It was wrong about what the chrome is for. The switch is part of this
+     * column's shape, and Home's frame keeps the column at every size; a
+     * heading with nothing under it and then a switch appearing the moment
+     * somebody types their first item moved the whole region. `Open (0)` and
+     * `Completed (0)` are two true facts, and they are the two facts somebody
+     * looking at an empty margin wants: nothing waiting, nothing done.
+     */
     margin({ open: [], done: [] });
 
-    expect(screen.queryByRole("button", { name: /^(Open|Completed) \(/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open (0)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Completed (0)" })).toBeInTheDocument();
+    // Open is still the one in effect.
+    expect(screen.getByRole("button", { name: "Open (0)" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("names each count with a plain space, which is what the labels are read by", () => {
+    /*
+     * The count was briefly separated with `&nbsp;`, which renders identically
+     * and makes the accessible name "Open\u00a0(2)" -- so every
+     * `getByRole("button", { name: /Open \(2\)/ })` in this file and in Home's
+     * stopped matching while the screen looked correct. Asserted exactly.
+     */
+    margin({ open: [anItem({ id: "a" }), anItem({ id: "b" })], done: [] });
+
+    expect(screen.getByRole("button", { name: "Open (2)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Completed (0)" })).toBeInTheDocument();
   });
 });
 
@@ -136,6 +183,22 @@ describe("what it says when a view is empty", () => {
 
     expect(screen.getByText("Nothing finished yet.")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing on your list/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing is open when everything on the list is done", () => {
+    /*
+     * The third sentence, and the state that made it necessary. With the
+     * switch always drawn, Open can be empty while the list is not -- and
+     * "Nothing on your list. What a meeting committed you to stays on that
+     * meeting." would then be false twice over: there is a list, and the
+     * sentence sends somebody to look for items on a meeting page.
+     */
+    margin({ open: [], done: [anItem({ id: "c", status: "DONE" })] });
+
+    expect(screen.getByText("No open action items.")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing on your list/)).not.toBeInTheDocument();
+    // And the count beside it agrees.
+    expect(screen.getByRole("button", { name: "Completed (1)" })).toBeInTheDocument();
   });
 });
 
@@ -210,6 +273,31 @@ describe("before and instead of an answer", () => {
     await userEvent.click(screen.getByRole("button", { name: /Try again|Retry/i }));
 
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+describe("the overflow menu", () => {
+  it("deletes through the mutation, because that is why it is drawn at all", async () => {
+    /*
+     * The reference puts a `...` on every row. It is here only because there
+     * is a real call behind it; a decorative one that opens an empty menu is a
+     * control lying about what a row can do.
+     */
+    const item = anItem({ title: "Book the room" });
+    margin({ open: [item] });
+
+    await userEvent.click(screen.getByRole("button", { name: "More for Book the room" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    expect(del.fn).toHaveBeenCalledWith("ai_1");
+  });
+
+  it("offers nothing else, so the menu is never empty and never padded", async () => {
+    margin({ open: [anItem({ title: "Book the room" })] });
+
+    await userEvent.click(screen.getByRole("button", { name: "More for Book the room" }));
+
+    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
   });
 });
 

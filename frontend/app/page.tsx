@@ -5,6 +5,7 @@ import { Reveal, Stagger } from "@/components/v2/landing/reveal";
 import { StageShowcase } from "@/components/v2/landing/stage-showcase";
 import { AskShowcase } from "@/components/v2/landing/ask-showcase";
 import { LanguageMoment } from "@/components/v2/landing/language-moment";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { LandingMotion } from "@/components/v2/landing/motion-provider";
 
 /**
@@ -105,17 +106,19 @@ export default function LandingPage() {
       />
 
       {/*
-       * THE ONE ORNAMENT IN THE PRODUCT.
+       * THE ONE ORNAMENT, and it is shared now.
        *
-       * V1 had two and used them on most screens. This appears on the public
-       * and auth pages only, and it exists for a single reason: a marketing
-       * page with no photograph needs somewhere for the eye to land before the
-       * type starts. It never appears behind product content.
+       * V1 had two and used them on most screens. This one started here, on
+       * the public and auth pages, for a single reason: a marketing page with
+       * no photograph needs somewhere for the eye to land before the type
+       * starts.
+       *
+       * <p>It is on Home as well now -- a deliberate product decision, not a
+       * drift -- so the declaration moved into `.v2-ambient` and behind a
+       * component. Identical output; one place to change it. See
+       * components/v2/ambient-canvas.tsx.
        */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[60vmax] bg-[radial-gradient(120%_62%_at_50%_-12%,hsl(var(--brand)/0.15),transparent_62%),radial-gradient(80%_40%_at_82%_8%,hsl(var(--success)/0.05),transparent_70%)]"
-      />
+      <AmbientCanvas />
 
       <LandingMotion>
         <div className="relative">

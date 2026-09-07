@@ -19,6 +19,12 @@
  * middle-clickable, has an address on hover, and works before hydration —
  * which a control that is the main call to action on the default page should.
  *
+ * <p>It has no width of its own and never had: it fills the column it is in,
+ * which on Home is the ~890px list column. It used to be wrapped in a
+ * `max-w-[var(--measure)]` because the masthead above it spanned both grid
+ * tracks; the frame is two real columns now, so the wrapper is gone and this
+ * control ends where the rows under it end.
+ *
  * <p>The glyph is not the search glyph. Search returns a list and lives in the
  * band; this returns a sentence. Drawing both with a magnifier is what made
  * people try to search here.
@@ -40,17 +46,21 @@ export function AskLauncher() {
       href={ASK}
       className={
         /* The one functional surface on this page. It is a control rather than
-           content, which is the whole test for whether something gets a fill. */
-        /* Taller and roomier than the 44px row it was: below a page title
-           this is the one thing on Home somebody is meant to reach for, and
-           at 44px it read as another list row. */
-        "flex h-12 items-center gap-3 rounded-lg bg-white/[0.04] px-4 " +
+           content, which is the whole test for whether something gets a fill.
+           <p>64px and a 10px radius, from the approved reference, where it is
+           one horizontal surface the full width of the list. It was 48px --
+           already up from 44 -- and beside 114px conversation rows in an 890px
+           column that read as one more row rather than as the thing this page
+           is asking you to reach for. Still no glow and no drop shadow: a 1px
+           inset edge and a 4% fill, which is what every other raised control
+           in the product is made of. */
+        "flex h-16 items-center gap-4 rounded-[10px] bg-white/[0.04] px-5 " +
         "shadow-[inset_0_0_0_1px_rgb(var(--line-strong))] " +
         "transition-colors duration-press ease-soft hover:bg-white/[0.06]"
       }
     >
-      <Waypoints className="h-[18px] w-[18px] shrink-0 text-ink-4" aria-hidden />
-      <span className="flex-1 text-body text-ink-4">Ask Reverie about your meetings…</span>
+      <Waypoints className="h-6 w-6 shrink-0 text-ink-4" aria-hidden />
+      <span className="v2-home-lede flex-1 text-ink-4">Ask Reverie about your meetings…</span>
     </Link>
   );
 }

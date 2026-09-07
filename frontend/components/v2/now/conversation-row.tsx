@@ -30,11 +30,32 @@
  * the row. Nothing here fetches a summary to put a sentence under the title:
  * that would be one request per row, and the reference's prose is not in the
  * list payload.
+ *
+ * <h2>Two sizes, and why the markup branches</h2>
+ *
+ * <p>`size="home"` is a larger presentation of the same row: a 24px glyph in a
+ * column of its own, a 20px title, 16px metadata, and 28px of air above and
+ * below, in a column about 890px wide. Home's approved reference draws it that
+ * way, and at the compact size the same composition read as a dense table with
+ * a large heading over it.
+ *
+ * <p>Everything that decides WHAT a row says is shared: the icon, the live
+ * status subscription, the facts line and its dots, the failure text. Two
+ * drawings of a conversation is how a status pill ends up on one screen and not
+ * the other, and none of that is duplicated below.
+ *
+ * <p>The markup of the two lines is not shared, and deliberately. At list size
+ * the metadata sits at the row's own left edge, under the glyph; at Home's it
+ * is indented onto the title's axis, inside the glyph's column. That is a
+ * different tree rather than different classes on one tree, and the attempt to
+ * express both with `display: contents` silently moved Library's metadata onto
+ * its title's baseline. `"list"` is the default, so every caller but Home gets
+ * the branch it already had, character for character.
  */
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronRight, FileAudio, FileText, Youtube } from "lucide-react";
+import { ChevronRight, Clock, FileAudio, FileText, Youtube } from "lucide-react";
 import { useLiveMeetingStatus } from "@/components/processing-row";
 import { stageText } from "@/lib/processing-stages";
 import { formatDuration, isTerminal } from "@/lib/format";
@@ -53,6 +74,7 @@ export function NowConversationRow({
   meeting,
   action,
   trailingTime = false,
+  size = "list",
 }: {
   meeting: MeetingResponse;
   /**
@@ -81,7 +103,15 @@ export function NowConversationRow({
    * heading above them and the time belongs beside the duration.
    */
   trailingTime?: boolean;
+  /**
+   * How large the row is drawn. See the note above.
+   *
+   * <p>`"list"` is the default, so Library, a folder and every other caller is
+   * untouched by Home's correction.
+   */
+  size?: "list" | "home";
 }) {
+  const big = size === "home";
   const Icon =
     meeting.sourceType === "YOUTUBE"
       ? Youtube
@@ -115,7 +145,20 @@ export function NowConversationRow({
     );
   }
   if (meeting.durationSeconds) {
-    facts.push(<span key="len">{formatDuration(meeting.durationSeconds)}</span>);
+    /* A clock beside it on Home, which is what the reference draws. Decoration
+       rather than data, so `aria-hidden` -- "32 min" already says what it is.
+       Not at list size, where the metadata line is 11.5px and a glyph in it
+       would be noise rather than an anchor. */
+    facts.push(
+      big ? (
+        <span key="len" className="inline-flex items-center gap-1.5">
+          <Clock className="h-[15px] w-[15px] shrink-0 text-ink-5" aria-hidden />
+          {formatDuration(meeting.durationSeconds)}
+        </span>
+      ) : (
+        <span key="len">{formatDuration(meeting.durationSeconds)}</span>
+      ),
+    );
   }
   if (meeting.tags.length > 0) {
     facts.push(<span key="tags">{meeting.tags.slice(0, 2).join(", ")}</span>);
@@ -144,6 +187,55 @@ export function NowConversationRow({
     );
   }
 
+  /*
+   * THE CLOCK AND THE WAY IN, at the end of the title's line.
+   *
+   * <p>`shrink-0` on both and `flex-1 truncate` on the title, so a long name
+   * runs out of room before it runs under the time -- which at 390px is the
+   * difference between a readable row and a title with a clock printed
+   * through it. Shared by both sizes because it is the same pair of things.
+   */
+  const trailing = trailingTime && (
+    <>
+      <span
+        data-row-time
+        className={
+          big
+            ? "v2-home-meta tabular shrink-0 font-mono text-ink-4"
+            : "tabular shrink-0 font-mono text-foot text-ink-4"
+        }
+      >
+        {at}
+      </span>
+      <ChevronRight
+        className={
+          big
+            ? "h-[18px] w-[18px] shrink-0 translate-y-px text-ink-4"
+            : "h-3.5 w-3.5 shrink-0 translate-y-px text-ink-5"
+        }
+        aria-hidden
+      />
+    </>
+  );
+
+  const meta = facts.length > 0 && (
+    <span
+      data-row-meta
+      className={
+        big
+          ? "v2-home-meta mt-2 flex flex-wrap items-center text-ink-3"
+          : "mt-[5px] flex flex-wrap items-center text-foot text-ink-3"
+      }
+    >
+      {facts.map((fact, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <Dot />}
+          {fact}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+
   return (
     <li className="relative">
       <Link
@@ -154,46 +246,56 @@ export function NowConversationRow({
            already flush against the page padding, so ten pixels each way is
            ten pixels of horizontal scroll. */
         className={
-          "block rounded-md py-3 transition-colors duration-press ease-soft hover:bg-white/[0.035] sm:-mx-2.5 sm:px-2.5" +
+          "block rounded-md transition-colors duration-press ease-soft hover:bg-white/[0.035]" +
+          /* 28px above and below at Home's size. With a 28px title line and a
+             22px metadata line that is a 114px row, which is the reference's
+             147px less exactly the preview sentence the list payload does not
+             carry -- see the note in app/(app)/home/page.tsx. */
+          (big ? " py-7 sm:-mx-3 sm:px-3" : " py-3 sm:-mx-2.5 sm:px-2.5") +
           // Room for the control, so a long title runs out before it rather
           // than under it. Only when there is one.
           (action ? " pr-9 sm:pr-9" : "")
         }
       >
-        <span className="flex items-baseline gap-2.5">
-          <Icon className="h-[13px] w-[13px] shrink-0 translate-y-px text-ink-5" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-title-3 font-headline text-ink">
-            {meeting.title}
+        {big ? (
+          /* HOME. The glyph gets a column: 24px, 32px of gap, and the title
+             and its metadata both begin on the axis that leaves -- 70px in
+             from the row's content edge, which is the indent the reference
+             draws and what makes three tall rows read as a list. */
+          <span className="flex items-start gap-8 pl-3.5">
+            <Icon className="h-6 w-6 shrink-0 translate-y-px text-ink-4" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-4">
+                <span
+                  data-row-title
+                  className="v2-home-title min-w-0 flex-1 truncate font-headline text-ink"
+                >
+                  {meeting.title}
+                </span>
+                {trailing}
+              </span>
+              {meta}
+            </span>
           </span>
-          {trailingTime && (
-            /*
-              The clock and the way in, at the end of the title's line.
-              <p>`shrink-0` on both and `flex-1 truncate` on the title above,
-              so a long name runs out of room before it runs under the time --
-              which at 390px is the difference between a readable row and a
-              title with a clock printed through it.
-            */
-            <>
-              <span className="tabular shrink-0 font-mono text-foot text-ink-4">{at}</span>
-              <ChevronRight
-                className="h-3.5 w-3.5 shrink-0 translate-y-px text-ink-5"
-                aria-hidden
-              />
-            </>
-          )}
-        </span>
-        {facts.length > 0 && (
-          <span className="mt-[5px] flex flex-wrap items-center text-foot text-ink-3">
-            {facts.map((fact, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <Dot />}
-                {fact}
-              </React.Fragment>
-            ))}
-          </span>
+        ) : (
+          /* THE ARCHIVE'S ROW, unchanged: the glyph on the title's baseline,
+             and the metadata at the row's own left edge underneath it. */
+          <>
+            <span className="flex items-baseline gap-2.5">
+              <Icon className="h-[13px] w-[13px] shrink-0 translate-y-px text-ink-5" aria-hidden />
+              <span
+                data-row-title
+                className="min-w-0 flex-1 truncate text-title-3 font-headline text-ink"
+              >
+                {meeting.title}
+              </span>
+              {trailing}
+            </span>
+            {meta}
+          </>
         )}
       </Link>
-      {action && <div className="absolute right-0 top-3">{action}</div>}
+      {action && <div className={big ? "absolute right-0 top-7" : "absolute right-0 top-3"}>{action}</div>}
     </li>
   );
 }

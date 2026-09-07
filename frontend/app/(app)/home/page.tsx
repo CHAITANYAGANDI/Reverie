@@ -1,13 +1,40 @@
 "use client";
 
 /**
- * Now.
+ * Home.
  *
- * <h2>The composition, and what it replaced</h2>
+ * <h2>The composition</h2>
  *
- * <p>`design-demo/final/07-now.html` and `09-now-first.html`: a 680px measure,
- * a 40px gap and a 400px margin, centred, scrolling as one document. What was
- * here instead was a 768px column of rounded cards beside a shell-owned
+ * <p>From the approved 1672x941 reference, and it is a frame of Home's own:
+ * ~890px of list, a quiet vertical rule, and a ~463px margin, with the whole
+ * thing held to the reference width and centred past it. See `.v2-home` in
+ * app/globals.css for the numbers, and for why this is not `.v2-spread`.
+ *
+ * <p>What was here before that was the spread: a 680px reading measure with a
+ * 400px margin, widened on this page to 780 + 376. On a 1672px screen that put
+ * the whole composition in the middle of the window with 236px of nothing down
+ * each side, and it is the wrong unit for this page -- `--measure` exists
+ * because 74 characters is where the eye stops losing a line of a transcript,
+ * and Home is a list of rows. It reads nothing.
+ *
+ * <p>Two columns, and neither spans the other. The masthead used to span both
+ * tracks, which is why the margin began under the launcher; the thing before
+ * that needed a 186px spacer to fake the same alignment. It is one grid row
+ * now, so both regions start on the same line by construction.
+ *
+ * <h2>Two facts the list payload does not carry</h2>
+ *
+ * <p>The reference's rows read `10 sec / 1 speaker` over a sentence of
+ * summary. `MeetingResponse` has neither a speaker count nor any summary field
+ * -- checked against the Java DTO, not only the TypeScript -- and the only
+ * ways to put them on screen would be a request per row or an invention. Both
+ * are refused, so a Home row is the reference's row less its third line and
+ * less one metadata fact. Everything else about it is the reference's,
+ * including the air above and below the text.
+ *
+ * <h2>What the composition replaced</h2>
+ *
+ * <p>A 768px column of rounded cards beside a shell-owned
  * 400–448px bordered pane with its own scrollbar and its own tab bar — a second
  * application standing next to the first. The V2 study rejects exactly that: a
  * persistent AI panel beside Home, and a list whose every row announces itself
@@ -59,6 +86,7 @@ import { NowActionItems } from "@/components/v2/now/action-items";
 import { useActionItems } from "@/components/v2/now/use-action-items";
 import { cn } from "@/lib/utils";
 import { AskLauncher } from "@/components/v2/now/ask-launcher";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { isTerminal } from "@/lib/format";
 import { groupByDay } from "@/lib/days";
 import { homeListState } from "@/lib/home-list-state";
@@ -184,129 +212,121 @@ export default function HomePage() {
   /*
    * THE MARGIN'S CONTENT, FETCHED HERE.
    *
-   * <p>Home cannot lay itself out until it knows whether the margin has
-   * anything in it: with items this is a two-column spread, and without them a
-   * 376px column of nothing beside a one-meeting list is the dead space this
-   * composition exists to remove. One call, read by this page and passed to the
-   * component that draws it -- not the same query twice. See
-   * components/v2/now/use-action-items.
+   * <p>One call, read by this page and passed to the component that draws it --
+   * not the same query twice. See components/v2/now/use-action-items.
+   *
+   * <p>It no longer decides the layout. It used to: an account with no
+   * standalone items drew no margin and the page re-centred on the
+   * conversation list, so Home had two compositions and adding the first item
+   * moved every row on the screen. The column is drawn in every state now --
+   * loading, failed, empty, full -- and what changes is the sentence under the
+   * rule. See components/v2/now/action-items.
    */
   const actions = useActionItems();
-  const spread = showing && actions.occupied;
 
   return (
     /*
-     * ONE DOCUMENT. The page used to give its list its own
+     * ONE DOCUMENT, ON ONE CANVAS. The page used to give its list its own
      * `h-[calc(100vh-var(--band))] overflow-y-auto`, which made a second
      * scrolling region beside the pane's — two scrollbars on the default
      * screen. The margin is part of this page and scrolls with it.
+     *
+     * <p>`relative` for the wash below, and nothing else: no background, no
+     * width, no padding. Those are the frame's, one level in, so the wash can
+     * span the window while the content sits inside 136px gutters.
      */
-    <div className="px-4 pb-16 lg:px-6">
+    <div className="relative">
       {/*
-        ONE GRID, AND THE GREETING SPANS IT.
-        <p>The margin used to begin with a 186px spacer whose only job was to
-        drop its first heading level with the first heading in the list. That is
-        a number measured off a mockup: it was wrong the moment the greeting
-        wrapped to two lines, and it was keyed to the wrong breakpoint once
-        already.
-        <p>So the masthead and the launcher span both columns and the two lists
-        sit in the row beneath them. The alignment is now the grid's rather than
-        a constant's, and it cannot drift.
-        <p>The column widths are Home's own, set as variables on this element
-        rather than on `:root`: `--measure` is the reading measure that Meeting
-        and Transcript are built to, and widening it globally to suit a list of
-        rows would widen forty-line paragraphs with it. Only from `xl`, because
-        780 + 44 + 376 needs more room than the 1160px the spread splits at.
-      */}
-      <div
-        className={cn(
-          "v2-spread",
-          "xl:[--measure:48.75rem] xl:[--margin-col:23.5rem] xl:[--col-gap:2.75rem] xl:[--doc:75rem]",
-        )}
-        data-margin={spread ? undefined : "empty"}
-      >
-      <div className="min-w-0 min-[1160px]:col-span-2">
-        {/* `empty` is unqualified now. With no window there is only one way
-            for this list to be empty -- the account is -- where before the
-            masthead had to distinguish that from a date range that happened to
-            return nothing. */}
-        <Masthead
-          meetings={data?.content}
-          empty={listState === "empty"}
-          /* So the subtitle does not promise "the list you keep for yourself"
-             beside a page that is not showing one. */
-          hasMargin={spread}
-        />
-
-        {/* The one functional surface in the measure, and it is a door to the
-            workspace Ask rather than a chat of its own. Held to the list's
-            width rather than the spread's, so it does not run out under the
-            margin. */}
-        {listState !== "empty" && (
-          <div className="min-[1160px]:max-w-[var(--measure)]">
-            <AskLauncher />
-          </div>
-        )}
-      </div>
-
-      <div className="min-w-0">
-        {listState === "skeleton" ? (
-          <div className="mt-9 space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : listState === "error" ? (
-          <div className="mt-9">
-            <HomeLoadError onRetry={() => void meetings.refetch()} />
-          </div>
-        ) : listState === "empty" ? (
-          <EmptyState />
-        ) : (
-          <div className="mt-9">
-            {sections.map((section) => (
-              <Group key={section.key} heading={section.heading} note={section.note}>
-                <Rows meetings={section.items} />
-              </Group>
-            ))}
-
-            {/* Said only when it is true, and said where the list runs out. A
-                page showing twenty of two hundred conversations with nothing at
-                the bottom is a list somebody scrolls to the end of and
-                believes. `totalElements` is on the response already. */}
-            {data && data.totalElements > data.content.length && (
-              <p className="text-foot text-ink-4">
-                Showing the {data.content.length} most recent of{" "}
-                <span className="tabular">{data.totalElements}</span>.{" "}
-                <Link href={LIBRARY} className="underline underline-offset-2 hover:text-ink-2">
-                  All of them are in Library
-                </Link>
-                .
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/*
-       * THE MARGIN. Not a pane: no border, no fill, no scrollbar of its own. It
-       * is the second column of this page and it stops where its content stops
-       * -- there is nothing under the list, because a promotional card in the
-       * core product is marketing standing where whitespace belongs.
+       * THE ATMOSPHERE, and it is the page's rather than a column's.
        *
-       * <p>Drawn only when it has something in it. An account with no
-       * standalone items collapses the spread instead, and the conversation
-       * list centres: see `spread` above.
+       * <p>One element behind everything, so the iris lift over the upper
+       * centre and the trace of green in the upper right run continuously
+       * under the list, under the rule and under the margin. A gradient per
+       * region would put a seam down the middle of the page, and a fill behind
+       * the margin would make it a panel -- which is the one thing this
+       * composition is not.
+       *
+       * <p>Pulled up by the band so the field is continuous through the glass.
+       * 46rem rather than the landing's 60vmax: the masthead here is four
+       * lines, not a hero, and the wash has to be gone by the time the list
+       * starts.
        */}
-        {spread && (
-          /* `mt-9` at the spread, matching the list's own top margin, so the
-             two columns of the second row start on the same line. That is what
-             the 186px spacer was measuring by hand -- and getting wrong the
-             moment the greeting wrapped. */
-          <div className="mt-10 min-w-0 min-[1160px]:mt-9">
-            <NowActionItems items={actions} />
-          </div>
-        )}
+      <AmbientCanvas height="46rem" top="calc(var(--band) * -1)" />
+
+      {/*
+       * THE FRAME. Two columns, one grid row, and a rule between them that is
+       * the margin's own left edge -- see `.v2-home` in app/globals.css.
+       */}
+      <div className="v2-home relative">
+        <div className="min-w-0">
+          {/* `empty` is unqualified now. With no window there is only one way
+              for this list to be empty -- the account is -- where before the
+              masthead had to distinguish that from a date range that happened
+              to return nothing. */}
+          <Masthead empty={listState === "empty"} />
+
+          {/* The one functional surface on the page, and it is a door to the
+              workspace Ask rather than a chat of its own. Full width of the
+              column: the reference draws it as one horizontal surface the
+              width of the list, and it was held to `--measure` only because
+              the masthead above it used to span both tracks. */}
+          {listState !== "empty" && <AskLauncher />}
+
+          {listState === "skeleton" ? (
+            <div className="mt-[3.625rem] space-y-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-[3.5rem] w-full" />
+              ))}
+            </div>
+          ) : listState === "error" ? (
+            <div className="mt-[3.625rem]">
+              <HomeLoadError onRetry={() => void meetings.refetch()} />
+            </div>
+          ) : listState === "empty" ? (
+            <div className="mt-12">
+              <EmptyState />
+            </div>
+          ) : (
+            /* 58px under the launcher, which is the reference's air between
+               the one control on this page and the list it is above. */
+            <div className="mt-[3.625rem] space-y-10">
+              {sections.map((section) => (
+                <Group key={section.key} heading={section.heading} note={section.note}>
+                  <Rows meetings={section.items} />
+                </Group>
+              ))}
+
+              {/* Said only when it is true, and said where the list runs out.
+                  A page showing twenty of two hundred conversations with
+                  nothing at the bottom is a list somebody scrolls to the end
+                  of and believes. `totalElements` is on the response already. */}
+              {data && data.totalElements > data.content.length && (
+                <p className="v2-home-meta text-ink-4">
+                  Showing the {data.content.length} most recent of{" "}
+                  <span className="tabular">{data.totalElements}</span>.{" "}
+                  <Link href={LIBRARY} className="underline underline-offset-2 hover:text-ink-2">
+                    All of them are in Library
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/*
+         * THE MARGIN. Not a pane and not a card: no fill, no radius, no
+         * scrollbar of its own. One 1px rule down its left edge, which is
+         * `[data-home-margin]` in app/globals.css, and the page's background
+         * running underneath it uninterrupted. There is nothing beneath the
+         * list either, because a promotional card in the core product is
+         * marketing standing where whitespace belongs.
+         *
+         * <p>Always drawn. See the note beside `useActionItems` above.
+         */}
+        <div data-home-margin>
+          <NowActionItems items={actions} />
+        </div>
       </div>
     </div>
   );
@@ -317,10 +337,16 @@ export default function HomePage() {
 /**
  * A heading, an optional note or control beside it, and the rows.
  *
- * <p>`.group` from the reference: a `t-label` heading, anything else pushed to
- * the far end of the same baseline, and 24px under the whole thing. No card and
- * no rule under the heading — the hairlines between rows are the only lines in
- * the list.
+ * <p>A 17px heading in muted blue-grey, anything else pushed to the far end of
+ * the same baseline. No card, and no rule under the heading — the hairlines
+ * between rows are the only lines in the list.
+ *
+ * <p>It was `.v2-label`: 11.5px at 560 with a little tracking, which is the
+ * label for a group inside a 680px reading column. Beside a list of 20px row
+ * titles it read as a caption that had lost its picture. And it carries no
+ * bottom margin now: the first row's own 28px of top padding is the gap, which
+ * is what makes the space above the first title the same as the space between
+ * every pair of rows after it.
  */
 function Group({
   heading,
@@ -334,10 +360,10 @@ function Group({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-6">
-      <div className="mb-2.5 flex items-baseline gap-3">
-        <h2 className="v2-label">{heading}</h2>
-        {note && <p className="text-foot text-ink-4">{note}</p>}
+    <section>
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-title-2 text-ink-3">{heading}</h2>
+        {note && <p className="v2-home-meta text-ink-4">{note}</p>}
         {aside && <div className="ml-auto">{aside}</div>}
       </div>
       {children}
@@ -350,10 +376,11 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
   return (
     <ul className="[&>li+li>a]:shadow-[inset_0_1px_0_rgb(var(--line))]">
       {meetings.map((meeting) => (
-        /* The clock at the far end, with the way in beside it. Home only:
-           Library groups its rows under a date and reads the time beside the
-           duration. See `trailingTime` on the row. */
-        <NowConversationRow key={meeting.id} meeting={meeting} trailingTime />
+        /* The clock at the far end with the way in beside it, and Home's
+           larger drawing of the row. Library groups its rows under a date and
+           reads the time beside the duration, at the compact size the archive
+           was designed at -- see `trailingTime` and `size` on the row. */
+        <NowConversationRow key={meeting.id} meeting={meeting} trailingTime size="home" />
       ))}
     </ul>
   );
@@ -371,16 +398,7 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
  * exist are stated as headings over the rows they count, where they cannot
  * drift from them.
  */
-function Masthead({
-  meetings,
-  empty,
-  hasMargin,
-}: {
-  meetings?: MeetingResponse[];
-  empty: boolean;
-  /** Whether the action-items margin is on the page beside this. */
-  hasMargin: boolean;
-}) {
+function Masthead({ empty }: { empty: boolean }) {
   const { mode, userId, profile } = useAuth();
   const prefs = useGetPreferencesQuery();
 
@@ -416,10 +434,24 @@ function Masthead({
       : `${greeting}.`;
 
   return (
-    <header className="pb-5 pt-10">
+    /*
+     * No padding ABOVE. The frame owns the air over the date -- 99px at the
+     * reference, which is what puts it on the reference's line under a 48px
+     * band -- because a masthead with its own `pt-10` inside a frame with its
+     * own top padding is two numbers deciding one gap.
+     *
+     * <p>44px underneath, which is this block's, and it is the reference's gap
+     * between the lede and the launcher. It belongs here rather than on the
+     * launcher: the launcher is not drawn at all on an empty account, and a
+     * top margin on a thing that is sometimes absent is a gap that sometimes
+     * disappears.
+     */
+    <header className="pb-11">
       {/* Both lines reserve their height, so the greeting arriving one tick
-          after the list does not push the list down under a reader's cursor. */}
-      <p className="v2-label h-4">
+          after the list does not push the list down under a reader's cursor.
+          `min-h` rather than `h` on the greeting: at 390px it wraps, and a
+          fixed height would print the second line through the lede. */}
+      <p className="v2-home-sub h-6 text-ink-3">
         {now
           ? now.toLocaleDateString(undefined, {
               weekday: "long",
@@ -428,22 +460,28 @@ function Masthead({
             })
           : ""}
       </p>
-      <h1 className="mt-2.5 h-9 text-title-l font-headline text-ink">{now ? title : ""}</h1>
-      <p className="mt-2.5 max-w-[58ch] text-[0.9375rem] leading-[1.5] text-ink-3">
+      <h1 className="v2-home-greet mt-4 min-h-[2.875rem] font-headline text-ink">
+        {now ? title : ""}
+      </h1>
+      <p className="v2-home-lede mt-3.5 max-w-[64ch] text-ink-3">
         {/*
-          "wherever they are filed" is the load-bearing half and stays: it is
-          the sentence that replaced `unfiled=true`, and the promise that
-          filing a conversation into a folder does not hide it from this page.
-          The second clause is dropped when the margin is not on the page,
-          because there is then no list to keep.
+          THE REFERENCE'S SENTENCE, VERBATIM.
+          <p>This read "Recent conversations, wherever they are filed, and what
+          needs your attention." for one turn -- the middle clause being the
+          sentence that replaced `unfiled=true` and the promise that filing a
+          conversation into a folder does not hide it from this page.
+          <p>The clause is gone and the guarantee is not. A promise in a
+          subtitle was never what kept it: the query is, and it is asserted on
+          the wire and on the rows -- see "never asks the server to hide filed
+          conversations" and "keeps showing a conversation that has been filed
+          into a folder" in this page's suite. Copy that restates a guarantee
+          is copy that goes stale the day the guarantee breaks, and it reads to
+          somebody who has never heard of the bug as an odd thing to mention.
         */}
         {empty
           ? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
-          : hasMargin
-            ? "Your newest conversations, wherever they are filed, and the list you keep for yourself."
-            : "Your newest conversations, wherever they are filed."}
+          : "Recent conversations and anything that needs your attention."}
       </p>
-      {!empty && (meetings?.length ?? 0) > 0 && <div className="h-6" />}
     </header>
   );
 }

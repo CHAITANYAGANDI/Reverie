@@ -304,6 +304,31 @@
   }
 
   /* ==========================================================================
+     THE AMBIENT CANVAS
+     ==========================================================================
+     Two radial gradients, and the near-black underneath stays dominant: iris
+     at 15% above the upper centre, green at 5% in the upper right, both gone
+     before the fold. It is atmosphere rather than colour -- the page must not
+     read as navy, and there must be no blob with an edge to it.
+
+     Here rather than in an arbitrary Tailwind value because the declaration
+     is 180 characters long and was written out in full twice. See
+     components/v2/ambient-canvas.tsx for where it is allowed. */
+  .v2-ambient {
+    background-image:
+      radial-gradient(
+        120% 62% at 50% -12%,
+        hsl(var(--brand) / 0.15),
+        transparent 62%
+      ),
+      radial-gradient(
+        80% 40% at 82% 8%,
+        hsl(var(--success) / 0.05),
+        transparent 70%
+      );
+  }
+
+  /* ==========================================================================
      THE SPREAD — the measure and its margin
      ==========================================================================
      680 + 40 + 400 = 1120. At 1440 that leaves 160px gutters; at 1280, 80.
@@ -332,6 +357,194 @@
     grid-template-columns: minmax(0, var(--measure));
     justify-content: center;
     max-width: var(--measure);
+  }
+
+  /* ==========================================================================
+     HOME — a composition of its own, and the one page with its own scale
+     ==========================================================================
+     WHY THIS IS NOT `.v2-spread`.
+
+     The spread is built around `--measure`: 680px of reading column, because
+     the longest thing anybody reads in this product is a ninety-minute
+     transcript and 74 characters is where the eye stops losing the line. Home
+     reads nothing. It is a masthead, one control, a list of rows and your own
+     list beside it — and at 680 + 40 + 400 on a 1672px screen that composition
+     sat in the middle of the window with 236px of nothing down each side.
+
+     So Home has its own frame, and it is broad on purpose: the approved
+     reference puts the list at ~890px and the margin at ~460px, with the two
+     separated by a quiet rule rather than by a gap. Nothing outside this file
+     and Home's own tree reads these variables, so widening the list cannot
+     widen a transcript.
+
+     The numbers below are measured off the reference at 1672px and step down
+     four times. `max-width: 1672px` is the reference viewport itself, which
+     makes the approved layout the design's natural maximum rather than
+     something that only happens at one window size.
+
+     WHAT THE COLUMNS ARE. Two, and neither spans the other: masthead, launcher
+     and list on the left; action items on the right. The margin used to begin
+     under the launcher because the masthead spanned both tracks, which is what
+     the 186px spacer before it was compensating for. It is one grid row now,
+     so both regions begin on the same line by construction. */
+  .v2-home {
+    /* Phone and tablet: one column, ordinary page padding. */
+    --home-pad-l: 1rem;
+    --home-pad-r: 1rem;
+    --home-top: 2rem;
+    /* The rule and the margin only exist from 1160 up; see below. */
+    --home-rule-gap: 0px;
+    --home-margin-pad: 0px;
+    --home-margin: 0px;
+
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: var(--home-rule-gap);
+    width: 100%;
+    max-width: 1672px;
+    margin-inline: auto;
+    padding: var(--home-top) var(--home-pad-r) 4rem var(--home-pad-l);
+  }
+  @media (min-width: 640px) {
+    .v2-home {
+      --home-pad-l: 1.5rem;
+      --home-pad-r: 1.5rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .v2-home {
+      --home-pad-l: 2rem;
+      --home-pad-r: 2rem;
+      --home-top: 2.5rem;
+    }
+  }
+  /* THE SPREAD POINT. The same 1160px the rest of the product stacks at, so
+     there is one fallback in the application rather than two. */
+  @media (min-width: 1160px) {
+    .v2-home {
+      --home-pad-l: 2.5rem;
+      --home-pad-r: 2rem;
+      --home-top: 4.5rem;
+      --home-rule-gap: 2.5rem;
+      --home-margin-pad: 2rem;
+      --home-margin: 21.75rem; /* 348 */
+      grid-template-columns: minmax(0, 1fr) calc(
+          1px + var(--home-margin-pad) + var(--home-margin)
+        );
+    }
+  }
+  @media (min-width: 1280px) {
+    .v2-home {
+      --home-pad-l: 4rem;
+      --home-pad-r: 3rem;
+      --home-top: 5.25rem;
+      --home-rule-gap: 2.75rem;
+      --home-margin-pad: 2.25rem;
+      --home-margin: 23.75rem; /* 380 */
+    }
+  }
+  @media (min-width: 1440px) {
+    .v2-home {
+      --home-pad-l: 6rem;
+      --home-pad-r: 4rem;
+      --home-top: 5.75rem;
+      --home-rule-gap: 3rem;
+      --home-margin-pad: 2.5rem;
+      --home-margin: 26.25rem; /* 420 */
+    }
+  }
+  /* The reference. 136 + 891 + 56 + 1 + 43 + 463 + 82 = 1672. */
+  @media (min-width: 1600px) {
+    .v2-home {
+      --home-pad-l: 8.5rem; /* 136 */
+      --home-pad-r: 5.125rem; /* 82 */
+      --home-top: 6.1875rem; /* 99 — the date lands at y=147 under a 48px band */
+      --home-rule-gap: 3.5rem; /* 56 */
+      --home-margin-pad: 2.6875rem; /* 43 */
+      --home-margin: 28.9375rem; /* 463 */
+    }
+  }
+
+  /* THE MARGIN COLUMN, and the rule that separates it.
+     <p>A border rather than a bordered panel: the rule is one edge of the
+     column, so it starts where the grid row starts and ends where the row's
+     content ends — which is what the reference draws, and what a fixed-height
+     element could not follow. `--line-strong` at 10% is deliberately at the
+     edge of visible. There is no fill and no radius: the page's background
+     runs underneath both columns without interruption.
+     <p>Below the spread point it is a block under the list instead, separated
+     the same way but horizontally. */
+  .v2-home > [data-home-margin] {
+    min-width: 0;
+    margin-top: 2.5rem;
+    padding-top: 2.5rem;
+    border-top: 1px solid rgb(var(--line-strong));
+  }
+  @media (min-width: 1160px) {
+    .v2-home > [data-home-margin] {
+      margin-top: 0;
+      border-top: 0;
+      border-left: 1px solid rgb(var(--line-strong));
+      padding-left: var(--home-margin-pad);
+      /* Optical, not structural: 22px puts "Action items" at 22px on the same
+         top composition as an 18px date, which is where the reference has it.
+         Inside the border, so the rule still begins at the top of the row. */
+      padding-top: 1.375rem;
+    }
+  }
+
+  /* HOME'S TYPE.
+     <p>Five sizes, and they exist because the interface scale does not fit
+     here. That scale is built for a 680px measure — 13.5px body, a 15px row
+     title — and the approved reference draws this page a step and a half
+     larger throughout: a 40px greeting over a 20px lede, and a list of 20px
+     titles over 16px metadata. At interface sizes in an 890px column the same
+     composition reads as a dense table with a large heading on top of it.
+     <p>Scoped to `.v2-home`, so Library's rows and every transcript keep the
+     scale they were designed at. */
+  .v2-home-greet {
+    font-size: 2.5rem;
+    line-height: 1.15;
+    letter-spacing: -0.022em;
+  }
+  .v2-home-lede {
+    font-size: 1.25rem;
+    line-height: 1.5;
+    letter-spacing: -0.008em;
+  }
+  .v2-home-title {
+    font-size: 1.25rem;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+  }
+  .v2-home-sub {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+  .v2-home-meta {
+    font-size: 1rem;
+    line-height: 1.375rem;
+  }
+  /* A phone is 390px wide and the same five sizes would spend a third of the
+     screen on the greeting. Down to the interface scale, which is what that
+     scale is for. */
+  @media (max-width: 640px) {
+    .v2-home-greet {
+      font-size: var(--t-title-l);
+      letter-spacing: -0.018em;
+    }
+    .v2-home-lede {
+      font-size: 1.0625rem;
+    }
+    .v2-home-title {
+      font-size: 1.0625rem;
+    }
+    .v2-home-sub {
+      font-size: 1rem;
+    }
+    .v2-home-meta {
+      font-size: 0.875rem;
+    }
   }
 
   /* ==========================================================================
