@@ -234,16 +234,53 @@ vi.mock("@/components/export-dialog", () => ({ ExportDialog: () => null }));
  * that item for the placement to be assertable here. What the menu *does* is
  * pinned in components/meeting-menu.test.tsx.
  */
-vi.mock("@/components/meeting-menu", () => ({
-  MeetingMenu: ({ onExport }: { onExport: () => void }) => (
-    <div>
-      <button type="button" aria-label="More actions" />
-      <button type="button" role="menuitem" onClick={onExport}>
-        Export…
-      </button>
-    </div>
-  ),
-}));
+vi.mock("@/components/meeting-menu", async () => {
+  /*
+   * A real dropdown wrapping a stubbed menu.
+   *
+   * <p>The page hands this two things the composition depends on: Export, and
+   * whatever the open reading mode brought with it -- the summary's template,
+   * or the transcript's find / highlights / speakers / correct. Those are page
+   * state, so their wiring belongs in this file; what the real menu does with
+   * everything else is pinned in components/meeting-menu.test.tsx.
+   *
+   * <p>The primitives are the real ones rather than stubs, because the items
+   * the page builds are `DropdownMenuItem`s and Radix throws outside a menu
+   * root -- and because pressing a trigger and then an item is the interaction
+   * being asserted.
+   */
+  const dd = await import("@/components/ui/dropdown-menu");
+  return {
+    MeetingMenu: ({
+      onExport,
+      onAddTag,
+      extra,
+    }: {
+      onExport: () => void;
+      onAddTag: () => void;
+      extra?: React.ReactNode;
+    }) => (
+      <dd.DropdownMenu>
+        <dd.DropdownMenuTrigger asChild>
+          <button type="button" aria-label="More actions" />
+        </dd.DropdownMenuTrigger>
+        <dd.DropdownMenuContent>
+          {/* Plain buttons for the two the page owns: Radix returns focus on
+              select, which in jsdom lands after the assertion. What the real
+              items do is components/meeting-menu.test.tsx's business. */}
+          <button type="button" role="menuitem" onClick={onAddTag}>
+            Add a tag
+          </button>
+          <button type="button" role="menuitem" onClick={onExport}>
+            Export…
+          </button>
+          {extra}
+        </dd.DropdownMenuContent>
+      </dd.DropdownMenu>
+    ),
+  };
+});
+
 vi.mock("@/components/transcript-editor", () => ({
   TranscriptEditor: () => <div data-testid="transcript-editor" />,
 }));
@@ -527,7 +564,9 @@ describe("the reading modes", () => {
   it("offers exactly Summary and Transcript", () => {
     render(<MeetingDetailPage />);
 
-    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
+    // Trimmed: each segment carries a small glyph before its word, as
+    // `18-meeting-brief.png` draws them.
+    const tabs = screen.getAllByRole("tab").map((t) => t.textContent?.trim());
     expect(tabs).toEqual(["Summary", "Transcript"]);
   });
 
@@ -743,12 +782,21 @@ describe("the docked player", () => {
     expect(dock(container)?.className).not.toContain("--rail-w");
   });
 
-  it("is held to the measure, so it sits under what it is scrubbing", async () => {
+  it("spans the document frame rather than the paragraph measure", async () => {
+    /*
+     * THIS ASSERTED `max-w-measure`, and the change is deliberate.
+     * `19-meeting-transcript.png` runs the dock the full width of the meeting's
+     * column -- `--doc` -- rather than stopping at the 680px the words are set
+     * to. A timeline is a ruler over forty minutes of audio; squeezing it into
+     * the reading measure makes it a coarser ruler for no reason. It still
+     * stops before the chat, which is the wrapper's own inset.
+     */
     const { container } = render(<MeetingDetailPage />);
 
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 
-    expect(dock(container)?.querySelector(".max-w-measure")).not.toBeNull();
+    expect(dock(container)?.querySelector(".max-w-doc")).not.toBeNull();
+    expect(dock(container)?.querySelector(".max-w-measure")).toBeNull();
   });
 });
 
@@ -807,9 +855,29 @@ describe("the meeting's own controls", () => {
     expect(screen.queryByLabelText("More actions")).not.toBeInTheDocument();
   });
 
-  it("keeps tagging on the facts line, and only once the meeting is readable", () => {
+  it("puts no empty tag pill in the masthead", () => {
+    /*
+     * It carried a dashed `+ Tag` on every meeting, tagged or not -- an empty
+     * affordance on the overwhelming majority of them, and part of what kept
+     * that area looking utility-heavy. `18-meeting-brief.png` has one facts
+     * line and nothing else before the document.
+     *
+     * <p>Adding one is an action, so it moved to where the actions are: the
+     * item and its callback are pinned in components/meeting-menu.test.tsx,
+     * against the real menu.
+     */
     render(<MeetingDetailPage />);
-    expect(screen.getByRole("button", { name: /Tag/ })).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: /Tag/ })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Tag name")).not.toBeInTheDocument();
+  });
+
+  it("shows tags a meeting already has, on the facts line", () => {
+    meeting = aMeeting({ tags: ["beta", "launch"] });
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByText("beta")).toBeInTheDocument();
+    expect(screen.getByText("launch")).toBeInTheDocument();
   });
 });
 
@@ -995,7 +1063,13 @@ describe("the summary", () => {
     });
     render(<MeetingDetailPage />);
 
-    expect(screen.getByText("Topics discussed")).toBeInTheDocument();
+    /*
+     * No heading, and no pills. `18-meeting-brief.png` sets these as plain
+     * text under the lead, separated by the product's dot -- six words that do
+     * not need to be told they are topics, and are not operable so must not
+     * look it.
+     */
+    expect(screen.queryByText("Topics discussed")).not.toBeInTheDocument();
     expect(screen.getAllByText("Pricing").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Hiring").length).toBeGreaterThan(0);
   });
@@ -1103,6 +1177,81 @@ describe("the summary's opening paragraph", () => {
   });
 });
 
+describe("the summary's opening paragraph, said twice", () => {
+  it("renders it once when it is the first section word for word", () => {
+    /*
+     * REPORTED FROM A REAL MEETING. A short recording produces one section,
+     * and the model writes the same sentences into `shortSummary` and into it
+     * -- so the document opened with a paragraph and then repeated it verbatim
+     * under a heading.
+     */
+    summary = {
+      ...summary!,
+      shortSummary: "  We agreed to ship on the\n  ninth.  ",
+      sections: [
+        {
+          key: "overview",
+          title: "Overview",
+          kind: "prose",
+          text: "We agreed to ship on the ninth.",
+          bullets: [],
+          groups: [],
+        },
+      ],
+    };
+    render(<MeetingDetailPage />);
+
+    // Whitespace-insensitive, so the two renderings of one paragraph count as
+    // one -- and the section keeps it, because the section has the heading.
+    expect(screen.getAllByText("We agreed to ship on the ninth.")).toHaveLength(1);
+    expect(screen.getByText("Overview")).toBeInTheDocument();
+  });
+
+  it("renders both when they differ at all", () => {
+    /*
+     * Exact only. Two summaries that merely overlap are two things somebody
+     * may want to read, and a near-match rule would start hiding real content
+     * the moment a model rephrased one of them.
+     */
+    summary = {
+      ...summary!,
+      shortSummary: "We agreed to ship on the ninth.",
+      sections: [
+        {
+          key: "overview",
+          title: "Overview",
+          kind: "prose",
+          text: "We agreed to ship on the ninth, with a caveat about staging.",
+          bullets: [],
+          groups: [],
+        },
+      ],
+    };
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByText("We agreed to ship on the ninth.")).toBeInTheDocument();
+    expect(
+      screen.getByText("We agreed to ship on the ninth, with a caveat about staging."),
+    ).toBeInTheDocument();
+  });
+
+  it("compares only against the first section", () => {
+    // The lead summarises the meeting; a later section repeating it is a
+    // coincidence of a long document rather than the duplication being fixed.
+    summary = {
+      ...summary!,
+      shortSummary: "We agreed to ship on the ninth.",
+      sections: [
+        { key: "a", title: "What was decided", kind: "prose", text: "Beta ships.", bullets: [], groups: [] },
+        { key: "b", title: "Overview", kind: "prose", text: "We agreed to ship on the ninth.", bullets: [], groups: [] },
+      ],
+    };
+    render(<MeetingDetailPage />);
+
+    expect(screen.getAllByText("We agreed to ship on the ninth.")).toHaveLength(2);
+  });
+});
+
 describe("the summary's states", () => {
   it("shows a skeleton before the first answer, not an absence", () => {
     summaryQuery = "loading";
@@ -1195,21 +1344,31 @@ describe("the summary's states", () => {
  * spend a model call, so both answer to the allowance.
  */
 describe("rewriting the summary", () => {
-  it("offers the template picker only once there is a brief to rewrite", () => {
+  it("offers the template only once there is a summary to rewrite", async () => {
+    /*
+     * IN THE OVERFLOW MENU, not on the mode row.
+     *
+     * <p>`18-meeting-brief.png` has two modes, Ask and an overflow on that row
+     * and nothing else; a permanent `Template: General` beside the tabs read as
+     * a third peer of Summary and Transcript. It is a setting on the document,
+     * changed rarely, which is what a menu is for. Same query, same mutation.
+     */
     templates = [
       { slug: "general", name: "General" },
       { slug: "standup", name: "Standup" },
     ];
     const { unmount } = render(<MeetingDetailPage />);
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("More actions"));
+    expect(screen.getByText("Summary template")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Standup/ })).toBeInTheDocument();
     unmount();
 
-    // A picker over a brief that does not exist yet is a control that cannot
-    // do anything.
+    // A template over a summary that does not exist yet is a control that
+    // cannot do anything.
     summary = undefined;
     meeting = aMeeting({ status: "SUMMARIZING" });
     render(<MeetingDetailPage />);
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Summary template")).not.toBeInTheDocument();
   });
 
   it("does not offer it over a transcript, which it cannot change", async () => {
@@ -1217,8 +1376,12 @@ describe("rewriting the summary", () => {
     render(<MeetingDetailPage />);
 
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    await userEvent.click(screen.getByLabelText("More actions"));
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // The menu carries what the open mode brought with it, and a template item
+    // over a transcript would do nothing to what is on screen.
+    expect(screen.queryByText("Summary template")).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Find in transcript/ })).toBeInTheDocument();
   });
 
   it("says the transcript changed under a stale summary, and offers the rewrite", () => {
@@ -1317,9 +1480,16 @@ describe("the transcript", () => {
     ];
     await readTranscript();
 
-    // One turn, so one timecode: the heading of a turn is where its
-    // playback starts, and two here would mean the grouping did not happen.
-    expect(screen.getAllByRole("button", { name: /^Play from/ })).toHaveLength(1);
+    /*
+     * ONE NAME, TWO TIMECODES.
+     *
+     * <p>The grouping is what puts the speaker's name on the page once; each
+     * utterance inside the turn keeps its own timecode in the gutter, which is
+     * how `19-meeting-transcript.png` draws it and how the editor always drew
+     * it. Two names here would mean the grouping did not happen.
+     */
+    expect(screen.getAllByText("Priya")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Play from/ })).toHaveLength(2);
     expect(screen.getByText("First")).toBeInTheDocument();
     expect(screen.getByText("Second")).toBeInTheDocument();
   });
@@ -1361,22 +1531,26 @@ describe("the transcript", () => {
   });
 
   /**
-   * Open one of the three utilities above the transcript.
+   * Open one of the three transcript tools.
    *
-   * <p>They were three stacked blocks before the first spoken line. Each is a
-   * toggle now and each opens the control that was already there, so the tests
-   * below press the toggle and then assert exactly what they asserted before.
+   * <p>They were three stacked blocks above the first spoken line, then a row
+   * of three toggles, and now they are items in the meeting's one overflow
+   * menu -- because `19-meeting-transcript.png` has neither: the first turn
+   * begins under the mode row. Each item opens the control that was already
+   * there, so the tests below open it and then assert what they always did.
    */
-  async function openUtility(name: RegExp) {
-    await userEvent.click(screen.getByRole("button", { name }));
+  async function openTool(name: RegExp) {
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name }));
   }
 
-  it("keeps all three utilities out of the way until they are asked for", async () => {
+  it("draws no utility row at all until something is asked for", async () => {
     /*
      * THE COMPOSITION THIS EXISTS FOR. A full-width find box with two lines of
      * help under it, a bordered marks strip and a roll-call with a bar per
-     * speaker, all above the first spoken line — on the screen the V2 study
-     * says the design lives or dies on.
+     * speaker — and then, briefly, a row of three toggles — all above the first
+     * spoken line, on the screen the V2 study says the design lives or dies on.
+     * `19-meeting-transcript.png` has none of it.
      */
     segments = [
       aSegment({ id: "a", speaker: "Priya", start: 0, end: 60 }),
@@ -1386,46 +1560,48 @@ describe("the transcript", () => {
 
     expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit speakers" })).not.toBeInTheDocument();
-    // And the three ways to ask for them are on one row.
-    expect(screen.getByRole("button", { name: /Find/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(screen.getByRole("button", { name: /Speakers/ })).toBeInTheDocument();
+    // And no toggles standing in for them either.
+    expect(screen.queryByRole("button", { name: /^Find$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Speakers/ })).not.toBeInTheDocument();
   });
 
-  it("opens one utility at a time, so the block cannot grow back", async () => {
+  it("offers all four tools in the overflow menu", async () => {
+    segments = [
+      aSegment({ id: "a", speaker: "Priya", start: 0, end: 60 }),
+      aSegment({ id: "b", speaker: "Dev", start: 60, end: 90 }),
+    ];
+    await readTranscript();
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    for (const item of [/Find in transcript/, /Speakers/, /Correct transcript/]) {
+      expect(screen.getByRole("menuitem", { name: item })).toBeInTheDocument();
+    }
+  });
+
+  it("opens one tool at a time, so the block cannot grow back", async () => {
     segments = [
       aSegment({ id: "a", speaker: "Priya", start: 0, end: 60 }),
       aSegment({ id: "b", speaker: "Dev", start: 60, end: 90 }),
     ];
     await readTranscript();
 
-    await openUtility(/Find/);
+    await openTool(/Find in transcript/);
     expect(screen.getByLabelText("Find in transcript")).toBeInTheDocument();
 
-    await openUtility(/Speakers/);
+    await openTool(/Speakers/);
     expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit speakers" })).toBeInTheDocument();
   });
 
-  it("says on the closed control that a search is still narrowing things", async () => {
-    /*
-     * A collapsed control that is filtering what is on screen is the bug this
-     * codebase has fixed twice on other pages. The count rides the toggle.
-     */
-    segments = [
-      aSegment({ id: "a", text: "We agreed to ship." }),
-      aSegment({ id: "b", speaker: "Dev", text: "Nothing about that here." }),
-    ];
+  it("closes a tool and leaves the transcript alone", async () => {
+    segments = [aSegment({ id: "a", text: "We agreed to ship." })];
     await readTranscript();
 
-    await openUtility(/Find/);
-    await userEvent.type(screen.getByLabelText("Find in transcript"), "agreed");
-    await openUtility(/Find/);
+    await openTool(/Find in transcript/);
+    await userEvent.click(screen.getByRole("button", { name: /Close find in transcript/i }));
 
     expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Find/ })).toHaveTextContent("1");
+    expect(screen.getByText("agreed")).toBeInTheDocument();
   });
 
   it("offers Find in transcript, and says how many matched", async () => {
@@ -1435,7 +1611,7 @@ describe("the transcript", () => {
     ];
     await readTranscript();
 
-    await openUtility(/Find/);
+    await openTool(/Find in transcript/);
     await userEvent.type(screen.getByLabelText("Find in transcript"), "agreed");
 
     expect(screen.getByText(/1 match in 1 turn/)).toBeInTheDocument();
@@ -1446,7 +1622,7 @@ describe("the transcript", () => {
     // failed to load.
     await readTranscript();
 
-    await openUtility(/Find/);
+    await openTool(/Find in transcript/);
     await userEvent.type(screen.getByLabelText("Find in transcript"), "zzzz");
 
     expect(screen.getByText(/Nothing in this transcript matches/)).toBeInTheDocument();
@@ -1459,9 +1635,9 @@ describe("the transcript", () => {
     ];
     await readTranscript();
 
-    // Behind the Speakers disclosure, with the same real stats and the same
-    // editor behind them.
-    await openUtility(/Speakers/);
+    // Behind the Speakers item, with the same real stats and the same editor
+    // behind them.
+    await openTool(/Speakers/);
     expect(screen.getByText(/Priya \(\d+%\)/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Edit speakers" }));
     expect(screen.getByTestId("speaker-editor")).toBeInTheDocument();
@@ -1485,9 +1661,11 @@ describe("the transcript", () => {
   });
 
   it("hands the whole transcript to the editor when that mode is chosen", async () => {
+    // From the overflow menu now: the reference's mode row carries two modes,
+    // Ask and the overflow, and nothing else.
     await readTranscript();
 
-    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
+    await openTool(/Correct transcript/);
 
     expect(screen.getByTestId("transcript-editor")).toBeInTheDocument();
   });
@@ -1510,7 +1688,8 @@ describe("correcting the transcript", () => {
      */
     render(<MeetingDetailPage />);
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
-    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Correct transcript/ }));
 
     expect(screen.getByRole("status")).toHaveTextContent("Correcting the transcript");
   });
@@ -1520,7 +1699,8 @@ describe("correcting the transcript", () => {
     // either is the editor's and is unchanged.
     render(<MeetingDetailPage />);
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
-    await userEvent.click(screen.getByRole("button", { name: /Correct the transcript/ }));
+    await userEvent.click(screen.getByLabelText("More actions"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Correct transcript/ }));
 
     expect(screen.getByRole("button", { name: /Done/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();

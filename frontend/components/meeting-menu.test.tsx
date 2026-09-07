@@ -93,6 +93,7 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
     canTranslate: true,
     onCopySummary: vi.fn(),
     onExport: vi.fn(),
+    onAddTag: vi.fn(),
     onCopyTranscript: vi.fn(),
     onRegenerateSummary: vi.fn(),
     onTranslate: vi.fn(),
@@ -126,6 +127,21 @@ beforeEach(() => {
 });
 
 describe("MeetingMenu", () => {
+  it("carries Add a tag, since the masthead no longer offers one", async () => {
+    /*
+     * The masthead had a dashed `+ Tag` pill on every meeting, tagged or not.
+     * Tags that exist still show there -- a tag is a fact about the document --
+     * and adding one is an action, so it is here with the other actions.
+     */
+    const user = userEvent.setup();
+    const props = menu();
+    await open(user);
+
+    await user.click(screen.getByRole("menuitem", { name: /Add a tag/ }));
+
+    expect(props.onAddTag).toHaveBeenCalled();
+  });
+
   it("carries Export, so a meeting has one action surface", async () => {
     const user = userEvent.setup();
     const props = menu();
@@ -157,6 +173,7 @@ describe("MeetingMenu", () => {
     for (const label of [
       "Move…",
       "Copy link",
+      "Add a tag",
       "Export…",
       "Copy transcript",
       "Change language",
@@ -184,6 +201,7 @@ describe("MeetingMenu", () => {
     ).toEqual([
       "Move…",
       "Copy link",
+      "Add a tag",
       "Export…",
       "Copy transcript",
       "Change language",
@@ -554,6 +572,7 @@ describe("MeetingMenu when the minutes are gone", () => {
     expect(screen.getAllByRole("menuitem").map((el) => el.textContent?.trim())).toEqual([
       "Move…",
       "Copy link",
+      "Add a tag",
       "Export…",
       "Copy transcript",
       "Change language",

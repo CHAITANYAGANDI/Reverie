@@ -11,14 +11,21 @@ const Tabs = TabsPrimitive.Root;
  * rather than a control, which suits full-page views where the tabs are the
  * primary navigation instead of a widget inside a card.
  *
- * <p>`underline` is the V2 <b>reading mode</b> switch: Summary or Transcript on
- * a meeting, chat or outline in a rail. It is deliberately the same device the
- * band uses for its three places — a word, and a 2px rule on a boundary the
- * layout already has — so "which of these am I looking at" is one idea in the
- * product rather than two. Set in ink, not in the accent: choosing a reading
- * mode is not something Reverie noticed.
+ * <p>`underline` is the switch inside a rail: chat or outline. A word, and a
+ * 2px rule on a boundary the layout already has. Set in ink, not in the accent:
+ * choosing a reading mode is not something Reverie noticed.
+ *
+ * <p>`segmented` is the V2 <b>reading mode</b> switch on a meeting — Summary or
+ * Transcript. `18-meeting-brief.png` and `19-meeting-transcript.png` draw it as
+ * one rounded container holding both modes, with the active one filled a shade
+ * lighter. It reads as a two-position control rather than as two links, which
+ * is what it is: there is no third place to go and no hierarchy between them.
+ *
+ * <p>Not the shadcn `pill`, which fills with `bg-background` and casts a
+ * shadow. This is 4% white in a hairline, and the active segment is 7% — the
+ * whole contrast budget of the thing is about one step.
  */
-type TabsVariant = "pill" | "underline";
+type TabsVariant = "pill" | "underline" | "segmented";
 
 const TabsVariantContext = React.createContext<TabsVariant>("pill");
 
@@ -32,7 +39,9 @@ const TabsList = React.forwardRef<
       className={cn(
         variant === "underline"
           ? "inline-flex items-center gap-6 border-b border-line text-ink-3"
-          : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+          : variant === "segmented"
+            ? "inline-flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-1 shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
+            : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
         className
       )}
       {...props}
@@ -55,7 +64,9 @@ const TabsTrigger = React.forwardRef<
           ? // -1px pulls the active rule over the list's own border so they read
             // as one line rather than two stacked.
             "relative -mb-px border-b-2 border-transparent px-0 pb-2.5 pt-1 text-callout hover:text-ink-2 data-[state=active]:border-ink data-[state=active]:font-headline data-[state=active]:text-ink"
-          : "rounded-md px-3 py-1 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow",
+          : variant === "segmented"
+            ? "gap-1.5 rounded-md px-2.5 py-1 text-callout text-ink-3 hover:text-ink-2 data-[state=active]:bg-white/[0.07] data-[state=active]:font-headline data-[state=active]:text-ink"
+            : "rounded-md px-3 py-1 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow",
         className
       )}
       {...props}

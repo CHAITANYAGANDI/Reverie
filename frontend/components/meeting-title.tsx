@@ -117,9 +117,43 @@ export function MeetingTitle({ id, title }: { id: string; title: string }) {
  * accumulating locally, and two quick edits cannot produce a list that never
  * existed.
  */
-export function MeetingTags({ id, tags }: { id: string; tags: string[] }) {
+export function MeetingTags({
+  id,
+  tags,
+  addable = true,
+  openAdd = false,
+}: {
+  id: string;
+  tags: string[];
+  /**
+   * Whether to draw the way of adding one.
+   *
+   * <p>False in the meeting masthead. `18-meeting-brief.png` has one facts
+   * line and nothing else between it and the document, and a dashed `+ Tag`
+   * pill on every meeting that has never been tagged is an empty affordance
+   * occupying the masthead of the overwhelming majority of them.
+   *
+   * <p>Tags that exist still show, because a tag is a fact about the document.
+   * Adding one is in the meeting's overflow menu, which is where the rest of
+   * what you do *to* a meeting already lives.
+   */
+  addable?: boolean;
+  /**
+   * Open straight into the input.
+   *
+   * <p>For the menu item that replaced the masthead pill: choosing "Add a tag"
+   * and then having to find and press a second control would be two presses for
+   * one intention.
+   */
+  openAdd?: boolean;
+}) {
   const [update, { isLoading }] = useUpdateMeetingMutation();
-  const [adding, setAdding] = React.useState(false);
+  const [adding, setAdding] = React.useState(openAdd);
+
+  // The menu can ask for the input after this has mounted.
+  React.useEffect(() => {
+    if (openAdd) setAdding(true);
+  }, [openAdd]);
   const [draft, setDraft] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -187,7 +221,7 @@ export function MeetingTags({ id, tags }: { id: string; tags: string[] }) {
           }}
           className="h-6 w-28 px-2 py-0 text-xs"
         />
-      ) : (
+      ) : addable ? (
         <button
           type="button"
           onClick={() => setAdding(true)}
@@ -195,7 +229,7 @@ export function MeetingTags({ id, tags }: { id: string; tags: string[] }) {
         >
           <Plus className="h-3 w-3" /> Tag
         </button>
-      )}
+      ) : null}
     </>
   );
 }

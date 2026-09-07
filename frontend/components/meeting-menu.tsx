@@ -73,6 +73,7 @@ import {
   FolderInput,
   Languages,
   Link2,
+  Tag as TagIcon,
   Upload,
   Loader2,
   MoreHorizontal,
@@ -150,6 +151,30 @@ export interface MeetingMenuProps {
    * place.
    */
   onExport: () => void;
+  /**
+   * Reveal the tag input on the meeting's facts line.
+   *
+   * <p>The masthead used to carry a dashed `+ Tag` pill on every meeting,
+   * tagged or not. Tags that exist still show there, because a tag is a fact
+   * about the document; adding one is an action, and this is where the actions
+   * are.
+   */
+  onAddTag: () => void;
+  /**
+   * Items belonging to whichever reading mode is open.
+   *
+   * <p>The summary's template and the transcript's own tools — find, the marks
+   * index, the speaker stats, and correcting the words — used to be permanent
+   * controls above the document: a picker on the mode row and a three-toggle
+   * row above the first spoken line. The reference has neither. They are real
+   * capabilities and they are rare, which is what a menu is for.
+   *
+   * <p>Handed in as nodes rather than as a dozen props because the state they
+   * act on belongs to the page and to the panel, and because what is in here
+   * changes with the mode: a template item over a transcript would do nothing
+   * to what is on screen.
+   */
+  extra?: React.ReactNode;
   onCopyTranscript: () => void;
   onRegenerateSummary: () => void;
   onTranslate: () => void;
@@ -218,9 +243,21 @@ export function MeetingMenu(props: MeetingMenuProps) {
           {/* Up: out of Reverie. Not disabled by anything — a failed meeting
               still exports whatever was kept, and the dialog itself is what
               says which parts exist. */}
+          <DropdownMenuItem onSelect={props.onAddTag}>
+            <TagIcon /> Add a tag
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onExport}>
             <Upload /> Export…
           </DropdownMenuItem>
+
+          {/* Whatever this reading mode brought with it. First, because it is
+              what somebody on that mode came to this menu for. */}
+          {props.extra ? (
+            <>
+              <DropdownMenuSeparator />
+              {props.extra}
+            </>
+          ) : null}
 
           {/* The transcript: what was said, who said it, and what language you
               read it in. Together because they are one subject, and above the

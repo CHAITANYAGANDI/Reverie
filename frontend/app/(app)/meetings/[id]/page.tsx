@@ -17,10 +17,12 @@ import {
   Quote,
   Youtube,
   Pencil,
+  ScrollText,
   Search,
   X,
   Bookmark,
   Highlighter,
+  Captions,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -115,6 +117,11 @@ import { TranslatedTranscript } from "@/components/translated-transcript";
 import { AudioPlayer, useAudioController } from "@/components/audio-player";
 import { MeetingTitle, MeetingTags } from "@/components/meeting-title";
 import { OutlineNav } from "@/components/outline-nav";
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Facts } from "@/components/v2/group";
 import { MeetingMenu } from "@/components/meeting-menu";
 import { InsightsPanel } from "@/components/insights-panel";
@@ -137,7 +144,6 @@ import { languageName } from "@/lib/language";
 // Shared with the transcript editor, so reading and correcting agree about
 // where the paragraphs are and the page does not reflow when you switch modes.
 import { groupIntoTurns, type Turn } from "@/lib/turns";
-import { SpeakerAvatar } from "@/components/speaker-avatar";
 import { SpeakerEditor } from "@/components/speaker-editor";
 import { TurnActions, TurnReactions } from "@/components/turn-actions";
 import {
@@ -290,6 +296,27 @@ export default function MeetingDetailPage() {
   // No tab switch any more: the chat lives in the rail beside the transcript,
   // so asking about a passage no longer costs the passage. That was the whole
   // reason this had to move the reader somewhere else.
+  /*
+   * WHICH TRANSCRIPT TOOL IS OPEN, if any -- lifted here from the panel.
+   *
+   * <p>`19-meeting-transcript.png` has no utility row at all: the first spoken
+   * line begins under the mode row. Find, the marks index and the speaker stats
+   * are real and rare, so they live in the overflow menu and only the one that
+   * was asked for takes any height. The menu is drawn in the masthead, so the
+   * state it drives has to be here.
+   */
+  const [tool, setTool] = React.useState<"find" | "marks" | "speakers" | null>(null);
+  /*
+   * Whether the reader has asked to add a tag.
+   *
+   * <p>The masthead used to carry a dashed `+ Tag` pill on every meeting,
+   * tagged or not, which is an empty affordance on the overwhelming majority of
+   * them and part of what kept that area looking utility-heavy. Tags that exist
+   * still show, because a tag is a fact about the document; adding one is in
+   * the overflow menu with the rest of what you do *to* a meeting.
+   */
+  const [tagging, setTagging] = React.useState(false);
+
   const askAbout = React.useCallback((text: string, send: boolean) => {
     /*
      * ASKING OPENS THE CHAT, because the chat is no longer already open.
@@ -772,6 +799,73 @@ export default function MeetingDetailPage() {
   // Only offered when there is something to erase. A YouTube import holds no
   // recording of ours, and offering to delete one would imply we had it.
 
+  /**
+   * How many marks this transcript carries, and how many voices are in it.
+   *
+   * <p>Both are real counts off queries the page already made, and both gate
+   * their own menu item: an entry called Highlights over a transcript nobody
+   * has marked opens an empty index.
+   */
+  const markCount = moments.data?.length ?? 0;
+  const lineCount = transcript.data?.segments?.length ?? 0;
+
+  /*
+   * WHAT THIS READING MODE BRINGS TO THE OVERFLOW MENU.
+   *
+   * <p>On Summary: the template. On Transcript: find, the marks index, the
+   * speaker stats, and correcting the words. Every one of them was a permanent
+   * control above the document — a picker on the mode row and a three-toggle
+   * row above the first spoken line — and the references have neither. They
+   * are real and they are rare, which is what a menu is for.
+   *
+   * <p>Null rather than an empty fragment when the mode has nothing, so the
+   * menu does not draw a separator over nothing.
+   */
+  const summaryItems = tab === "summary" && hasSummary;
+  const transcriptItems = tab === "transcript" && lineCount > 0;
+  const modeItems =
+    summaryItems || transcriptItems ? (
+      <>
+        {summaryItems && (
+          <TemplateItems meetingId={id} current={summary.data?.templateSlug ?? "general"} />
+        )}
+        {transcriptItems && (
+          <>
+            <DropdownMenuLabel className="text-foot font-normal text-ink-4">
+              This transcript
+            </DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => setTool("find")}>
+              <Search /> Find in transcript
+            </DropdownMenuItem>
+            {markCount > 0 && (
+              <DropdownMenuItem onSelect={() => setTool("marks")}>
+                <Highlighter /> Highlights ({markCount})
+              </DropdownMenuItem>
+            )}
+            {/* Gated on there being lines rather than on the server having
+                sent `speakers[]`: the strip derives the voices from the
+                segments and falls back to them, so a transcript cached before
+                the stats existed still has speakers to show. */}
+            <DropdownMenuItem onSelect={() => setTool("speakers")}>
+              <Users /> Speakers{voices.length > 0 ? ` (${voices.length})` : ""}
+            </DropdownMenuItem>
+            {/* Only over the original. A translated transcript is derived text:
+                correcting it would edit a copy nothing else reads, leave the
+                words it was translated from untouched, and be overwritten the
+                next time the translation was refreshed. */}
+            {!showing && (
+              <DropdownMenuItem
+                disabled={editingTranscript}
+                onSelect={() => setEditingTranscript(true)}
+              >
+                <Pencil /> Correct transcript
+              </DropdownMenuItem>
+            )}
+          </>
+        )}
+      </>
+    ) : undefined;
+
   /*
    * THE MEETING'S ONE ACTION MENU, and Export is in it now.
    *
@@ -803,6 +897,10 @@ export default function MeetingDetailPage() {
       /* Export, as a menu item rather than a button beside the menu. Same
          dialog, same capability, one action surface. */
       onExport={() => setExporting(true)}
+      /* Tagging, which used to be a dashed pill in the masthead on every
+         meeting whether or not it had any. */
+      onAddTag={() => setTagging(true)}
+      extra={modeItems}
     />
   );
 
@@ -958,7 +1056,15 @@ export default function MeetingDetailPage() {
                 read yet is filing a document you have not seen. It comes back
                 with the transcript.
               */}
-              {terminal ? <MeetingTags key="tags" id={id} tags={m.tags ?? []} /> : null}
+              {terminal && ((m.tags?.length ?? 0) > 0 || tagging) ? (
+                <MeetingTags
+                  key="tags"
+                  id={id}
+                  tags={m.tags ?? []}
+                  addable={tagging}
+                  openAdd={tagging}
+                />
+              ) : null}
               {/*
                 Only ever rendered while a translation is on screen, and then it
                 is the one thing telling a reader that the words in front of them
@@ -1041,7 +1147,14 @@ export default function MeetingDetailPage() {
                 from this line with the rail it named — the shell has no left
                 column any more, so the bar starts at the left edge and stops
                 where the side pane begins. */}
-            <div className="pointer-events-auto mx-auto w-full max-w-measure">{player}</div>
+            {/* The document frame, not the paragraph measure.
+                `19-meeting-transcript.png` runs the dock the full width of the
+                meeting's column -- `--doc` -- rather than stopping at the 680px
+                the words are set to: a timeline is a ruler over the whole
+                recording and forty minutes squeezed into 680px is a coarser
+                ruler for no reason. The `lg:right-[var(--side-pane-w)]` on the
+                wrapper above is what stops it before the chat. */}
+            <div className="pointer-events-auto mx-auto w-full max-w-doc">{player}</div>
           </div>
         )
       )}
@@ -1124,10 +1237,26 @@ export default function MeetingDetailPage() {
            * document are chrome, and chrome that is indented to the measure
            * reads as part of the text. The measure begins at the content.
            */}
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line">
-            <TabsList variant="underline" className="flex gap-x-6 border-b-0">
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="transcript">Transcript</TabsTrigger>
+          {/*
+            THE MODE ROW, as `18-meeting-brief.png` draws it.
+            <p>`[ Summary ] [ Transcript ] ......... Ask  ⋯` and nothing else.
+            It was two underlined words with a template picker and an edit
+            button trailing them, on a row with a rule under it — which is what
+            kept it reading like the shipped app rather than the reference.
+            <p>Segmented rather than underlined: there is no third place to go
+            and no hierarchy between the two, so it is a two-position control
+            and should look like one. The rule under the row is gone with it;
+            the reference has none, and the document below supplies its own
+            first line of contrast.
+          */}
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <TabsList variant="segmented">
+              <TabsTrigger value="summary">
+                <ScrollText className="h-3.5 w-3.5" aria-hidden /> Summary
+              </TabsTrigger>
+              <TabsTrigger value="transcript">
+                <Captions className="h-3.5 w-3.5" aria-hidden /> Transcript
+              </TabsTrigger>
             </TabsList>
 
             {/* On the tab row rather than inside the summary card, because it
@@ -1139,100 +1268,71 @@ export default function MeetingDetailPage() {
                 picker over a summary that does not exist yet is a control that
                 cannot do anything. */}
             {/*
-              THE ONE CONTROL THIS ROW OWES THE READER: the chat, on request.
-              <p>The pane it opens is the same meeting-scoped chat that has
-              always been in it — same conversation, same history, same
-              suggestions, same context, and the same rail the Outline shares.
-              What changed is that it is no longer already open: see
-              components/side-pane.
+              ASK, AND NOTHING ELSE, on the right of the mode row.
+              <p>`18-meeting-brief.png` and `19-meeting-transcript.png` put
+              exactly two things there: Ask, and the overflow. Everything that
+              used to trail the tabs -- the template picker, the edit button --
+              is in the overflow now; the one exception is correction mode,
+              which is a state the reader is *in* and has to be able to leave.
+              <p>The pane Ask opens is the same meeting-scoped chat it always
+              was: same conversation, same history, same suggestions, same
+              context, same rail the Outline shares. What changed in 0a3aaa2 is
+              that it is no longer already open.
               <p>Not a link to /ask. That is the workspace chat, which knows
               nothing about this transcript.
-              <p>`ml-auto` so it sits at the far end of the row whatever else
-              is on it, which is what makes the row read as
-              `Summary | Transcript ......... Ask`.
             */}
-            {ready && (
-              <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                {/* Summary-local, and quiet: it acts on the document below
-                    rather than on which document you are reading, so it must
-                    not compete with the two modes or with Ask. Ghost weight,
-                    and only once there is a summary to rewrite. */}
-                {tab === "summary" && hasSummary && (
-                  <TemplatePicker meetingId={id} current={summary.data?.templateSlug ?? "general"} />
-                )}
-                {/* The transcript's counterpart to the template picker, in the same
-                    place for the same reason: it is a mode over the whole document
-                    below, not a control on any one line of it.
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+              {/*
+                THE ONE CONTROL THAT STAYS ON THE ROW.
+                <p>Correction is a mode, not an action: `21-transcript-editing.png`
+                names it and offers one way out, and a reader who cannot see how
+                to stop typing is stuck. Cancel stays beside Done -- Done keeps
+                what was typed, Cancel abandons it, and the protection behind
+                both is the editor's and unchanged.
+                <p>`role="status"` because it appears without anybody looking at
+                this corner, and it is the answer to "why can I type in this".
+              */}
+              {editingTranscript && tab === "transcript" && (
+                <div className="flex items-center gap-2.5">
+                  <span role="status" className="text-foot text-ink-3">
+                    Correcting the transcript
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={editStatus.saving}
+                    onClick={() => transcriptEditor.current?.cancel()}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={editStatus.saving}
+                    onClick={() => void transcriptEditor.current?.save()}
+                  >
+                    {editStatus.saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    Done
+                    {/* The count is the point: Done over three unsaved
+                        paragraphs and Done over none are different presses. */}
+                    {editStatus.dirty > 0 ? ` (${editStatus.dirty})` : ""}
+                  </Button>
+                </div>
+              )}
 
-                    Only over the original. A translated transcript is derived
-                    text — correcting it would edit a copy nothing else reads,
-                    leave the words it was translated from untouched, and be
-                    overwritten the next time the translation was refreshed. */}
-                {tab === "transcript" && !showing && (transcript.data?.segments?.length ?? 0) > 0 && (
-                  editingTranscript ? (
-                    /*
-                     * THE MODE, SAID OUT LOUD.
-                     *
-                     * <p>`design-demo/final/21-transcript-editing.html` heads the
-                     * document "Correcting the transcript" with one Done beside it.
-                     * This row carried two unlabelled buttons and nothing naming
-                     * the state, so the only thing telling a reader the transcript
-                     * had become editable was that the paragraphs had.
-                     *
-                     * <p>`role="status"` because it appears without anybody looking
-                     * at this corner, and it is the answer to "why can I type in
-                     * this". Cancel stays: Done keeps what was typed and Cancel is
-                     * the way to abandon it, and the confirmation behind both is
-                     * unchanged — see the editor.
-                     */
-                    <div className="flex items-center gap-2.5">
-                      <span role="status" className="text-foot text-ink-3">
-                        Correcting the transcript
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={editStatus.saving}
-                        onClick={() => transcriptEditor.current?.cancel()}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={editStatus.saving}
-                        onClick={() => void transcriptEditor.current?.save()}
-                      >
-                        {editStatus.saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Check className="h-4 w-4" />
-                        )}
-                        Done
-                        {/* The count is the point: Done over three unsaved
-                            paragraphs and Done over none are different presses. */}
-                        {editStatus.dirty > 0 ? ` (${editStatus.dirty})` : ""}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setEditingTranscript(true)}>
-                      {/* Sentence case, and the same verb as the mode it turns
-                          on: "Correct the transcript" then "Correcting the
-                          transcript". Title Case was the last of the old header's
-                          capitalisation left on this page. */}
-                      <Pencil className="h-4 w-4" /> Correct the transcript
-                    </Button>
-                  )
-                )}
-                {/* An opener, not a toggle: no `aria-expanded`, because
-                    pressing it on an open chat leaves it open and lets the
-                    question through. The shell's own control is the one that
-                    reports and reverses the state, and it carries
-                    `aria-pressed`. */}
+              {/* An opener, not a toggle: no `aria-expanded`, because pressing
+                  it on an open chat leaves it open and lets the question
+                  through. The shell's own control is the one that reports and
+                  reverses the state, and it carries `aria-pressed`. */}
+              {ready && (
                 <Button variant="ghost" size="sm" className="gap-1.5" onClick={openSidePane}>
                   <Sparkles className="h-4 w-4" /> Ask
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
 
           </div>
 
@@ -1438,6 +1538,10 @@ export default function MeetingDetailPage() {
               // keeps inactive utterances from re-rendering every frame.
               onSeek={audio.seekTo}
               onAskAbout={askAbout}
+              // Which tool the overflow menu has opened, and how to shut it.
+              // Owned by the page because the menu is drawn in the masthead.
+              tool={tool}
+              onTool={setTool}
             />
             )}
             </div>
@@ -1583,22 +1687,32 @@ function MeetingRail({
  * entirely — and the card still has a second use for the same call in its
  * "the transcript changed" banner.
  */
-function TemplatePicker({ meetingId, current }: { meetingId: string; current: string }) {
+/**
+ * THE SUMMARY'S TEMPLATE, as menu items rather than a picker on the mode row.
+ *
+ * <p>`18-meeting-brief.png` has nothing on that row but the two modes, Ask and
+ * the overflow. A permanent `Template: General` beside them read as a third
+ * peer of Summary and Transcript, and it is neither a place nor a question --
+ * it is a setting on the document below, changed rarely.
+ *
+ * <p>Same query, same mutation, same shared `fixedCacheKey`, same allowance
+ * refusal. Only the surface changed.
+ */
+function TemplateItems({ meetingId, current }: { meetingId: string; current: string }) {
   const { data: templates } = useGetSummaryTemplatesQuery();
-  // Shared with the menu and the banner — see the page's own call. A rewrite
-  // started anywhere shows as "Rewriting…" here, which is where a reader looks
-  // to find out what the summary in front of them is.
+  // Shared with the menu's own Regenerate and with the banner -- see the page's
+  // call. A rewrite started anywhere shows as "Rewriting…" on all of them.
   const [resummarize, { isLoading: rewriting }] = useResummarizeMutation({
     fixedCacheKey: `resummarize:${meetingId}`,
   });
-  // Changing the template *is* a rewrite — same request the menu item makes —
-  // so the same allowance closes it. Without this the one surface that does not
-  // look like a button would still spend a model call.
+  // Changing the template *is* a rewrite -- the same request Regenerate makes --
+  // so the same allowance closes it.
   const refusal = aiRefusal(useAllowance(), "summary");
 
   if (!templates || templates.length === 0) return null;
 
   async function onChange(slug: string) {
+    if (slug === current) return;
     try {
       await resummarize({ id: meetingId, template: slug }).unwrap();
       toast.success("Summary rewritten.");
@@ -1608,50 +1722,26 @@ function TemplatePicker({ meetingId, current }: { meetingId: string; current: st
   }
 
   return (
-    <div className="flex items-center gap-1.5 no-print">
-      {/* Quiet, and secondary to the two modes and to Ask. It was `text-sm`
-          beside a 170px bordered trigger, which on the mode row read as a
-          third peer of Summary and Transcript — and it is neither a place nor
-          a question, it is a setting on the document below. */}
-      <span className="text-foot text-ink-4">Template</span>
-      <Select value={current} onValueChange={onChange} disabled={rewriting || refusal !== null}>
-        {/* The spinner sits beside the word, not in a wrapper around it.
-            SelectTrigger styles its direct `span` with `line-clamp-1`, which is
-            `display: -webkit-box` with a vertical box orientation — and as a
-            child selector it outranks a `flex` class on that same span. So a
-            span holding an icon and a word laid them out *down* the trigger:
-            the spinner above "Rewriting...", both spilling out of a row eight
-            units tall. The trigger is already a flex row that centres what it
-            is handed, which is all this ever needed. Same shape as the folder
-            icon in components/project-picker. */}
-        {/* The reason, on the control itself. There is no room beside it on
-            the tab row for a sentence, and a picker that simply stops working
-            is the worst of the three options. */}
-        <SelectTrigger
-          className="h-7 w-auto min-w-[7.5rem] gap-1.5 border-0 bg-transparent px-2 text-foot text-ink-2 shadow-none hover:bg-white/[0.035] focus:ring-0 focus-visible:ring-0"
+    <>
+      <DropdownMenuLabel className="text-foot font-normal text-ink-4">
+        {rewriting ? "Rewriting the summary…" : "Summary template"}
+      </DropdownMenuLabel>
+      {templates.map((t) => (
+        <DropdownMenuItem
+          key={t.slug}
+          // The reason on the item itself, because there is nowhere in a menu
+          // for a sentence and an option that simply stops working is worse.
           title={refusal ?? undefined}
+          disabled={rewriting || refusal !== null}
+          onSelect={() => void onChange(t.slug)}
         >
-          {rewriting ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-              {/* mr-auto because the trigger is justify-between: without it the
-                  three children — spinner, word, chevron — would space
-                  themselves out evenly across the whole width. */}
-              <span className="mr-auto text-muted-foreground">Rewriting...</span>
-            </>
-          ) : (
-            <SelectValue />
-          )}
-        </SelectTrigger>
-        <SelectContent>
-          {templates.map((t) => (
-            <SelectItem key={t.slug} value={t.slug}>
-              {t.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+          {/* A tick on the one in use, and reserved space on the rest, so the
+              names line up down the menu. */}
+          <Check className={cn("h-4 w-4", t.slug !== current && "opacity-0")} />
+          {t.name}
+        </DropdownMenuItem>
+      ))}
+    </>
   );
 }
 
@@ -1833,6 +1923,28 @@ function SummaryPanel({
     () => translated?.sections ?? summary?.sections ?? [],
     [translated, summary?.sections],
   );
+
+  /*
+   * WHETHER THE LEAD IS THE FIRST SECTION SAID TWICE.
+   *
+   * <p>A short recording produces one section, and the model writes the same
+   * sentences into `shortSummary` and into it %(d)s so the document opened with a
+   * paragraph and then repeated it verbatim under a heading. Reported from a
+   * real meeting.
+   *
+   * <p>Exact, after trimming and collapsing runs of whitespace, and nothing
+   * else. No fuzzy or semantic matching: two summaries that merely overlap are
+   * two things somebody may want to read, and a near-match rule would start
+   * hiding real content the moment a model rephrased one of them.
+   */
+  const leadRepeatsFirstSection = React.useMemo(() => {
+    // `view` is absent until the summary resolves; there is nothing to
+    // compare and nothing rendered either way.
+    const lead = flatten(view?.shortSummary);
+    if (!lead) return false;
+    const first = sections[0];
+    return Boolean(first) && flatten(first.text) === lead;
+  }, [view?.shortSummary, sections]);
   // Hidden alongside the sections while a translation is showing: a quotation is
   // a claim about the exact words spoken, so displaying it beside translated
   // prose would invite reading it as a translated quote.
@@ -1934,7 +2046,7 @@ function SummaryPanel({
                   answers. Nothing is manufactured to fill it: where the field
                   is empty the document simply starts at its first section.
                 */}
-                {view.shortSummary?.trim() && (
+                {view.shortSummary?.trim() && !leadRepeatsFirstSection && (
                   <p className="v2-read text-[1.1875rem] leading-[1.55] text-ink">
                     {view.shortSummary}
                   </p>
@@ -1947,25 +2059,26 @@ function SummaryPanel({
                     The headings already are the topics, in the order they came
                     up; this just makes them scannable without reading the
                     walkthrough. */}
+                {/*
+                  ONE QUIET LINE, not a row of pills.
+                  <p>`18-meeting-brief.png` sets the topics as plain text under
+                  the lead, separated by the product's own dot: `Beta rollout
+                  date · Duplicate upload events · Transcription provider`. They
+                  were bordered pills under a heading, which is a dashboard
+                  device — and a border at 3:1 on something that cannot be
+                  pressed is a promise the page does not keep. These are not
+                  operable, so they no longer look it.
+                  <p>The heading went with them: six words separated by dots
+                  under a summary do not need to be told they are topics.
+                */}
                 {topics.length > 0 && (
-                  <div>
-                    <h3 className="v2-label mb-2">Topics discussed</h3>
-                    {/* Still labels rather than a sentence: they are scanned,
-                        not read. Quietened to a hairline and a raised surface —
-                        these are not operable, and an edge at 3:1 on something
-                        that cannot be pressed is a promise the page does not
-                        keep. */}
-                    <div className="flex flex-wrap gap-1.5">
+                  <p className="flex flex-wrap items-center text-callout text-ink-3">
+                    <Facts>
                       {topics.map((t, i) => (
-                        <span
-                          key={i}
-                          className="rounded-full border border-line bg-surface-raised px-2.5 py-1 text-cap text-ink-2"
-                        >
-                          {t}
-                        </span>
+                        <span key={i}>{t}</span>
                       ))}
-                    </div>
-                  </div>
+                    </Facts>
+                  </p>
                 )}
                 {sections.map((s) => (
                   <SummarySectionView key={s.key} section={s} onSeek={onSeek} />
@@ -2384,6 +2497,8 @@ function TranscriptPanel({
   currentTime,
   onSeek,
   onAskAbout,
+  tool,
+  onTool,
 }: {
   meetingId: string;
   loading: boolean;
@@ -2408,6 +2523,9 @@ function TranscriptPanel({
   onSeek: (s: number) => void;
   /** Hands a selected passage to the chat on the Ask tab. */
   onAskAbout: (text: string, send: boolean) => void;
+  /** Which of the three tools the overflow menu has opened, if any. */
+  tool: "find" | "marks" | "speakers" | null;
+  onTool: (next: "find" | "marks" | "speakers" | null) => void;
 }) {
   const [renameSpeakers, { isLoading: renaming }] = useRenameSpeakersMutation();
   const [mergeSpeakers, { isLoading: merging }] = useMergeSpeakersMutation();
@@ -2841,11 +2959,12 @@ function TranscriptPanel({
    */
   const [onlyMarked, setOnlyMarked] = React.useState(false);
   /*
-   * Which utility is open, if any. One at a time, so the block above the
-   * transcript cannot grow back by opening all three. Closed by default: the
-   * transcript is what this screen is for.
+   * Which tool is open comes from the page now: they are opened from the
+   * overflow menu, which the masthead draws. One at a time, and none by
+   * default -- the transcript is what this screen is for.
    */
-  const [panel, setPanel] = React.useState<"find" | "marks" | "speakers" | null>(null);
+  const panel = tool;
+  const closeTool = React.useCallback(() => onTool(null), [onTool]);
 
   /**
    * The marks each segment carries, resolved against its current text.
@@ -2974,76 +3093,20 @@ function TranscriptPanel({
      * per-word memo keeps holding.
      */
     <div className="space-y-6">
+
         {/*
-          ONE UTILITY ROW, AND THE TRANSCRIPT STARTS.
-          <p>These three things — find, the marks index and talk time — were
-          three stacked blocks above the first spoken line: a full-width search
-          box with two lines of help under it, a bordered marks strip, and a
-          roll-call with a bar per speaker. About 350px of utility before the
-          document, on the screen `19-meeting-transcript.html` says the design
-          lives or dies on. The reference begins the first turn almost
-          immediately after the mode row.
-          <p>So they are three toggles on one line, and each opens the control
-          that was already there. Nothing was deleted and no dialog or second
-          pane was added: find keeps its query, its match count and its marks;
-          Highlights opens the same `MarksSection` with the same filter;
-          Speakers opens the same roll-call, the same bars and the same
-          `SpeakerEditor`.
-          <p>ONE AT A TIME, so the block cannot grow back by opening all three.
-          <p>And each toggle carries its own state when its feature is doing
-          something — a query that is filtering, a filter that is hiding turns.
-          A control that is collapsed while it narrows what is on screen is the
-          bug this codebase has fixed twice on other pages.
+          ONE TEMPORARY STRIP, AND ONLY IF IT WAS ASKED FOR.
+          <p>Each of these is the control that was already there — same query
+          state, same marks index, same speaker stats and editor. What is gone is
+          the row of three toggles that sat above the first spoken line whether
+          or not anybody wanted any of them. `19-meeting-transcript.png` has
+          none of it: the transcript starts under the mode row.
+          <p>Closing puts the transcript back. Opened from the overflow menu, so
+          nothing here costs height by existing.
         */}
-        {segments.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1">
-            <UtilityTab
-              open={panel === "find"}
-              on={Boolean(needle)}
-              onClick={() => setPanel((p) => (p === "find" ? null : "find"))}
-            >
-              <Search className="h-3.5 w-3.5" aria-hidden /> Find
-              {needle && (
-                <span className="tabular font-mono text-cap text-ink-4">
-                  {matchCount}
-                </span>
-              )}
-            </UtilityTab>
-
-            {marks.length > 0 && (
-              <UtilityTab
-                open={panel === "marks"}
-                on={onlyMarked}
-                onClick={() => setPanel((p) => (p === "marks" ? null : "marks"))}
-              >
-                <Highlighter className="h-3.5 w-3.5" aria-hidden /> Highlights
-                <span className="tabular font-mono text-cap text-ink-4">{marks.length}</span>
-                {/* Said on the closed control, because this one hides turns. */}
-                {onlyMarked && <span className="text-cap text-ink-3">only</span>}
-              </UtilityTab>
-            )}
-
-            {speakers.length > 0 && talk.total > 0 && (
-              <UtilityTab
-                open={panel === "speakers"}
-                onClick={() => setPanel((p) => (p === "speakers" ? null : "speakers"))}
-              >
-                <Users className="h-3.5 w-3.5" aria-hidden /> Speakers
-                <span className="tabular font-mono text-cap text-ink-4">{speakers.length}</span>
-              </UtilityTab>
-            )}
-
-            {/* On the row rather than under it, so it costs no height of its
-                own. Hidden on a phone, where the row is already full. */}
-            <p className="ml-auto hidden text-foot text-ink-5 lg:block">
-              Select any part of the transcript to act on it.
-            </p>
-          </div>
-        )}
-
-        {/* Find: the same input, the same query state, the same match count. */}
         {panel === "find" && segments.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 pb-2">
+            <ToolHead label="Find in transcript" onClose={closeTool} />
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-4" />
               <Input
@@ -3079,26 +3142,27 @@ function TranscriptPanel({
           </div>
         )}
 
-        {/* Highlights: the same index, with its own disclosure inside it. */}
         {panel === "marks" && marks.length > 0 && (
-          <MarksSection
+          <div className="space-y-2 pb-2">
+            <ToolHead label="Highlights" onClose={closeTool} />
+            <MarksSection
             meetingId={meetingId}
             moments={marks}
             segments={segments}
             onSeek={onSeek}
-            onlyMarked={onlyMarked}
-            onToggleFilter={() => setOnlyMarked((v) => !v)}
-          />
+              onlyMarked={onlyMarked}
+              onToggleFilter={() => setOnlyMarked((v) => !v)}
+            />
+          </div>
         )}
 
-        {/* Speakers: the same real stats, and the same editor behind them. */}
         {panel === "speakers" && speakers.length > 0 && talk.total > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-end">
+          <div className="space-y-2 pb-2">
+            <ToolHead label="Speakers" onClose={closeTool}>
               <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
                 {editing ? "Cancel" : "Edit speakers"}
               </Button>
-            </div>
+            </ToolHead>
             {editing ? (
               <SpeakerEditor
                 // Server stats where they exist, because only those carry the
@@ -3172,7 +3236,18 @@ function TranscriptPanel({
               const reactions = turnMarks("REACTION", turn.start);
               const notes = turnMarks("NOTE", turn.start);
               return (
-              <div key={i} className="group relative flex gap-3">
+              /*
+                ONE TURN, ON THE SHARED GRID.
+                <p>`19-meeting-transcript.png` and `21-transcript-editing.png`
+                use the same geometry: a quiet timecode gutter, and a text
+                column that the speaker's name is aligned to. Reading and
+                correcting differ only in whether a paragraph is editable, so
+                the grid is defined identically here and in
+                components/transcript-editor.
+                <p>`groupIntoTurns` is untouched: the same runs, in the same
+                order, with the same segments in them.
+              */
+              <div key={i} className="group relative">
                 {/* Floating over the top-right of the turn, out of the reading
                     column entirely: five icons inline would push the speaker's
                     name and timestamp around every time the pointer moved. */}
@@ -3201,25 +3276,28 @@ function TranscriptPanel({
                     )
                   }
                 />
-                <SpeakerAvatar name={turn.speaker} speakerKey={turn.speakerKey} />
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex items-baseline gap-2">
+                {/*
+                  NO AVATAR.
+                  <p>A 28px circle with an initial in it, once per turn, down a
+                  document. The references have none, and it carried nothing:
+                  the colour was decorative and every speaker operation lives
+                  elsewhere -- renaming and merging behind Speakers, reassigning
+                  on a selection. The name is the heading now, which is what a
+                  document does.
+                */}
+                <div className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3">
+                  {/* The gutter has nothing to say about who is speaking. */}
+                  <span aria-hidden />
+                  <span className="flex items-baseline gap-2 pb-1">
                     {/* Sans, because a name is interface — it is what you scan
                         down the page to find who said something. The words
                         underneath are the serif. */}
                     <span className="text-callout font-headline text-ink">{turn.speaker}</span>
-                    <button
-                      onClick={() => onSeek(turn.start)}
-                      className="tabular font-mono text-cap text-ink-4 transition-colors hover:text-brand-text hover:underline"
-                      aria-label={`Play from ${timecode(turn.start)}`}
-                    >
-                      {timecode(turn.start)}
-                    </button>
-                    {/* Setting a bookmark is a toolbar action now, but a
-                        bookmark that was only visible on hover would be
-                        findable by scrolling only if you scrolled with the
-                        pointer over every turn. So a set one stays on the row,
-                        and clicking it takes it off. */}
+                    {/* Setting a bookmark is a toolbar action, but one that was
+                        only visible on hover would be findable by scrolling
+                        only if you scrolled with the pointer over every turn.
+                        So a set one stays on the row, and clicking it takes it
+                        off. */}
                     {bookmarked && (
                       <button
                         onClick={() => void toggleBookmark(turn)}
@@ -3231,18 +3309,17 @@ function TranscriptPanel({
                         <Bookmark className="h-3.5 w-3.5 fill-current" />
                       </button>
                     )}
-                  </div>
-                  {/* THE READING COLUMN. The one place the serif is allowed,
-                      and the reason the whole layout protects 680px. */}
-                  <p className="v2-read">
-                    {turn.segments.map((s, j) => {
+                  </span>
+                  {turn.segments.map((s, j) => {
                       const active = currentTime >= s.start && currentTime < s.end;
                       // Editing one line replaces just that line, so the rest
                       // of the turn stays readable and still seekable while a
                       // correction is being typed.
                       if (s.id && openLine === s.id) {
                         return (
-                          <span key={j} className="block py-1">
+                          <React.Fragment key={j}>
+                            <Timecode at={s.start} onSeek={onSeek} editing />
+                          <span className="block pb-3">
                             <textarea
                               autoFocus
                               rows={Math.max(2, Math.ceil(lineDraft.length / 70))}
@@ -3275,11 +3352,16 @@ function TranscriptPanel({
                               </span>
                             </span>
                           </span>
+                          </React.Fragment>
                         );
                       }
                       return (
+                        <React.Fragment key={j}>
+                        {/* THE GUTTER. Quiet, monospaced and still the seek
+                            target it always was -- one per utterance, as the
+                            references draw it, rather than one per turn. */}
+                        <Timecode at={s.start} onSeek={onSeek} />
                         <span
-                          key={j}
                           // The segment and speaker live here rather than on
                           // every word: `readSelection` recovers them with
                           // `closest`, and repeating a name across tens of
@@ -3287,7 +3369,9 @@ function TranscriptPanel({
                           data-seg={s.id}
                           data-speaker={turn.speaker}
                           className={cn(
-                            "group/line rounded px-0.5 transition-colors",
+                            // THE READING COLUMN. The one place the serif is
+                            // allowed, and the reason the layout protects 680px.
+                            "v2-read group/line block rounded px-0.5 pb-3 transition-colors",
                             // The utterance being spoken. Brand, because this
                             // is Reverie telling you where the audio is — which
                             // is the one thing the accent means.
@@ -3333,9 +3417,9 @@ function TranscriptPanel({
                             </button>
                           )}
                         </span>
+                        </React.Fragment>
                       );
                     })}
-                  </p>
 
                   {/* Under the words they are about. Clicking one removes it,
                       which is the whole undo path — a gesture that costs one
@@ -3600,39 +3684,85 @@ const SpokenWords = React.memo(function SpokenWords({
  * lib/resource-state.
  */
 /**
- * One utility above the transcript: a label, a count, and what it opens.
+ * The same text, for the one comparison the summary needs to make.
  *
- * <p>A quiet control rather than a section. `aria-expanded` because it is a
- * disclosure, and `on` for the case that matters — a find that is filtering or
- * a marks filter that is hiding turns has to look different when collapsed,
- * or the page is narrowing itself with no visible reason.
+ * <p>Trim, and collapse every run of whitespace to a single space. That is the
+ * whole normalisation: it makes "a  b
+" and " a b " the same string, which is
+ * the difference two renderings of one paragraph actually produce, and nothing
+ * more. A looser rule would start hiding real content.
  */
-function UtilityTab({
-  open,
-  on = false,
-  onClick,
-  children,
+function flatten(text: string | null | undefined): string {
+  return (text ?? "").trim().replace(/\s+/g, " ");
+}
+
+/**
+ * ONE UTTERANCE'S TIMECODE, in the gutter.
+ *
+ * <p>The references hang it outside the reading column, quiet and monospaced,
+ * one per paragraph. It is still the seek target it has always been -- the
+ * gutter is where it sits, not what it does.
+ *
+ * <p>`editing` brightens it, which is the reference's one difference between a
+ * paragraph being read and the paragraph being corrected.
+ */
+function Timecode({
+  at,
+  onSeek,
+  editing = false,
 }: {
-  open: boolean;
-  /** The feature is doing something, whether or not its panel is open. */
-  on?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  at: number;
+  onSeek: (seconds: number) => void;
+  editing?: boolean;
 }) {
   return (
     <button
-      type="button"
-      onClick={onClick}
-      aria-expanded={open}
+      onClick={() => onSeek(at)}
+      aria-label={`Play from ${timecode(at)}`}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-foot transition-colors duration-press ease-soft",
-        open || on
-          ? "bg-white/[0.06] text-ink"
-          : "text-ink-3 hover:bg-white/[0.035] hover:text-ink",
+        "tabular h-fit pt-[0.3rem] text-right font-mono text-cap transition-colors hover:text-brand-text",
+        editing ? "text-brand-text" : "text-ink-4",
       )}
     >
-      {children}
+      {timecode(at)}
     </button>
+  );
+}
+
+/**
+ * The head of a temporary tool strip: what it is, and the way out of it.
+ *
+ * <p>Replaces `UtilityTab`, which was the toggle on a permanent row. There is
+ * no row any more -- the tools are in the overflow menu and only the one that
+ * was asked for is drawn -- so what each one needs is a name and a close.
+ *
+ * <p>A named close rather than a bare X: this strip appeared because somebody
+ * chose a menu item, and the thing that undoes that should say so.
+ */
+function ToolHead({
+  label,
+  onClose,
+  children,
+}: {
+  label: string;
+  onClose: () => void;
+  /** Anything belonging to this tool, before the close. */
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="v2-label">{label}</span>
+      <span className="grow" />
+      {children}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={`Close ${label.toLowerCase()}`}
+        className="rounded p-1 text-ink-4 transition-colors duration-press ease-soft hover:bg-white/[0.06] hover:text-ink"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
