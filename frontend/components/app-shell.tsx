@@ -221,21 +221,31 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             <div id={HEADER_SLOT_ID} className="flex items-center gap-2 py-3 empty:hidden" />
 
             {/*
-             * The way to the pane, and the way out of it.
+             * The way OUT of the pane, and only that.
              *
-             * <p>Only when a page has filled it. It is the one control in this
-             * row that is about the window rather than about the document, and
-             * without it the pane cannot be closed at all — it opens by default,
-             * so a rewrite that dropped this button left a 26rem column nobody
-             * could put away.
+             * <h2>Why `showPane` and not `pane.occupied`</h2>
              *
-             * <p>It matters more below `lg`, where the pane is a block stacked
-             * under the page rather than a column beside it: there the button
-             * is what says the chat is down there, on a screen where "scroll to
-             * the bottom of a conversation list" is not a discoverable
-             * instruction.
+             * <p>It used to render whenever a page had filled the pane, open or
+             * not, because the pane opened by default: the button was the only
+             * way to put away a 26rem column, so it had to be there whenever
+             * the column could be.
+             *
+             * <p>The pane opens on request now, and the meeting's mode row has
+             * an `Ask` — so on a closed meeting this was a second, redundant
+             * opener with no context, sitting alone on a row that cost 51px
+             * above the document. Measured: the back link sat at y=142 against
+             * the reference's y=91, and the difference was this row.
+             *
+             * <p>So it appears exactly when the thing it dismisses is on
+             * screen. `showPane` is that condition and already existed — it is
+             * what gives the pane its width — which is why this is not a new
+             * expression to keep in sync with one.
+             *
+             * <p>The `pane.open` branches below are kept rather than collapsed:
+             * `toggleSidePane` is still a toggle, and a control that renders
+             * only in one state should still describe the state it is in.
              */}
-            {pane.occupied && (
+            {showPane && (
               <div className="flex items-center py-3">
                 <button
                   type="button"

@@ -87,7 +87,7 @@ vi.mock("@/components/processing-dock", () => ({
 
 import { AppShell } from "@/components/app-shell";
 import { HEADER_SLOT_ID, HeaderSlot } from "@/components/header-slot";
-import { SIDE_PANE_ID, SidePane, resetSidePane } from "@/components/side-pane";
+import { SIDE_PANE_ID, SidePane, openSidePane, resetSidePane } from "@/components/side-pane";
 import { openSearch, resetSearchOverlay } from "@/lib/search-overlay";
 
 function shell(children: React.ReactNode = <p>the page</p>) {
@@ -304,10 +304,11 @@ describe("the side pane", () => {
   });
 
   it("opens on request, and closes again", async () => {
-    // The whole of the new contract: it is a state somebody asks for.
+    // The whole of the new contract: it is a state somebody asks for. The page
+    // asks -- `Ask` in the meeting's mode row calls exactly this.
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
 
-    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+    act(() => openSidePane());
     expect(container.querySelector("aside")).not.toHaveClass("hidden");
 
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
@@ -397,61 +398,83 @@ describe("the search shortcut", () => {
 /**
  * The pane, and the control that puts it away.
  *
- * <p>`open` defaults to **true**, so a shell with no toggle is a shell whose
- * side pane cannot be closed — a 26rem column beside every meeting with nothing
- * to dismiss it. The V2 rewrite dropped this button and nothing failed: the
- * pane still rendered, the chat still worked, and the only thing missing was
- * the way out.
+ * <p>It is the way OUT of the pane and nothing else. It used to render whenever
+ * a page had filled the pane, open or closed, because the pane opened by
+ * default: it was the only way to dismiss a 26rem column, so it had to be
+ * there whenever the column could be. The V2 rewrite dropped the button
+ * entirely and nothing failed — the pane still rendered, the chat still worked,
+ * and the only thing missing was the way out.
  *
- * <p>It matters more below `lg`, where the pane is a block stacked under the
- * page rather than a column beside it. There the button is what says the chat
- * is down there at all.
+ * <p>Now the pane opens on request and the meeting's mode row has an `Ask`, so
+ * the closed state has its own opener with its own context. Left as it was,
+ * this button was a second one, unlabelled, alone on a row that cost 51px above
+ * the document — measured at 1440 as a back link at y=142 against the
+ * reference's y=91.
  */
 describe("the side pane's toggle", () => {
-  it("is offered once a page has filled the pane", () => {
-    // Offered whether or not it is open -- closed is the default now, so this
-    // is the way back to a chat that has never been shown.
+  it("reserves nothing above the page while the pane is closed", () => {
+    /*
+     * THE MEASUREMENT THIS EXISTS FOR. A closed meeting rendered an otherwise
+     * empty shell action row: nothing fills `HeaderSlot` any more, so the row's
+     * only occupant was a control for a pane nobody had asked for, and its
+     * `py-3` plus a 36px button pushed the whole document down.
+     *
+     * <p>Asserted as "no row", not "no button", because a zero-height row with
+     * a hidden button in it would pass the narrower check and still cost the
+     * pixels.
+     */
     shell(<SidePane><p>Ask this meeting</p></SidePane>);
 
-    expect(screen.getByRole("button", { name: "Show the side panel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /side panel/ })).not.toBeInTheDocument();
+    expect(document.getElementById(HEADER_SLOT_ID)?.parentElement?.children).toHaveLength(1);
   });
 
-  it("is not offered on a page that has not", () => {
+  it("is not offered on a page that has not filled the pane", () => {
     // A control for a thing that is not there.
     shell();
 
     expect(screen.queryByRole("button", { name: /side panel/ })).not.toBeInTheDocument();
   });
 
-  it("closes the pane, and says so", async () => {
+  it("appears as the way out once the page opens the pane", () => {
+    // `Ask` is the way in. This is the way back.
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
-    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+
+    act(() => openSidePane());
+
     expect(container.querySelector("aside")).not.toHaveClass("hidden");
+    expect(screen.getByRole("button", { name: "Hide the side panel" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("closes the pane, and takes itself away with it", async () => {
+    const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
+    act(() => openSidePane());
 
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
 
     expect(container.querySelector("aside")).toHaveClass("hidden");
-    expect(screen.getByRole("button", { name: "Show the side panel" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(screen.queryByRole("button", { name: /side panel/ })).not.toBeInTheDocument();
   });
 
-  it("opens it again after a close", async () => {
+  it("opens it again after a close, with the pane's content intact", async () => {
     const { container } = shell(<SidePane><p>Ask this meeting</p></SidePane>);
-    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+    act(() => openSidePane());
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+    act(() => openSidePane());
 
     expect(container.querySelector("aside")).not.toHaveClass("hidden");
+    expect(document.getElementById(SIDE_PANE_ID)).toHaveTextContent("Ask this meeting");
   });
 
   it("keeps the pane mounted while it is closed", async () => {
     // Destroying it would throw away a half-typed question and leave `SidePane`
     // with nowhere to render. Hidden, never unmounted.
     shell(<SidePane><p>Ask this meeting</p></SidePane>);
-    await userEvent.click(screen.getByRole("button", { name: "Show the side panel" }));
+    act(() => openSidePane());
 
     await userEvent.click(screen.getByRole("button", { name: "Hide the side panel" }));
 
