@@ -284,7 +284,7 @@ describe("the export path, which does not go through RTK Query", () => {
     const fetchStub = stubFetch();
     setTokenGetter(async () => null);
 
-    await expect(fetchExportFile("mtg_1", "pdf", {}, 0)).rejects.toThrow();
+    await expect(fetchExportFile("mtg_1", "summary", {}, 0)).rejects.toThrow();
 
     expect(fetchStub).not.toHaveBeenCalled();
   });

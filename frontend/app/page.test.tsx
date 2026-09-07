@@ -106,7 +106,10 @@ describe("what it promises", () => {
       /Action items, decisions and risks/i,
       /Ask one meeting, or all of them/i,
       /A transcript you can correct/i,
-      /PDF, Word, Markdown or plain text/i,
+      // The formats the product actually writes. It used to say "PDF,
+      // Word, Markdown or plain text", and three of those four now have
+      // no surface behind them at all -- which is what this test is for.
+      /The summary and the transcript as PDF, and the recording as MP3/i,
     ]) {
       expect(screen.getAllByText(real).length).toBeGreaterThan(0);
     }

@@ -35,31 +35,57 @@ import {
  * a person could act on.
  */
 describe("exportPath", () => {
-  it("asks for the format", () => {
-    expect(exportPath("mtg_1", "pdf", {}, null)).toBe("/meetings/mtg_1/export?format=pdf");
+  it("asks the endpoint for the part, and nothing else", () => {
+    /*
+     * TWO PATHS, NO PARAMETERS ABOUT CONTENT.
+     *
+     * <p>This built `/export?format=pdf` and could carry eight more: which
+     * sections by key, whether to include the action items, whether to append
+     * the transcript, whether to label it with speakers, whether to label it
+     * with times, and how much to flatten. That is what let a "summary" arrive
+     * with the transcript on the end and half its sections missing.
+     */
+    expect(exportPath("mtg_1", "summary", {}, null)).toBe("/meetings/mtg_1/export/summary");
+    expect(exportPath("mtg_1", "transcript", {}, null)).toBe("/meetings/mtg_1/export/transcript");
   });
 
-  it("leaves the transcript out unless it was asked for", () => {
-    // Absent rather than false: the transcript is ten to a hundred times the
-    // length of everything else, and the default has to be the small file.
-    expect(exportPath("mtg_1", "docx", { transcript: false }, null)).not.toContain("transcript");
-    expect(exportPath("mtg_1", "docx", { transcript: true }, null)).toContain("transcript=true");
+  it("asks for no format, because the part decides it", () => {
+    // A summary is a PDF. There is nothing to ask.
+    expect(exportPath("mtg_1", "summary", {}, null)).not.toContain("format");
+  });
+
+  it("carries none of the options the old endpoint took", () => {
+    /*
+     * The guard against the simplification being cosmetic. `exportPath` no
+     * longer has parameters for these, so the only way they come back is
+     * somebody adding them again — and this fails when they do.
+     */
+    const url = exportPath("mtg_1", "transcript", { language: "es" }, "Asia/Tokyo");
+
+    for (const gone of ["sections", "actionItems", "speakers", "timestamps", "combine", "summary="]) {
+      expect(url).not.toContain(gone);
+    }
   });
 
   it("carries the language the page is being read in", () => {
-    expect(exportPath("mtg_1", "pdf", { language: "es" }, null)).toContain("language=es");
+    expect(exportPath("mtg_1", "summary", { language: "es" }, null)).toContain("language=es");
   });
 
   it("omits the language when reading the original", () => {
     // An empty language would be sent as `language=` and read by the server as
     // a request to translate into nothing.
-    expect(exportPath("mtg_1", "pdf", { language: null }, null)).not.toContain("language");
+    expect(exportPath("mtg_1", "summary", { language: null }, null)).not.toContain("language");
   });
 
   it("sends the reader's time zone", () => {
     // 23:30 in London is the next day in Tokyo. A file dated a day off from the
     // page it was exported from looks like the wrong meeting.
-    expect(exportPath("mtg_1", "pdf", {}, "Asia/Tokyo")).toContain("tz=Asia%2FTokyo");
+    expect(exportPath("mtg_1", "summary", {}, "Asia/Tokyo")).toContain("tz=Asia%2FTokyo");
+  });
+
+  it("leaves no dangling question mark when there is nothing to ask", () => {
+    // `/export/summary?` is a URL somebody will eventually compare as a string.
+    expect(exportPath("mtg_1", "summary", {}, null)).not.toContain("?");
   });
 });
 
@@ -247,7 +273,7 @@ describe("fetchExportFile", () => {
   it("returns the bytes and the name the server chose", async () => {
     fetchMock.mockResolvedValue(ok("四半期.pdf"));
 
-    const file = await fetchExportFile("mtg_1", "pdf", {}, 0);
+    const file = await fetchExportFile("mtg_1", "summary", {}, 0);
 
     expect(file.filename).toBe("四半期.pdf");
     expect(new TextDecoder().decode(await file.blob.arrayBuffer())).toBe("summary");
@@ -260,7 +286,7 @@ describe("fetchExportFile", () => {
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValueOnce(ok());
 
-    const file = await fetchExportFile("mtg_1", "txt", {}, 0);
+    const file = await fetchExportFile("mtg_1", "transcript", {}, 0);
 
     expect(file.filename).toBe("sprint-planning.txt");
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -269,7 +295,7 @@ describe("fetchExportFile", () => {
   it.each([502, 503, 504])("tries once more after a %s", async (status) => {
     fetchMock.mockResolvedValueOnce(failing(status)).mockResolvedValueOnce(ok());
 
-    await expect(fetchExportFile("mtg_1", "txt", {}, 0)).resolves.toBeTruthy();
+    await expect(fetchExportFile("mtg_1", "transcript", {}, 0)).resolves.toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -278,14 +304,14 @@ describe("fetchExportFile", () => {
     // genuinely broken export take longer to say so.
     fetchMock.mockResolvedValue(failing(503));
 
-    await expect(fetchExportFile("mtg_1", "txt", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
+    await expect(fetchExportFile("mtg_1", "transcript", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([400, 401, 403, 404, 429, 500])("does not retry a %s", async (status) => {
     fetchMock.mockResolvedValue(failing(status, { message: "" }));
 
-    await expect(fetchExportFile("mtg_1", "txt", {}, 0)).rejects.toBeTruthy();
+    await expect(fetchExportFile("mtg_1", "transcript", {}, 0)).rejects.toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -294,7 +320,7 @@ describe("fetchExportFile", () => {
       failing(404, { message: "This meeting has not been translated into German." }),
     );
 
-    await expect(fetchExportFile("mtg_1", "pdf", {}, 0)).rejects.toBeInstanceOf(ExportError);
+    await expect(fetchExportFile("mtg_1", "summary", {}, 0)).rejects.toBeInstanceOf(ExportError);
   });
 
   it("does not quote a 5xx body, even when it parses", async () => {
@@ -302,7 +328,7 @@ describe("fetchExportFile", () => {
     // both land here, and neither is a sentence for a user.
     fetchMock.mockResolvedValue(failing(500, { message: "An unexpected error occurred" }));
 
-    await expect(fetchExportFile("mtg_1", "pdf", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
+    await expect(fetchExportFile("mtg_1", "summary", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
   });
 
   it("survives a 5xx whose body is not JSON at all", async () => {
@@ -311,7 +337,7 @@ describe("fetchExportFile", () => {
     // become the error the user sees.
     fetchMock.mockResolvedValue(failing(500));
 
-    await expect(fetchExportFile("mtg_1", "pdf", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
+    await expect(fetchExportFile("mtg_1", "summary", {}, 0)).rejects.toBeInstanceOf(DownloadFailure);
   });
 
   it("never mistakes a transport failure for a finished download", async () => {
@@ -319,7 +345,7 @@ describe("fetchExportFile", () => {
 
     // The rule the whole feature rests on: no path returns a file when none
     // arrived.
-    await expect(fetchExportFile("mtg_1", "txt", {}, 0)).rejects.toBeInstanceOf(TypeError);
+    await expect(fetchExportFile("mtg_1", "transcript", {}, 0)).rejects.toBeInstanceOf(TypeError);
   });
 });
 

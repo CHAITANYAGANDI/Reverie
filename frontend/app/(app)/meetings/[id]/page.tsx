@@ -1190,25 +1190,24 @@ export default function MeetingDetailPage() {
             they need stay here; only the buttons are drawn elsewhere. See
             components/header-slot.tsx. */}
               <ExportDialog
-      open={exporting}
-      onOpenChange={setExporting}
-      meetingId={id}
-      // Handed the data the page already has, so the preview costs no
-      // request and updates the moment a tickbox moves.
-      summary={showing ? undefined : summary.data}
-      actionItems={actions.data ?? []}
-      segments={transcript.data?.segments ?? []}
-      audioContentType={m.contentType}
-      transcriptLines={transcript.data?.segments?.length ?? 0}
-      // The file is written in whatever the page is being read in, so
-      // exporting a translation you are looking at needs no second
-      // choice — and cannot silently give you the English instead.
-      language={readingIn === ORIGINAL ? null : readingIn}
-      languageName={showing?.languageName}
-      sourceLanguageName={
-        languages.data?.find((l) => l.code === m.language)?.name ?? null
-      }
-      hasAudio={!isDocument && !!m.audioUrl}
+                open={exporting}
+                onOpenChange={setExporting}
+                meetingId={id}
+                /*
+                  Four props, where there were nine.
+                  <p>`actionItems`, `segments`, `audioContentType`,
+                  `languageName` and `sourceLanguageName` all fed the preview
+                  pane and the caveats around the format pickers. The documents
+                  are server-built and complete, so the dialog only needs to
+                  know what exists -- not what is in it.
+                */
+                summary={showing ? undefined : summary.data}
+                transcriptLines={transcript.data?.segments?.length ?? 0}
+                // The file is written in whatever the page is being read in, so
+                // exporting a translation you are looking at needs no second
+                // choice — and cannot silently give you the English instead.
+                language={readingIn === ORIGINAL ? null : readingIn}
+                hasAudio={!isDocument && !!m.audioUrl}
               />
       </div>
 

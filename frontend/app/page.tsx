@@ -469,7 +469,7 @@ const GROUPS = [
       {
         label: "Yours to take, and to delete",
         detail:
-          "Export as PDF, Word, Markdown or plain text. Delete a recording, a transcript or the whole account.",
+          "Export the summary and the transcript as PDF, and the recording as MP3. Delete a recording, a transcript or the whole account.",
       },
     ],
   },
@@ -536,8 +536,12 @@ const KEEPING = [
       "Nothing is shared into it and nobody else can read it. There is no team tier to be upgraded into.",
   },
   {
-    label: "Export in four formats",
-    detail: "PDF, Word, Markdown or plain text — and the audio as MP3.",
+    // Was "Export in four formats", listing Word, Markdown and plain text.
+    // Three of the four had no consumer and the product no longer writes them;
+    // a landing page advertising a format the app cannot produce is the worst
+    // kind of copy, because somebody chooses Reverie for it.
+    label: "Export what you came for",
+    detail: "The summary and the transcript as PDF, and the recording as MP3.",
   },
   {
     label: "One plan, no card",
