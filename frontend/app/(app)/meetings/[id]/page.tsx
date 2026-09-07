@@ -2771,6 +2771,12 @@ function TranscriptPanel({
    * still there to be played.
    */
   const [onlyMarked, setOnlyMarked] = React.useState(false);
+  /*
+   * Which utility is open, if any. One at a time, so the block above the
+   * transcript cannot grow back by opening all three. Closed by default: the
+   * transcript is what this screen is for.
+   */
+  const [panel, setPanel] = React.useState<"find" | "marks" | "speakers" | null>(null);
 
   /**
    * The marks each segment carries, resolved against its current text.
@@ -2899,13 +2905,80 @@ function TranscriptPanel({
      * per-word memo keeps holding.
      */
     <div className="space-y-6">
-        {/* Find in transcript. Above everything else because it changes what
-            the rest of the panel shows. */}
+        {/*
+          ONE UTILITY ROW, AND THE TRANSCRIPT STARTS.
+          <p>These three things — find, the marks index and talk time — were
+          three stacked blocks above the first spoken line: a full-width search
+          box with two lines of help under it, a bordered marks strip, and a
+          roll-call with a bar per speaker. About 350px of utility before the
+          document, on the screen `19-meeting-transcript.html` says the design
+          lives or dies on. The reference begins the first turn almost
+          immediately after the mode row.
+          <p>So they are three toggles on one line, and each opens the control
+          that was already there. Nothing was deleted and no dialog or second
+          pane was added: find keeps its query, its match count and its marks;
+          Highlights opens the same `MarksSection` with the same filter;
+          Speakers opens the same roll-call, the same bars and the same
+          `SpeakerEditor`.
+          <p>ONE AT A TIME, so the block cannot grow back by opening all three.
+          <p>And each toggle carries its own state when its feature is doing
+          something — a query that is filtering, a filter that is hiding turns.
+          A control that is collapsed while it narrows what is on screen is the
+          bug this codebase has fixed twice on other pages.
+        */}
         {segments.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <UtilityTab
+              open={panel === "find"}
+              on={Boolean(needle)}
+              onClick={() => setPanel((p) => (p === "find" ? null : "find"))}
+            >
+              <Search className="h-3.5 w-3.5" aria-hidden /> Find
+              {needle && (
+                <span className="tabular font-mono text-cap text-ink-4">
+                  {matchCount}
+                </span>
+              )}
+            </UtilityTab>
+
+            {marks.length > 0 && (
+              <UtilityTab
+                open={panel === "marks"}
+                on={onlyMarked}
+                onClick={() => setPanel((p) => (p === "marks" ? null : "marks"))}
+              >
+                <Highlighter className="h-3.5 w-3.5" aria-hidden /> Highlights
+                <span className="tabular font-mono text-cap text-ink-4">{marks.length}</span>
+                {/* Said on the closed control, because this one hides turns. */}
+                {onlyMarked && <span className="text-cap text-ink-3">only</span>}
+              </UtilityTab>
+            )}
+
+            {speakers.length > 0 && talk.total > 0 && (
+              <UtilityTab
+                open={panel === "speakers"}
+                onClick={() => setPanel((p) => (p === "speakers" ? null : "speakers"))}
+              >
+                <Users className="h-3.5 w-3.5" aria-hidden /> Speakers
+                <span className="tabular font-mono text-cap text-ink-4">{speakers.length}</span>
+              </UtilityTab>
+            )}
+
+            {/* On the row rather than under it, so it costs no height of its
+                own. Hidden on a phone, where the row is already full. */}
+            <p className="ml-auto hidden text-foot text-ink-5 lg:block">
+              Select any part of the transcript to act on it.
+            </p>
+          </div>
+        )}
+
+        {/* Find: the same input, the same query state, the same match count. */}
+        {panel === "find" && segments.length > 0 && (
           <div className="space-y-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-4" />
               <Input
+                autoFocus
                 className="h-9 border-edge bg-surface-raised pl-8 pr-8"
                 placeholder="Find in transcript…"
                 value={query}
@@ -2934,16 +3007,11 @@ function TranscriptPanel({
                     }. Click any word to play from there.`}
               </p>
             )}
-            <p className="text-foot text-ink-4">
-              Select any part of the transcript to highlight, quote, note or act
-              on it. Point at a turn for reactions, notes, copying and links.
-            </p>
           </div>
         )}
 
-        {/* What has been marked. Collapsed by default: it is an index, and an
-            index that opens over the thing it indexes is in the way. */}
-        {marks.length > 0 && (
+        {/* Highlights: the same index, with its own disclosure inside it. */}
+        {panel === "marks" && marks.length > 0 && (
           <MarksSection
             meetingId={meetingId}
             moments={marks}
@@ -2954,13 +3022,10 @@ function TranscriptPanel({
           />
         )}
 
-        {/* Talk-time */}
-        {speakers.length > 0 && talk.total > 0 && (
+        {/* Speakers: the same real stats, and the same editor behind them. */}
+        {panel === "speakers" && speakers.length > 0 && talk.total > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="v2-label flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5" /> Talk time
-              </h3>
+            <div className="flex items-center justify-end">
               <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
                 {editing ? "Cancel" : "Edit speakers"}
               </Button>
@@ -3023,6 +3088,7 @@ function TranscriptPanel({
             )}
           </div>
         )}
+
 
         {/* Transcript, grouped into turns.
             Diarization emits an utterance per pause, so one person speaking for
@@ -3464,6 +3530,43 @@ const SpokenWords = React.memo(function SpokenWords({
  * never on `!data`, which is also what a 500 looks like. See
  * lib/resource-state.
  */
+/**
+ * One utility above the transcript: a label, a count, and what it opens.
+ *
+ * <p>A quiet control rather than a section. `aria-expanded` because it is a
+ * disclosure, and `on` for the case that matters — a find that is filtering or
+ * a marks filter that is hiding turns has to look different when collapsed,
+ * or the page is narrowing itself with no visible reason.
+ */
+function UtilityTab({
+  open,
+  on = false,
+  onClick,
+  children,
+}: {
+  open: boolean;
+  /** The feature is doing something, whether or not its panel is open. */
+  on?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-foot transition-colors duration-press ease-soft",
+        open || on
+          ? "bg-white/[0.06] text-ink"
+          : "text-ink-3 hover:bg-white/[0.035] hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function EmptyText({ children }: { children: React.ReactNode }) {
   return <p className="py-8 text-center text-callout text-ink-4">{children}</p>;
 }

@@ -32,7 +32,6 @@ import type { SegmentEdit, TranscriptSegment } from "@/lib/types";
 import { timecode } from "@/lib/format";
 import { groupIntoTurns } from "@/lib/turns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { SpeakerAvatar } from "@/components/speaker-avatar";
 import { cn } from "@/lib/utils";
 
@@ -219,14 +218,26 @@ export const TranscriptEditor = React.forwardRef<
   }
 
   return (
-    <Card onKeyDown={onKeyDown}>
-      <CardContent className="space-y-4 pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/40 px-3 py-2">
-          <p className="text-sm">
-            <span className="font-medium">Editing the transcript.</span>{" "}
-            <span className="text-muted-foreground">
-              Fix as many lines as you like, then press Done.
-            </span>
+    /*
+     * ON THE CANVAS, not in a card.
+     *
+     * <p>This was `<Card><CardContent>` — a rounded border round the whole
+     * transcript, with a dashed filled strip inside it. Two surfaces stacked
+     * around a document, on the one screen where the words are the point, and
+     * the V2 rule is that only the thing being operated becomes a surface.
+     * That is the paragraph under the cursor, which has its own focus ring.
+     *
+     * <p>Nothing about the editing changed: same turns from the same
+     * `groupIntoTurns`, same drafts, same per-line undo, same dirty count, same
+     * Save and Cancel, same keyboard handler. See the tests.
+     */
+    <div onKeyDown={onKeyDown} className="space-y-4">
+        {/* One quiet line. It used to be a dashed panel repeating a mode the
+            tab row now names out loud; what is left is the part that says what
+            to do and the count of what is unsaved. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+          <p className="text-callout text-ink-3">
+            Fix as many lines as you like, then press Done.
           </p>
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {dirty === 0
@@ -333,7 +344,6 @@ export const TranscriptEditor = React.forwardRef<
             Done{dirty > 0 ? ` (${dirty})` : ""}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 });

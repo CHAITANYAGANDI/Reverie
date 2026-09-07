@@ -1099,10 +1099,13 @@ describe("the transcript", () => {
     segments = [aSegment({ speaker: "Priya", text: "We agreed to ship on the ninth.", start: 754, end: 760 })];
     await readTranscript();
 
-    // Twice on purpose: the talk-time roll-call above names them too, and the
-    // two must agree. `getAllBy` rather than a scoped query, because "the name
-    // appears exactly where it should and nowhere else" is the assertion.
-    expect(screen.getAllByText("Priya")).toHaveLength(2);
+    /*
+     * Once. The talk-time roll-call used to name every speaker again above the
+     * first turn, which is part of the 350px of utility that sat before the
+     * document; it is behind the Speakers disclosure now, so the name appears
+     * where it belongs and nowhere else.
+     */
+    expect(screen.getAllByText("Priya")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Play from 12:34" })).toBeInTheDocument();
     expect(screen.getByText("agreed")).toBeInTheDocument();
   });
@@ -1186,6 +1189,74 @@ describe("the transcript", () => {
     expect(screen.getByTestId("turn-actions")).toBeInTheDocument();
   });
 
+  /**
+   * Open one of the three utilities above the transcript.
+   *
+   * <p>They were three stacked blocks before the first spoken line. Each is a
+   * toggle now and each opens the control that was already there, so the tests
+   * below press the toggle and then assert exactly what they asserted before.
+   */
+  async function openUtility(name: RegExp) {
+    await userEvent.click(screen.getByRole("button", { name }));
+  }
+
+  it("keeps all three utilities out of the way until they are asked for", async () => {
+    /*
+     * THE COMPOSITION THIS EXISTS FOR. A full-width find box with two lines of
+     * help under it, a bordered marks strip and a roll-call with a bar per
+     * speaker, all above the first spoken line — on the screen the V2 study
+     * says the design lives or dies on.
+     */
+    segments = [
+      aSegment({ id: "a", speaker: "Priya", start: 0, end: 60 }),
+      aSegment({ id: "b", speaker: "Dev", start: 60, end: 90 }),
+    ];
+    await readTranscript();
+
+    expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit speakers" })).not.toBeInTheDocument();
+    // And the three ways to ask for them are on one row.
+    expect(screen.getByRole("button", { name: /Find/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /Speakers/ })).toBeInTheDocument();
+  });
+
+  it("opens one utility at a time, so the block cannot grow back", async () => {
+    segments = [
+      aSegment({ id: "a", speaker: "Priya", start: 0, end: 60 }),
+      aSegment({ id: "b", speaker: "Dev", start: 60, end: 90 }),
+    ];
+    await readTranscript();
+
+    await openUtility(/Find/);
+    expect(screen.getByLabelText("Find in transcript")).toBeInTheDocument();
+
+    await openUtility(/Speakers/);
+    expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit speakers" })).toBeInTheDocument();
+  });
+
+  it("says on the closed control that a search is still narrowing things", async () => {
+    /*
+     * A collapsed control that is filtering what is on screen is the bug this
+     * codebase has fixed twice on other pages. The count rides the toggle.
+     */
+    segments = [
+      aSegment({ id: "a", text: "We agreed to ship." }),
+      aSegment({ id: "b", speaker: "Dev", text: "Nothing about that here." }),
+    ];
+    await readTranscript();
+
+    await openUtility(/Find/);
+    await userEvent.type(screen.getByLabelText("Find in transcript"), "agreed");
+    await openUtility(/Find/);
+
+    expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Find/ })).toHaveTextContent("1");
+  });
+
   it("offers Find in transcript, and says how many matched", async () => {
     segments = [
       aSegment({ id: "a", text: "We agreed to ship." }),
@@ -1193,6 +1264,7 @@ describe("the transcript", () => {
     ];
     await readTranscript();
 
+    await openUtility(/Find/);
     await userEvent.type(screen.getByLabelText("Find in transcript"), "agreed");
 
     expect(screen.getByText(/1 match in 1 turn/)).toBeInTheDocument();
@@ -1203,6 +1275,7 @@ describe("the transcript", () => {
     // failed to load.
     await readTranscript();
 
+    await openUtility(/Find/);
     await userEvent.type(screen.getByLabelText("Find in transcript"), "zzzz");
 
     expect(screen.getByText(/Nothing in this transcript matches/)).toBeInTheDocument();
@@ -1215,7 +1288,10 @@ describe("the transcript", () => {
     ];
     await readTranscript();
 
-    expect(screen.getByText("Talk time")).toBeInTheDocument();
+    // Behind the Speakers disclosure, with the same real stats and the same
+    // editor behind them.
+    await openUtility(/Speakers/);
+    expect(screen.getByText(/Priya \(\d+%\)/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Edit speakers" }));
     expect(screen.getByTestId("speaker-editor")).toBeInTheDocument();
   });
