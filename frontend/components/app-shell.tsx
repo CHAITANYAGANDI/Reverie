@@ -284,7 +284,49 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             pane.expanded
               ? "lg:fixed lg:inset-x-0 lg:bottom-0 lg:top-band lg:z-30 lg:h-auto lg:w-auto"
               : "lg:w-[var(--side-pane-w)]",
+            /*
+             * `relative` unprefixed, NOT `lg:relative`.
+             *
+             * <p>Measured, after getting it wrong: `lg:relative` here is the
+             * same variant and the same property as the `lg:fixed` in the
+             * maximised branch above, so `cn` kept whichever came last and the
+             * maximised pane stopped being fixed. It laid out in flow at
+             * `lg:w-auto` instead — 553px of chat where 1440px was expected.
+             *
+             * <p>Bare `relative` cannot collide with an `lg:` rule, and the
+             * `max-lg:fixed` below overrides it under the breakpoint because
+             * Tailwind emits max-width variants after unprefixed utilities.
+             */
             showPane ? "relative flex flex-col" : "hidden",
+            /*
+             * BELOW `lg`, IT COVERS THE MEETING RATHER THAN FOLLOWING IT.
+             *
+             * <p>`flex-wrap` above puts the pane on the second line below `lg`,
+             * which made it a full-height block appended *after* the whole
+             * document. So pressing `Ask` on a phone appeared to do nothing:
+             * the chat was real, mounted and correct, roughly a screen and a
+             * half below the fold, and so was the control for closing it.
+             *
+             * <p>Fixed under the band instead, at the same `z-30` the maximised
+             * desktop pane already uses, so it is laid over the meeting rather
+             * than added to it. The document keeps its layout and its scroll
+             * offset — closing the chat returns the reader exactly where they
+             * were, because nothing about the page underneath ever changed.
+             *
+             * <p>`max-lg:` and not a hand-written media query: the side-by-side
+             * breakpoint IS `lg`, three declarations up. A second number here
+             * could drift from it.
+             */
+            showPane &&
+              "max-lg:fixed max-lg:inset-x-0 max-lg:top-band max-lg:z-30 max-lg:h-auto max-lg:w-auto max-lg:border-t-0",
+            /*
+             * Clear of the bottom tabs, which are `z-40` and `md:hidden`. The
+             * pane may cover the meeting; it may not put its own composer
+             * under the app's navigation. Two `max-*` variants rather than a
+             * stacked one, and `max-md` wins below 768 because Tailwind emits
+             * max-width variants widest-first.
+             */
+            showPane && "max-lg:bottom-0 max-md:bottom-tabbar",
           )}
         >
           <div id={SIDE_PANE_ID} className="flex min-h-0 flex-1 flex-col" />

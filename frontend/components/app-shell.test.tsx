@@ -93,6 +93,7 @@ import {
   closeSidePane,
   openSidePane,
   resetSidePane,
+  toggleSidePaneExpanded,
 } from "@/components/side-pane";
 import { openSearch, resetSearchOverlay } from "@/lib/search-overlay";
 
@@ -493,5 +494,83 @@ describe("the side pane's controls", () => {
     act(() => openSidePane());
     expect(container.querySelector("aside")).not.toHaveClass("hidden");
     expect(document.getElementById(SIDE_PANE_ID)).toHaveTextContent("Ask this meeting");
+  });
+});
+
+/**
+ * Where the pane sits, at each of the two shapes the shell has.
+ *
+ * <h2>Why these assert class names</h2>
+ *
+ * <p>jsdom applies no media queries, so the only way to pin a responsive
+ * layout here is the declaration itself. That is normally a brittle test, and
+ * it is the right one for exactly this: which side of the `lg` breakpoint the
+ * chat is on is a deliberate invariant of this file, and every bug in this
+ * area has been a class that silently won or lost against another class.
+ *
+ * <p>The real geometry is measured in a browser — see the commit.
+ */
+describe("where the pane sits", () => {
+  const aside = () => document.querySelector("aside")!;
+
+  function openPane() {
+    const r = shell(<SidePane><p>Ask this meeting</p></SidePane>);
+    act(() => openSidePane());
+    return r;
+  }
+
+  it("takes its own column beside the page at the side-by-side breakpoint", () => {
+    openPane();
+
+    // 26rem of shell, sticky under the band, with the page ending where it
+    // begins. This is the desktop shape and it is finished.
+    expect(aside()).toHaveClass("lg:w-[var(--side-pane-w)]", "lg:sticky", "lg:top-band");
+  });
+
+  it("covers the page below that breakpoint instead of following it", () => {
+    /*
+     * THE BUG THIS EXISTS FOR. `flex-wrap` puts the pane on the second line
+     * below `lg`, which made it a full-height block appended after the whole
+     * document -- so pressing Ask on a phone appeared to do nothing at all.
+     * The chat was mounted, correct, and about a screen and a half down.
+     */
+    openPane();
+
+    expect(aside()).toHaveClass(
+      "max-lg:fixed",
+      "max-lg:inset-x-0",
+      "max-lg:top-band",
+      "max-lg:z-30",
+    );
+  });
+
+  it("stops above the bottom tabs, where there are bottom tabs", () => {
+    // They are `z-40` and `md:hidden`. The pane may cover the meeting; it may
+    // not put its own composer under the app's navigation.
+    openPane();
+
+    expect(aside()).toHaveClass("max-lg:bottom-0", "max-md:bottom-tabbar");
+  });
+
+  it("is no overlay at all while it is closed", () => {
+    // Occupied but not asked for. Nothing is laid over anything.
+    shell(<SidePane><p>Ask this meeting</p></SidePane>);
+
+    expect(aside()).toHaveClass("hidden");
+    expect(aside()).not.toHaveClass("max-lg:fixed");
+  });
+
+  it("still covers the whole window when maximised", () => {
+    /*
+     * MEASURED AND WRONG ONCE. Adding `lg:relative` for the mobile overlay put
+     * a second `lg:` position utility on this element, so `cn` dropped the
+     * `lg:fixed` that maximising depends on and the expanded pane laid out in
+     * flow instead: 553px of chat at 1440, where the window was expected.
+     */
+    openPane();
+    act(() => toggleSidePaneExpanded());
+
+    expect(aside()).toHaveClass("lg:fixed", "lg:inset-x-0", "lg:top-band", "lg:z-30");
+    expect(aside()).not.toHaveClass("lg:w-[var(--side-pane-w)]");
   });
 });

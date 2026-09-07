@@ -934,6 +934,28 @@ describe("Ask", () => {
     expect(screen.getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
   });
 
+  it("does not disturb the player it is opened over", async () => {
+    /*
+     * Below `lg` the pane is laid over the meeting rather than appended to it,
+     * which is only safe because the meeting underneath is untouched: the
+     * player is covered, never unmounted, so the recording keeps its position,
+     * its rate and its volume and closing the chat reveals it exactly as it
+     * was. A pane that replaced the document would have to rebuild all of it.
+     *
+     * <p>Asserted as "still mounted" because that is the whole mechanism. The
+     * geometry -- `z-30` over the player's `z-20`, and the hit test proving the
+     * pane paints over it -- is measured in a browser at 768 and 390.
+     */
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    const player = screen.getByRole("slider", { name: "Seek" });
+
+    await userEvent.click(screen.getByRole("button", { name: /^Ask$/ }));
+
+    expect(screen.getByRole("slider", { name: "Seek" })).toBe(player);
+    expect(screen.getByText("Transcript")).toBeInTheDocument();
+  });
+
   it("is not a second chat", () => {
     // One meeting-scoped implementation. The rail is the same component it has
     // always been; only its default visibility changed.
