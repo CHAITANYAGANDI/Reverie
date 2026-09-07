@@ -11,11 +11,10 @@
  * `commitment_evidence`, and nothing replaced them. So the margin carries the
  * real thing that belongs in a margin, which is the list you keep for yourself.
  *
- * <p>This is <b>the same query and the same mutations</b> as the panel it
- * replaces — `standalone: true`, `size: 100`, the same toggle and the same
- * create. What has changed is the geometry: no enclosing card, no tab bar, no
- * independent scroll, no full height. It is a heading, some rows and a
- * hairline, and it scrolls with the page because it is part of the page.
+ * <p>It is <b>the same query and the same mutations</b> as the panel it
+ * replaced — they simply live one level up now, in `useActionItems`, because
+ * Home has to know whether this margin has anything in it before it can decide
+ * whether to draw a column for it. See components/v2/now/use-action-items.
  *
  * <p><b>Only what somebody typed.</b> A commitment made in a meeting is read on
  * that meeting, beside the sentence it came from, and ticked off there. That
@@ -25,89 +24,48 @@
  *
  * <p>Fields are shown only where they exist. A standalone item carries a title,
  * a status, and an owner and due date where somebody set them — so nothing here
- * is fabricated to match a screenshot that had more.
+ * is fabricated to match a screenshot that had more. There is no "view all",
+ * because there is no page to view them all on; and no promotional card under
+ * the list, because when the list ends the margin ends.
  */
 
 import * as React from "react";
-import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
-import {
-  useGetActionItemsQuery,
-  usePatchActionItemMutation,
-  useCreateStandaloneActionItemMutation,
-} from "@/lib/api";
 import type { ActionItemResponse } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { dueLabel, dueTone } from "@/lib/due";
 import { cn } from "@/lib/utils";
-import { resourceState, presenceOfList } from "@/lib/resource-state";
 import { ResourceLoadError } from "@/components/resource-load-error";
+import type { ActionItems } from "@/components/v2/now/use-action-items";
 
-export function NowActionItems() {
-  const query = useGetActionItemsQuery({ status: undefined, standalone: true, size: 100 });
-  const { data } = query;
+/** Which of the two lists is on screen. Local, and nothing else's business. */
+type View = "open" | "done";
 
-  /*
-   * The same rule as everywhere else — see lib/resource-state. `data?.content
-   * ?? []` is what made this say "Nothing on your list" whenever the request
-   * failed: a sentence about what somebody has committed to, produced by a
-   * dropped connection.
-   */
-  const listState = resourceState({
-    isUninitialized: query.isUninitialized,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    isError: query.isError,
-    isSuccess: query.isSuccess,
-    content: presenceOfList(data?.content),
-  });
-
-  const [patch] = usePatchActionItemMutation();
-  const [create, { isLoading: creating }] = useCreateStandaloneActionItemMutation();
+export function NowActionItems({ items }: { items: ActionItems }) {
+  const { state, open, done } = items;
 
   const [draft, setDraft] = React.useState("");
   const [adding, setAdding] = React.useState(false);
-  const [showDone, setShowDone] = React.useState(false);
+  const [view, setView] = React.useState<View>("open");
 
-  // Safe below this point: every branch that reads them is gated on
-  // `listState`, which is `ready` or `empty` only for a settled response.
-  const items = data?.content ?? [];
-  const open = items.filter((i) => i.status !== "DONE");
-  const done = items.filter((i) => i.status === "DONE");
+  const showing = view === "open" ? open : done;
 
-  async function add() {
-    const title = draft.trim();
-    if (!title) {
-      setAdding(false);
-      return;
-    }
-    try {
-      await create({ title }).unwrap();
-      setDraft("");
-      // Stays open: adding one thing you remembered usually means adding two.
-    } catch {
-      toast.error("Couldn't add that.");
-    }
-  }
-
-  async function toggle(item: ActionItemResponse) {
-    try {
-      await patch({
-        id: item.id,
-        body: { status: item.status === "DONE" ? "OPEN" : "DONE" },
-      }).unwrap();
-    } catch {
-      toast.error("Couldn't update that.");
-    }
+  async function commit() {
+    const title = draft;
+    setAdding(false);
+    setDraft("");
+    // Back to Open, or the thing just added is filed behind a tab.
+    setView("open");
+    await items.add(title);
   }
 
   return (
     <section aria-labelledby="now-actions">
-      <div className="mb-2.5 flex items-baseline gap-3">
+      <div className="flex items-baseline gap-3">
         <h2 id="now-actions" className="v2-label">
           Action items
         </h2>
-        {!adding && listState !== "loading" && listState !== "error" && (
+        {!adding && state !== "loading" && state !== "error" && (
           <button
             type="button"
             onClick={() => setAdding(true)}
@@ -118,78 +76,125 @@ export function NowActionItems() {
         )}
       </div>
 
-      {adding && (
-        <div className="mb-2 flex items-center gap-2">
-          <span className="h-3.5 w-3.5 shrink-0 rounded-[3.5px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]" aria-hidden />
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void add();
-              } else if (e.key === "Escape") {
-                setDraft("");
-                setAdding(false);
-              }
-            }}
-            onBlur={() => void add()}
-            placeholder="What needs doing?"
-            aria-label="New action item"
-            className="h-7 flex-1 bg-transparent text-callout text-ink outline-none placeholder:text-ink-4"
+      {/*
+        OPEN AND COMPLETED, AS TWO VIEWS.
+        <p>This was a "Completed (N)" link under the list that expanded a
+        second list below the first, so a margin with four open items and nine
+        finished ones was thirteen rows of which four mattered. Two views of
+        one array, switched locally: no request, no route, no state anybody
+        else can see.
+        <p>Drawn only once there is something to switch between. A tab bar over
+        an empty account is chrome describing nothing.
+      */}
+      {state !== "loading" && state !== "error" && (open.length > 0 || done.length > 0) && (
+        /*
+          Two pressed-state buttons, not a `role="tablist"`. A tablist owes the
+          reader arrow-key navigation between its tabs and an `aria-controls`
+          link to a panel; without those it announces a widget that does not
+          behave like one. `aria-pressed` is the whole truth about two buttons
+          where one is currently in effect, and it needs no keyboard contract
+          beyond the one a button already has.
+        */
+        <div className="mt-3 flex items-center gap-1">
+          <Tab on={view === "open"} onSelect={() => setView("open")} label="Open" count={open.length} />
+          <Tab on={view === "done"} onSelect={() => setView("done")} label="Completed" count={done.length} />
+        </div>
+      )}
+
+      <div className="mt-3 border-t border-line pt-3">
+        {adding && (
+          <div className="mb-3 flex items-center gap-2.5">
+            <span
+              className="h-3.5 w-3.5 shrink-0 rounded-[3.5px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
+              aria-hidden
+            />
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commit();
+                } else if (e.key === "Escape") {
+                  setDraft("");
+                  setAdding(false);
+                }
+              }}
+              onBlur={() => void commit()}
+              placeholder="What needs doing?"
+              aria-label="New action item"
+              className="h-7 flex-1 bg-transparent text-callout text-ink outline-none placeholder:text-ink-4"
+            />
+            {items.creating && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-4" aria-hidden />
+            )}
+          </div>
+        )}
+
+        {state === "loading" ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ) : state === "error" ? (
+          <ResourceLoadError
+            title="Couldn't load your action items"
+            detail="They are still on your list. Something went wrong loading them."
+            onRetry={items.refetch}
+            retrying={items.retrying}
           />
-          {creating && <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-4" aria-hidden />}
-        </div>
-      )}
-
-      {listState === "loading" ? (
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-        </div>
-      ) : listState === "error" ? (
-        <ResourceLoadError
-          title="Couldn't load your action items"
-          detail="They are still on your list. Something went wrong loading them."
-          onRetry={() => void query.refetch()}
-          retrying={query.isFetching}
-        />
-      ) : open.length === 0 ? (
-        /* Quiet and truthful. Reached only from a settled response, so it is a
-           statement about the list rather than about the network. */
-        <p className="text-callout leading-[1.45] text-ink-4">
-          Nothing on your list. What a meeting committed you to stays on that
-          meeting.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {open.map((item) => (
-            <Row key={item.id} item={item} onToggle={() => void toggle(item)} />
-          ))}
-        </ul>
-      )}
-
-      {done.length > 0 && (
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setShowDone((v) => !v)}
-            aria-expanded={showDone}
-            className="text-foot text-ink-4 underline-offset-[3px] transition-colors duration-press ease-soft hover:text-ink-2 hover:underline"
-          >
-            Completed ({done.length})
-          </button>
-          {showDone && (
-            <ul className="mt-3 flex flex-col gap-3">
-              {done.map((item) => (
-                <Row key={item.id} item={item} onToggle={() => void toggle(item)} />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        ) : showing.length === 0 ? (
+          /* Quiet and truthful, and different per view: "nothing on your list"
+             is wrong under Completed, where the truth is that nothing has been
+             finished yet. Reached only from a settled response, so both are
+             statements about the list rather than about the network. */
+          <p className="text-callout leading-[1.45] text-ink-4">
+            {view === "open"
+              ? "Nothing on your list. What a meeting committed you to stays on that meeting."
+              : "Nothing finished yet."}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {showing.map((item) => (
+              <Row key={item.id} item={item} onToggle={() => void items.toggle(item)} />
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
+  );
+}
+
+/**
+ * One of the two views.
+ *
+ * <p>The count is `array.length` and nothing else — it cannot disagree with
+ * the rows underneath because it is the same array.
+ */
+function Tab({
+  on,
+  onSelect,
+  label,
+  count,
+}: {
+  on: boolean;
+  onSelect: () => void;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onSelect}
+      className={cn(
+        "rounded-md px-2 py-1 text-foot transition-colors duration-press ease-soft",
+        on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-4 hover:text-ink-2",
+      )}
+    >
+      {label} <span className="tabular">({count})</span>
+    </button>
   );
 }
 

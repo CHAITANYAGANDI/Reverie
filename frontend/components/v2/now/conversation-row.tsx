@@ -34,7 +34,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { FileAudio, FileText, Youtube } from "lucide-react";
+import { ChevronRight, FileAudio, FileText, Youtube } from "lucide-react";
 import { useLiveMeetingStatus } from "@/components/processing-row";
 import { stageText } from "@/lib/processing-stages";
 import { formatDuration, isTerminal } from "@/lib/format";
@@ -52,6 +52,7 @@ function Dot() {
 export function NowConversationRow({
   meeting,
   action,
+  trailingTime = false,
 }: {
   meeting: MeetingResponse;
   /**
@@ -67,6 +68,19 @@ export function NowConversationRow({
    * status pill ends up on one screen and not the other.
    */
   action?: React.ReactNode;
+  /**
+   * Put the clock at the far end of the row, with a chevron, instead of first
+   * in the metadata line.
+   *
+   * <p>Opt-in, and Home is the only caller that opts in. Library and a folder
+   * share this one drawing of the row on purpose -- two drawings is how a
+   * status pill ends up on one screen and not the other -- so a change that
+   * suits a short list on the default page must not silently re-lay-out the
+   * archive. On Home the list is twenty rows with one time each and the eye
+   * runs down that column; in Library the same rows carry a date group
+   * heading above them and the time belongs beside the duration.
+   */
+  trailingTime?: boolean;
 }) {
   const Icon =
     meeting.sourceType === "YOUTUBE"
@@ -86,14 +100,20 @@ export function NowConversationRow({
    * dots fall between what is actually there rather than around gaps — a row
    * with no duration must not render "09:12 · · Processing".
    */
-  const facts: React.ReactNode[] = [
-    <span key="at" className="tabular font-mono">
-      {new Date(meeting.createdAt).toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      })}
-    </span>,
-  ];
+  const at = new Date(meeting.createdAt).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const facts: React.ReactNode[] = [];
+  // First in the line, unless it is being drawn at the other end of the row.
+  if (!trailingTime) {
+    facts.push(
+      <span key="at" className="tabular font-mono">
+        {at}
+      </span>,
+    );
+  }
   if (meeting.durationSeconds) {
     facts.push(<span key="len">{formatDuration(meeting.durationSeconds)}</span>);
   }
@@ -142,18 +162,36 @@ export function NowConversationRow({
       >
         <span className="flex items-baseline gap-2.5">
           <Icon className="h-[13px] w-[13px] shrink-0 translate-y-px text-ink-5" aria-hidden />
-          <span className="min-w-0 truncate text-title-3 font-headline text-ink">
+          <span className="min-w-0 flex-1 truncate text-title-3 font-headline text-ink">
             {meeting.title}
           </span>
+          {trailingTime && (
+            /*
+              The clock and the way in, at the end of the title's line.
+              <p>`shrink-0` on both and `flex-1 truncate` on the title above,
+              so a long name runs out of room before it runs under the time --
+              which at 390px is the difference between a readable row and a
+              title with a clock printed through it.
+            */
+            <>
+              <span className="tabular shrink-0 font-mono text-foot text-ink-4">{at}</span>
+              <ChevronRight
+                className="h-3.5 w-3.5 shrink-0 translate-y-px text-ink-5"
+                aria-hidden
+              />
+            </>
+          )}
         </span>
-        <span className="mt-[5px] flex flex-wrap items-center text-foot text-ink-3">
-          {facts.map((fact, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <Dot />}
-              {fact}
-            </React.Fragment>
-          ))}
-        </span>
+        {facts.length > 0 && (
+          <span className="mt-[5px] flex flex-wrap items-center text-foot text-ink-3">
+            {facts.map((fact, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <Dot />}
+                {fact}
+              </React.Fragment>
+            ))}
+          </span>
+        )}
       </Link>
       {action && <div className="absolute right-0 top-3">{action}</div>}
     </li>

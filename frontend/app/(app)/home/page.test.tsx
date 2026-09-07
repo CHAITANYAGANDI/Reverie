@@ -65,6 +65,8 @@ let errored: boolean;
 let noData: boolean;
 /** What Settings knows about the person. The masthead greets from it. */
 let displayName: string | null;
+/** The standalone action items. Empty unless a test puts something on the list. */
+let tasks: { id: string; title: string; status: string }[];
 
 function aPage(content: MeetingResponse[], total = content.length): Page<MeetingResponse> {
   return { content, page: 0, size: 50, totalElements: total, totalPages: 1 };
@@ -129,11 +131,15 @@ vi.mock("@/lib/api", () => ({
   /*
    * The margin's own list. It used to live behind `SidePane`, which these tests
    * stubbed away wholesale; it is part of the page now, so its query has to be
-   * answered. Settled and empty, because none of these tests is about it — the
-   * action items have their own file.
+   * answered.
+   *
+   * <p>Settled, and empty by default, because most of these tests are not
+   * about it — the action items have their own file. Empty is also the state
+   * that decides Home's composition: with nothing on the list there is no
+   * second column, so a test that wants the spread sets `tasks`.
    */
   useGetActionItemsQuery: () => ({
-    data: { content: [], totalElements: 0 },
+    data: { content: tasks, totalElements: tasks.length },
     isLoading: false,
     isFetching: false,
     isError: false,
@@ -200,6 +206,7 @@ beforeEach(() => {
   rows = [aMeeting()];
   total = null;
   displayName = null;
+  tasks = [];
   // The window outlives a page now, so without this it would outlive a test and
   // the order the suite happened to run in would decide what Home opened on.
   // See lib/preference-store.ts.
@@ -754,16 +761,92 @@ describe("the shape of Now", () => {
 
     // One door to one Ask. Not a composer that starts a thread of its own here
     // and a second thread at /ask.
-    const launcher = screen.getByRole("link", { name: /Ask Reverie about any of it/ });
+    const launcher = screen.getByRole("link", { name: /Ask Reverie about your meetings/ });
     expect(launcher).toHaveAttribute("href", "/ask");
     expect(screen.queryByRole("textbox", { name: /ask/i })).not.toBeInTheDocument();
   });
 
+  it("draws one glyph in the launcher and no keyboard badge", async () => {
+    /*
+     * The reference puts a Reverie mark at each end of this control and a `⌘ J`
+     * keycap inside it. Two marks read as a logo pasted twice, and a keycap on
+     * a link that navigates promises a shortcut that does not exist.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("link", { name: /Ask Reverie about your meetings/ });
+    expect(launcher.querySelectorAll("svg")).toHaveLength(1);
+    expect(launcher.querySelector("kbd")).toBeNull();
+    expect(container.querySelector("kbd")).toBeNull();
+  });
+
   it("keeps your own list on the page rather than behind a tab", async () => {
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
     expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+  });
+
+  it("draws no margin at all when there is nothing on the list", async () => {
+    /*
+     * THE SPARSE ACCOUNT, WHICH IS THE REAL ONE. One meeting and no standalone
+     * items used to leave a 376px column of nothing beside the list, under a
+     * heading and a truthful sentence explaining that it was empty. A column
+     * that exists to say it is empty is worse than no column: the list stops
+     * being centred to make room for it.
+     */
+    tasks = [];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.queryByRole("heading", { name: "Action items" })).not.toBeInTheDocument();
+    // And the spread collapses to one centred column, which is the same
+    // mechanism Library uses when its margin has nothing in it.
+    expect(container.querySelector(".v2-spread")).toHaveAttribute("data-margin", "empty");
+  });
+
+  it("spreads into two columns once the list has something on it", async () => {
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(container.querySelector(".v2-spread")).not.toHaveAttribute("data-margin");
+  });
+
+  it("carries no filter row where the reference draws one", async () => {
+    /*
+     * The reference puts Recent / My conversations / Shared with me / Starred
+     * between the launcher and the list. None of them exists: Home asks for
+     * the newest RECENT_SIZE conversations and Library is the archive with the
+     * filtering in it.
+     *
+     * <p>Asserted as controls rather than as words, because "Recent
+     * conversations..." is the subtitle and must survive.
+     */
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    for (const label of [/^Recent$/, /My conversations/, /Shared with me/, /Starred/]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: label })).not.toBeInTheDocument();
+    }
+  });
+
+  it("sells nothing in the margin", async () => {
+    // The reference ends the margin with "Stay on top of your work" and a
+    // "Learn more" link. Marketing inside the product, standing where
+    // whitespace belongs.
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.queryByText(/stay on top of your work/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/learn more/i)).not.toBeInTheDocument();
+    // And no link to a page of all action items, because there is no such page.
+    expect(screen.queryByText(/view all action items/i)).not.toBeInTheDocument();
   });
 
   it("says nothing the product cannot do", async () => {

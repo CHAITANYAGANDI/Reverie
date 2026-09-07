@@ -22,6 +22,12 @@
  * <p>The glyph is not the search glyph. Search returns a list and lives in the
  * band; this returns a sentence. Drawing both with a magnifier is what made
  * people try to search here.
+ *
+ * <p><b>One glyph, on the left, and nothing on the right.</b> No keyboard
+ * badge: this is not a shortcut somebody presses from here, and a keycap on a
+ * link that navigates is a promise about a key that does nothing. No second
+ * mark at the far end either -- two Reverie glyphs in one control read as a
+ * logo that has been pasted twice.
  */
 
 import Link from "next/link";
@@ -35,13 +41,16 @@ export function AskLauncher() {
       className={
         /* The one functional surface on this page. It is a control rather than
            content, which is the whole test for whether something gets a fill. */
-        "flex h-11 items-center gap-2.5 rounded-md bg-white/[0.04] px-3.5 " +
+        /* Taller and roomier than the 44px row it was: below a page title
+           this is the one thing on Home somebody is meant to reach for, and
+           at 44px it read as another list row. */
+        "flex h-12 items-center gap-3 rounded-lg bg-white/[0.04] px-4 " +
         "shadow-[inset_0_0_0_1px_rgb(var(--line-strong))] " +
         "transition-colors duration-press ease-soft hover:bg-white/[0.06]"
       }
     >
-      <Waypoints className="h-4 w-4 shrink-0 text-ink-4" aria-hidden />
-      <span className="flex-1 text-body text-ink-4">Ask Reverie about any of it</span>
+      <Waypoints className="h-[18px] w-[18px] shrink-0 text-ink-4" aria-hidden />
+      <span className="flex-1 text-body text-ink-4">Ask Reverie about your meetings…</span>
     </Link>
   );
 }
