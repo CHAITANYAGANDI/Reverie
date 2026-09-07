@@ -161,11 +161,25 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
         {/* Drawn only when there is something on both sides of it. Without the
             create controls the two remaining icons are the same kind of thing —
             things that are about you rather than about the work — and a stroke
-            with nothing to separate is a stroke floating in a row. */}
-        {create && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />}
+            with nothing to separate is a stroke floating in a row.
 
-        <NotificationBell />
-        <AccountMenu />
+            `bg-edge`, not `bg-line`. `--line` is a 6% white hairline meant for
+            the boundary between rows of a list, where a whole page of them
+            reads as a grid; one 16px stroke of it in a dark band is 1.14:1 and
+            simply is not there. `--edge` is the token for a stroke that is
+            supposed to be seen — it is what outlines the Record button eight
+            pixels to the left, so the two now read as the same material. */}
+        {create && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-edge" />}
+
+        {/* THE TWO THAT ARE ABOUT YOU, with their own gap.
+            <p>At the row's `gap-1` the bell sat four pixels from the avatar,
+            which reads as one control with a badge on it rather than two
+            things — and the avatar is the one control in the band that is a
+            filled circle, so it needs the most room around it, not the least. */}
+        <div className="flex items-center gap-2.5">
+          <NotificationBell />
+          <AccountMenu />
+        </div>
         </div>
       </div>
     </header>
