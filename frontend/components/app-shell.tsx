@@ -45,8 +45,7 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { bandChrome } from "@/lib/chrome";
 import { ASK, HOME, LIBRARY, folderIdFrom, isFolderListPath } from "@/lib/routes";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
-import { SIDE_PANE_ID, toggleSidePane, useSidePane } from "@/components/side-pane";
+import { SIDE_PANE_ID, useSidePane } from "@/components/side-pane";
 import { RecordingProvider, useRecording } from "@/lib/recording-context";
 import { SearchCommand } from "@/components/search-command";
 import { closeSearch, openSearch, useSearchOverlay } from "@/lib/search-overlay";
@@ -221,47 +220,25 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             <div id={HEADER_SLOT_ID} className="flex items-center gap-2 py-3 empty:hidden" />
 
             {/*
-             * The way OUT of the pane, and only that.
+             * NO PANE CONTROL HERE ANY MORE.
              *
-             * <h2>Why `showPane` and not `pane.occupied`</h2>
+             * <p>It used to live in this row: first on `pane.occupied`, so a
+             * closed meeting rendered an empty strip to hold an opener nobody
+             * needed, and then on `showPane`, which fixed the closed state and
+             * left the open one. The row still had to exist while the chat was
+             * up, because it was the only way to dismiss it — so pressing `Ask`
+             * moved the entire meeting document down 60px, and closing it moved
+             * it back. A document that jumps when a side panel opens beside it
+             * is the shell reserving height for something that is not the
+             * document's.
              *
-             * <p>It used to render whenever a page had filled the pane, open or
-             * not, because the pane opened by default: the button was the only
-             * way to put away a 26rem column, so it had to be there whenever
-             * the column could be.
-             *
-             * <p>The pane opens on request now, and the meeting's mode row has
-             * an `Ask` — so on a closed meeting this was a second, redundant
-             * opener with no context, sitting alone on a row that cost 51px
-             * above the document. Measured: the back link sat at y=142 against
-             * the reference's y=91, and the difference was this row.
-             *
-             * <p>So it appears exactly when the thing it dismisses is on
-             * screen. `showPane` is that condition and already existed — it is
-             * what gives the pane its width — which is why this is not a new
-             * expression to keep in sync with one.
-             *
-             * <p>The `pane.open` branches below are kept rather than collapsed:
-             * `toggleSidePane` is still a toggle, and a control that renders
-             * only in one state should still describe the state it is in.
+             * <p>The pane's own header holds it now, beside the AI Chat and
+             * Outline tabs it belongs with — see `MeetingRail` in the meeting
+             * page and `closeSidePane` in components/side-pane. This row is
+             * back to being the page's own controls and nothing else, which
+             * means it is currently empty at every width and costs nothing:
+             * the slot above is `empty:hidden`.
              */}
-            {showPane && (
-              <div className="flex items-center py-3">
-                <button
-                  type="button"
-                  onClick={toggleSidePane}
-                  aria-label={pane.open ? "Hide the side panel" : "Show the side panel"}
-                  aria-pressed={pane.open}
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
-                >
-                  {pane.open ? (
-                    <PanelRightClose className="h-4 w-4" />
-                  ) : (
-                    <PanelRightOpen className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            )}
           </div>
 
           {/*

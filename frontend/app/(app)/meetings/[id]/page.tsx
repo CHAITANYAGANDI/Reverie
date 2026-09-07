@@ -81,6 +81,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useRecordingJob } from "@/lib/recording-context";
 import { ProcessingCard } from "@/components/processing-card";
+import { PaneClose } from "@/components/pane-close";
 import {
   ProcessingSummary,
   ProcessingTranscript,
@@ -1651,12 +1652,30 @@ function MeetingRail({
       onValueChange={setPane}
       className="flex h-full min-h-0 flex-col"
     >
-      <TabsList variant="underline" className="flex shrink-0 gap-x-6 px-4">
-        <TabsTrigger value="chat">
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" /> AI Chat
-        </TabsTrigger>
-        {showOutline && <TabsTrigger value="outline">Outline</TabsTrigger>}
-      </TabsList>
+      {/*
+        THE PANE'S HEADER, and the one place its controls live.
+        <p>The rule moves to this row so it spans the full width of the pane
+        with the close button sitting on it, and so the `tablist` holds nothing
+        but tabs — a bare `<button>` among them is invalid ARIA and would join
+        the arrow-key roster as a tab that goes nowhere.
+      */}
+      <div className="flex shrink-0 items-center gap-x-6 border-b border-line px-4">
+        <TabsList variant="underline" className="flex gap-x-6 border-b-0 px-0">
+          <TabsTrigger value="chat">
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" /> AI Chat
+          </TabsTrigger>
+          {showOutline && <TabsTrigger value="outline">Outline</TabsTrigger>}
+        </TabsList>
+
+        {/*
+          THE WAY OUT OF THE PANE, in the pane. See components/pane-close.
+          <p>Here rather than in `ChatHistory` beside New chat and maximise:
+          those two belong to the conversation, and this closes the pane from
+          whichever tab is showing. `ml-auto` puts it at the far end of the
+          header that already existed, which is why there is still only one.
+        */}
+        <PaneClose className="-mr-1 ml-auto" />
+      </div>
 
       {/* mt-0 overrides the tab content's default gap: the chat's own header
           supplies the spacing, and doubling it pushes the composer down. */}

@@ -147,6 +147,29 @@ export function openSidePane(): void {
   set({ ...state, open: true });
 }
 
+/**
+ * Put the pane away, whether or not it is already away.
+ *
+ * <p>The mirror of `openSidePane`, and added for the same reason it exists: the
+ * control that closes the pane now lives *inside* the pane, next to the tabs it
+ * belongs to, rather than in a shell row above the document. That row was the
+ * only thing left in the shell's action strip, and reserving 60px above every
+ * meeting so the chat could be dismissed moved the whole document down 60px the
+ * moment `Ask` was pressed.
+ *
+ * <p>Idempotent, rather than a toggle, because a control labelled "Hide" must
+ * not be able to show. `toggleSidePane` is still the store's general-purpose
+ * operation; this is what a close button wants.
+ *
+ * <p>`expanded` is deliberately untouched. It is a remembered shape rather than
+ * a visibility, so a pane put away while maximised comes back maximised — which
+ * is exactly what closing it from the shell has always done.
+ */
+export function closeSidePane(): void {
+  if (!state.open) return;
+  set({ ...state, open: false });
+}
+
 /** Maximise the pane over the page, or put it back to a column. */
 export function toggleSidePaneExpanded(): void {
   set({ ...state, expanded: !state.expanded });

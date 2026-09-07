@@ -325,6 +325,12 @@ vi.mock("@/components/side-pane", () => ({
   SidePane: () => null,
   useSidePane: () => ({ occupied: false, open: paneOpen, expanded: false }),
   toggleSidePaneExpanded: () => {},
+  // Imported by components/pane-close, which the pane's header renders. The
+  // pane itself is stubbed away here, so this is never pressed in this file --
+  // components/pane-close.test drives it against the real store.
+  closeSidePane: () => {
+    paneOpen = false;
+  },
   /*
    * The chat is a requested state now, so what gets asserted is the request.
    * `Ask` in the mode row and "Ask about this" on a selection both go through
