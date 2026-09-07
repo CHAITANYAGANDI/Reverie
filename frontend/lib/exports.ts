@@ -201,7 +201,59 @@ function serverSentence(error: unknown): string | null {
   // Length and shape as a last guard. A stack trace or a serialised exception
   // that reached a `message` field is not a sentence somebody wrote to be read.
   if (!trimmed || trimmed.length > 300 || /\n\s*at\s/.test(trimmed)) return null;
+  if (isStatusPhrase(trimmed)) return null;
   return trimmed;
+}
+
+/**
+ * The canonical HTTP status phrases, which are not sentences about a meeting.
+ *
+ * <p>Reported from a real export. A deployment whose frontend had the new
+ * `/export/summary` route and whose backend did not answered with the
+ * framework's own 404 body — `{"message": "Not found"}` — and the dialog
+ * repeated it, so somebody choosing "Summary" was told "Not found" about
+ * nothing in particular. The caller already has a better sentence for exactly
+ * that case: "Couldn't export the summary."
+ *
+ * <p>These are the phrases Reverie's own `GlobalExceptionHandler` and the
+ * proxies in front of it produce as a `message` when nothing more specific was
+ * written. Anything a person composed survives.
+ */
+const STATUS_PHRASES = new Set([
+  "bad request",
+  "unauthorized",
+  "payment required",
+  "forbidden",
+  "not found",
+  "method not allowed",
+  "not acceptable",
+  "request timeout",
+  "conflict",
+  "gone",
+  "payload too large",
+  "unsupported media type",
+  "unprocessable entity",
+  "too many requests",
+  "internal server error",
+  "not implemented",
+  "bad gateway",
+  "service unavailable",
+  "gateway timeout",
+]);
+
+/**
+ * Whether a message is *only* a status phrase.
+ *
+ * <p>Exact, on a normalised string: lowercased, with the outer whitespace gone
+ * and any internal run collapsed, so `"  NOT  FOUND "` is caught and
+ * <b>"Meeting not found"</b> is not. Matching on "contains" would throw away
+ * the specific sentences that are the whole reason this repeats server copy —
+ * "Meeting not found", "Audio has been erased", "This meeting has not been
+ * translated into German" — and a rule about length or word count would throw
+ * away "Audio has been erased" too.
+ */
+function isStatusPhrase(message: string): boolean {
+  return STATUS_PHRASES.has(message.toLowerCase().replace(/\s+/g, " ").trim());
 }
 
 const PART_NOUN: Record<ExportPart, string> = {

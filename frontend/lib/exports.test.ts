@@ -183,6 +183,62 @@ describe("describeExportFailure", () => {
     ).toBe(message);
   });
 
+  it("does not repeat a bare HTTP status phrase", () => {
+    /*
+     * REPORTED FROM A REAL EXPORT.
+     *
+     * <p>A deployment whose frontend had the new `/export/summary` route and
+     * whose backend did not answered with the framework's own 404 body —
+     * `{"message": "Not found"}` — and this repeated it, so somebody who had
+     * chosen "Summary" was told "Not found" about nothing in particular. The
+     * contextual sentence is strictly better, and the caller already has it.
+     */
+    expect(describeExportFailure("summary", { status: 404, data: { message: "Not found" } }))
+      .toBe("Couldn't export the summary.");
+    expect(describeExportFailure("transcript", { status: 404, data: { message: "Not found" } }))
+      .toBe("Couldn't export the transcript.");
+  });
+
+  it("is not fooled by casing or stray whitespace", () => {
+    // Normalised before the comparison, because a proxy writing "NOT FOUND" or
+    // a handler padding it is the same non-sentence.
+    for (const message of ["not found", "NOT FOUND", "  Not Found  ", "Not\tfound", "Not  found"]) {
+      expect(describeExportFailure("summary", { status: 404, data: { message } }))
+        .toBe("Couldn't export the summary.");
+    }
+  });
+
+  it("rejects the other status phrases a proxy writes", () => {
+    for (const message of [
+      "Bad Request",
+      "Unauthorized",
+      "Forbidden",
+      "Too Many Requests",
+      "Unsupported Media Type",
+    ]) {
+      expect(describeExportFailure("audio", { status: 400, data: { message } }))
+        .toBe("Couldn't export the audio.");
+    }
+  });
+
+  it("keeps a specific sentence that merely contains a status phrase", () => {
+    /*
+     * THE REASON THE MATCH IS EXACT. "Meeting not found" is Reverie's own
+     * wording and the entire answer — a rule about containing "not found", or
+     * about being short, or about word count, would throw it away along with
+     * "Audio has been erased".
+     */
+    for (const message of [
+      "Meeting not found",
+      "Audio has been erased",
+      "Transcript is not available yet",
+      "This meeting cannot be exported",
+      "The recording was not found in storage",
+    ]) {
+      expect(describeExportFailure("summary", { status: 404, data: { message } })).toBe(message);
+    }
+  });
+
   it("does not repeat a 5xx body", () => {
     // Spring's 500 says "An unexpected error occurred", and when a proxy
     // answers instead it is a page of HTML. Neither belongs on screen, and the
