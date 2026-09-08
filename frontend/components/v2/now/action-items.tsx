@@ -38,10 +38,11 @@
  *
  * <h2>Scale</h2>
  *
- * <p>A 14px title over an 11.5px owner, a 16px checkbox, a 17px heading and a
- * 32px pill — Home's scale, which is one step over the interface's rather than
- * two. It was 18/16/24/22/40, measured off an approved reference that turned
- * out to be a ~1.2x capture. See `.v2-home-*` in app/globals.css.
+ * <p>A 13px title over an 11.5px owner, a 16px checkbox, a 15px heading and a
+ * 28px pill — Home's scale, which is the interface's with a greeting of its
+ * own. It was 18/16/24/22/40, measured off an approved reference that turned
+ * out to be a ~1.2x capture, and came down in two steps. See `.v2-home-*` in
+ * app/globals.css.
  */
 
 import * as React from "react";
@@ -91,11 +92,13 @@ export function NowActionItems({ items }: { items: ActionItems }) {
       {/* THE HEADING, at the size of the thing it names.
           <p>It was `.v2-label` — 11.5px at 560, the same treatment as "Today,
           Sep 7" over a group of rows. That label is for a group inside a
-          region; this is the region, so it takes `--t-title-2`. It was
-          `--t-title-1` at 22px for one turn, off the magnified reference.
-          `items-baseline` now that Add is only four pixels smaller. */}
+          region. It was `--t-title-1` at 22px off the magnified reference,
+          then `--t-title-2` at 17, and it is `.v2-home-title` at 15 now --
+          the same size as a conversation title, which inside this column is
+          still the largest thing in it, over 13px task titles. Weight and
+          `--ink` carry the rest. */}
       <div className="flex items-baseline gap-3">
-        <h2 id="now-actions" className="text-title-2 font-headline text-ink">
+        <h2 id="now-actions" className="v2-home-title font-headline text-ink">
           Action items
         </h2>
         {!adding && !unsettled && (
@@ -135,7 +138,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           where one is currently in effect, and it needs no keyboard contract
           beyond the one a button already has.
         */
-        <div className="mt-3.5 flex items-center gap-1">
+        <div className="mt-3 flex items-center gap-1">
           <Tab on={view === "open"} onSelect={() => setView("open")} label="Open" count={open.length} />
           <Tab on={view === "done"} onSelect={() => setView("done")} label="Completed" count={done.length} />
         </div>
@@ -147,7 +150,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           request is still out. */}
       <div
         data-actions-rule
-        className={cn("border-t border-line pt-4", unsettled ? "mt-4" : "mt-2.5")}
+        className={cn("border-t border-line pt-3.5", unsettled ? "mt-3.5" : "mt-2.5")}
       >
         {adding && (
           <div className="mb-5 flex items-start gap-3.5">
@@ -207,9 +210,9 @@ export function NowActionItems({ items }: { items: ActionItems }) {
                 : "Nothing on your list. What a meeting committed you to stays on that meeting."}
           </p>
         ) : (
-          /* 20px between rows, for a ~57px pitch. It was 32 and 82, off the
+          /* 16px between rows, for a ~52px pitch. It was 32 and 82, off the
              magnified reference. */
-          <ul className="flex flex-col gap-5">
+          <ul className="flex flex-col gap-4">
             {showing.map((item) => (
               <Row key={item.id} item={item} onToggle={() => void items.toggle(item)} />
             ))}
@@ -248,7 +251,7 @@ function Tab({
       aria-pressed={on}
       onClick={onSelect}
       className={cn(
-        "v2-home-meta flex h-8 items-center rounded-full px-3.5 transition-colors duration-press ease-soft",
+        "v2-home-meta flex h-7 items-center rounded-full px-3 transition-colors duration-press ease-soft",
         on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-3 hover:text-ink-2",
       )}
     >

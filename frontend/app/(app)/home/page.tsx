@@ -274,13 +274,13 @@ export default function HomePage() {
           {listState !== "empty" && <AskLauncher />}
 
           {listState === "skeleton" ? (
-            <div className="mt-9 space-y-5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
+            <div className="mt-8 space-y-5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full" />
               ))}
             </div>
           ) : listState === "error" ? (
-            <div className="mt-9">
+            <div className="mt-8">
               <HomeLoadError onRetry={() => void meetings.refetch()} />
             </div>
           ) : listState === "empty" ? (
@@ -288,10 +288,10 @@ export default function HomePage() {
               <EmptyState />
             </div>
           ) : (
-            /* 36px under the launcher: enough that the list is a separate
+            /* 32px under the launcher: enough that the list is a separate
                thing from the control above it, and no more. It was 58, off
                the magnified reference. */
-            <div className="mt-9 space-y-8">
+            <div className="mt-8 space-y-7">
               {sections.map((section) => (
                 <Group key={section.key} heading={section.heading} note={section.note}>
                   <Rows meetings={section.items} />
@@ -442,17 +442,17 @@ function Masthead({ empty }: { empty: boolean }) {
      * band -- because a masthead with its own `pt-10` inside a frame with its
      * own top padding is two numbers deciding one gap.
      *
-     * <p>28px underneath, which is this block's. It belongs here rather than
+     * <p>24px underneath, which is this block's. It belongs here rather than
      * on the launcher: the launcher is not drawn at all on an empty account,
      * and a top margin on a thing that is sometimes absent is a gap that
      * sometimes disappears.
      */
-    <header className="pb-7">
+    <header className="pb-6">
       {/* Both lines reserve their height, so the greeting arriving one tick
           after the list does not push the list down under a reader's cursor.
           `min-h` rather than `h` on the greeting: at 390px it wraps, and a
           fixed height would print the second line through the lede. */}
-      <p className="v2-home-sub h-5 text-ink-3">
+      <p className="v2-home-sub h-[19px] text-ink-3">
         {now
           ? now.toLocaleDateString(undefined, {
               weekday: "long",
@@ -461,10 +461,10 @@ function Masthead({ empty }: { empty: boolean }) {
             })
           : ""}
       </p>
-      <h1 className="v2-home-greet mt-2.5 min-h-[2.125rem] font-headline text-ink">
+      <h1 className="v2-home-greet mt-2 min-h-[1.875rem] font-headline text-ink">
         {now ? title : ""}
       </h1>
-      <p className="v2-home-lede mt-2.5 max-w-[64ch] text-ink-3">
+      <p className="v2-home-lede mt-2 max-w-[68ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.
           <p>This read "Recent conversations, wherever they are filed, and what

@@ -33,12 +33,13 @@
  *
  * <h2>Two sizes, and why the markup branches</h2>
  *
- * <p>`size="home"` is a larger presentation of the same row: a 16px glyph in a
- * column of its own, a 16px title over 13px metadata, and 16px of air above
- * and below, in a column about 890px wide. One step over the archive's row
- * rather than two -- it was 24/20/16 with 28px of padding, measured off an
- * approved reference that turned out to be a ~1.2x capture, and a 114px row
- * read as a card without a border.
+ * <p>`size="home"` is the same row with a glyph column: a 16px glyph, a 15px
+ * title over 12px metadata, and 14px of air above and below. It began at
+ * 24/20/16 with 28px of padding, measured off an approved reference that
+ * turned out to be a ~1.2x capture -- a 114px row that read as a card without
+ * a border -- and came down in two steps to a ~72px one. What still separates
+ * it from the archive's row is the glyph column, the indent that creates, and
+ * the clock and chevron at the trailing edge.
  *
  * <p>Everything that decides WHAT a row says is shared: the icon, the live
  * status subscription, the facts line and its dots, the failure text. Two
@@ -250,9 +251,9 @@ export function NowConversationRow({
            ten pixels of horizontal scroll. */
         className={
           "block rounded-md transition-colors duration-press ease-soft hover:bg-white/[0.035]" +
-          /* 16px above and below at Home's size, for a ~79px row. It was 28
+          /* 14px above and below at Home's size, for a ~72px row. It was 28
              and a 114px row, off the magnified reference. */
-          (big ? " py-4 sm:-mx-3 sm:px-3" : " py-3 sm:-mx-2.5 sm:px-2.5") +
+          (big ? " py-3.5 sm:-mx-3 sm:px-3" : " py-3 sm:-mx-2.5 sm:px-2.5") +
           // Room for the control, so a long title runs out before it rather
           // than under it. Only when there is one.
           (action ? " pr-9 sm:pr-9" : "")
@@ -267,7 +268,7 @@ export function NowConversationRow({
           <span className="flex items-start gap-4 pl-2">
             <Icon className="h-4 w-4 shrink-0 translate-y-px text-ink-4" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="flex items-baseline gap-3">
+              <span className="flex items-baseline gap-2.5">
                 <span
                   data-row-title
                   className="v2-home-title min-w-0 flex-1 truncate font-headline text-ink"

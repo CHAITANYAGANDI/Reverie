@@ -1061,10 +1061,10 @@ describe("the shape of Now", () => {
 
   it("draws its rows at Home's size, which Library's are not", async () => {
     /*
-     * `size="home"`: a 16px glyph in a column of its own, a 16px title and
-     * 16px of air above and below. The archive keeps its 15px row at 12px of
-     * padding and no glyph column, and the default on the component is
-     * `"list"`, so this assertion is what would fail if Home stopped asking.
+     * `size="home"`: a glyph in a column of its own, a `.v2-home-title` and
+     * 14px of air above and below. The archive keeps its 12px padding and no
+     * glyph column, and the default on the component is `"list"`, so this
+     * assertion is what would fail if Home stopped asking.
      */
     // With a duration, because the metadata line is drawn only when there is
     // a fact to put in it -- a row with nothing to say renders no empty line.
@@ -1073,7 +1073,7 @@ describe("the shape of Now", () => {
     await screen.findByRole("heading", { level: 1 });
 
     const row = screen.getByRole("link", { name: /Tuesday design review/ });
-    expect(row.className).toContain("py-4");
+    expect(row.className).toContain("py-3.5");
     expect(row.querySelector("[data-row-title]")?.className).toContain("v2-home-title");
     expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-home-meta");
     // A glyph in a column of its own, which is Home's indent.

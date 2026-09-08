@@ -47,15 +47,16 @@ export function AskLauncher() {
       className={
         /* The one functional surface on this page. It is a control rather than
            content, which is the whole test for whether something gets a fill.
-           <p>48px and a 10px radius. It was 64, taken off the approved
-           reference before that reference turned out to be a ~1.2x capture;
-           at 64 beside a 30px greeting it was the largest thing on the page
-           by area. 48 is still clearly taller than a 79px row is tall, which
-           is all it needs to read as the thing to reach for rather than as
-           one more row. Still no glow and no drop shadow: a 1px inset edge
-           and a 4% fill, which is what every other raised control in the
-           product is made of. */
-        "flex h-12 items-center gap-3 rounded-[10px] bg-white/[0.04] px-4 " +
+           <p>40px and a 10px radius, and the full width of the list. It
+           was 64 off the approved reference -- which turned out to be a ~1.2x
+           capture -- then 48, and it is the HEIGHT that came down rather than
+           the length: this is the one control on the page and it is meant to
+           span the column, but at 64 it was the largest thing here by area.
+           40 is an ordinary field height and still taller than the rows under
+           it. Still no glow and no drop shadow: a 1px inset edge and a 4%
+           fill, which is what every other raised control in the product is
+           made of. */
+        "flex h-10 items-center gap-2.5 rounded-[10px] bg-white/[0.04] px-3.5 " +
         "shadow-[inset_0_0_0_1px_rgb(var(--line-strong))] " +
         "transition-colors duration-press ease-soft hover:bg-white/[0.06]"
       }

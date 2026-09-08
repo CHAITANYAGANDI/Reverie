@@ -410,7 +410,7 @@
     grid-template-columns: minmax(0, 1fr);
     column-gap: var(--home-rule-gap);
     width: 100%;
-    max-width: 1672px;
+    max-width: 1720px;
     margin-inline: auto;
     padding: var(--home-top) var(--home-pad-r) 4rem var(--home-pad-l);
   }
@@ -424,63 +424,84 @@
     .v2-home {
       --home-pad-l: 2rem;
       --home-pad-r: 2rem;
-      --home-top: 2rem;
+      --home-top: 1.75rem;
     }
   }
   /* THE SPREAD POINT. The same 1160px the rest of the product stacks at, so
      there is one fallback in the application rather than two. */
   @media (min-width: 1160px) {
     .v2-home {
-      --home-pad-l: 2.5rem;
-      --home-pad-r: 2rem;
-      --home-top: 2.75rem;
-      --home-rule-gap: 2.5rem;
-      --home-margin-pad: 2rem;
-      --home-margin: 21.75rem; /* 348 */
+      --home-pad-l: 2rem;
+      --home-pad-r: 1.5rem;
+      --home-top: 2rem;
+      --home-rule-gap: 2rem;
+      --home-margin-pad: 1.5rem;
+      --home-margin: 19rem; /* 304 */
       grid-template-columns: minmax(0, 1fr) calc(
           1px + var(--home-margin-pad) + var(--home-margin)
         );
+
+      /* THE RULE RUNS THE HEIGHT OF THE WINDOW, not the height of the list.
+         <p>It is the margin column's own left edge, and a grid row is as tall
+         as its tallest content -- so on an account with one conversation the
+         rule stopped about 400px down and read as a line someone had cut off
+         half way. A minimum height on the row is what fixes that at the
+         source: both columns stretch to it, the border stretches with them,
+         and a longer list still pushes past it.
+         <p>The page's bottom air moves inside the two columns for the same
+         reason. `padding-bottom` on the grid would sit BELOW the row, so the
+         rule would stop 64px short of the window; inside a column it is
+         within the border box and the rule reaches the bottom. */
+      min-height: calc(100vh - var(--band));
+      padding-bottom: 0;
+    }
+    .v2-home > * {
+      padding-bottom: 4rem;
     }
   }
   @media (min-width: 1280px) {
     .v2-home {
-      --home-pad-l: 4rem;
-      --home-pad-r: 3rem;
-      --home-top: 3rem;
-      --home-rule-gap: 2.75rem;
-      --home-margin-pad: 2.25rem;
-      --home-margin: 23.75rem; /* 380 */
+      --home-pad-l: 2.5rem;
+      --home-pad-r: 2rem;
+      --home-top: 2.25rem;
+      --home-rule-gap: 2.25rem;
+      --home-margin-pad: 1.75rem;
+      --home-margin: 20.5rem; /* 328 */
     }
   }
   @media (min-width: 1440px) {
     .v2-home {
-      --home-pad-l: 6rem;
-      --home-pad-r: 4rem;
-      --home-top: 3.25rem;
-      --home-rule-gap: 3rem;
-      --home-margin-pad: 2.5rem;
-      --home-margin: 26.25rem; /* 420 */
+      --home-pad-l: 3.5rem;
+      --home-pad-r: 2.5rem;
+      --home-top: 2.5rem;
+      --home-rule-gap: 2.5rem;
+      --home-margin-pad: 2rem;
+      --home-margin: 22.5rem; /* 360 */
     }
   }
-  /* The reference. 136 + 891 + 56 + 1 + 43 + 463 + 82 = 1672. */
+  /* 72 + 891 + 48 + 1 + 40 + 492 + 56 = 1600, and the rule lands on the same
+     x it did at the reference width -- 1083 of 1672 -- with 64px less gutter
+     in front of it. The gutters were 136 and 82, measured off the approved
+     reference; on a real screen that read as a page indented from the left
+     rather than laid out on it. */
   @media (min-width: 1600px) {
     .v2-home {
-      --home-pad-l: 8.5rem; /* 136 */
-      --home-pad-r: 5.125rem; /* 82 */
-      --home-top: 3.5rem; /* 56 */
-      --home-rule-gap: 3.5rem; /* 56 */
-      --home-margin-pad: 2.6875rem; /* 43 */
-      --home-margin: 28.9375rem; /* 463 */
+      --home-pad-l: 4.5rem; /* 72 */
+      --home-pad-r: 3.5rem; /* 56 */
+      --home-top: 2.75rem; /* 44 */
+      --home-rule-gap: 3rem; /* 48 */
+      --home-margin-pad: 2.5rem; /* 40 */
+      --home-margin: 30.75rem; /* 492 */
     }
   }
 
   /* THE MARGIN COLUMN, and the rule that separates it.
      <p>A border rather than a bordered panel: the rule is one edge of the
-     column, so it starts where the grid row starts and ends where the row's
-     content ends — which is what the reference draws, and what a fixed-height
-     element could not follow. `--line-strong` at 10% is deliberately at the
-     edge of visible. There is no fill and no radius: the page's background
-     runs underneath both columns without interruption.
+     column, so it begins where the grid row begins and runs the full height of
+     it — which since the row now has a minimum height is the height of the
+     window. `--line-strong` at 10% is deliberately at the edge of visible.
+     There is no fill and no radius: the page's background runs underneath both
+     columns without interruption.
      <p>Below the spread point it is a block under the list instead, separated
      the same way but horizontally. */
   .v2-home > [data-home-margin] {
@@ -517,12 +538,12 @@
      the room: "it filled the whole page in a very big way." The proportions
      were right and the absolute sizes were not.
 
-     <p>So each step came down to the neighbouring value on the product's own
-     scale: the greeting is `--t-title-l`, which is what every other page title
-     in Reverie is; the lede is interface body-plus; a row title is one step
-     over Library's. Home still reads larger than the archive -- it is the
-     default page and its list is a glance rather than a search result -- but
-     it now reads as the same product.
+     <p>They came down twice. First to the neighbouring value on the product's
+     own scale -- a 30px greeting, a 16px row title -- and then one further
+     step, because that was still reading big on a real screen. What is left
+     is essentially the interface scale with the greeting a size of its own:
+     Home is the default page, so its list is a glance rather than a search
+     result, but it is the same product as the archive and now looks it.
 
      <p>Still five utilities rather than five tokens, and still scoped to
      `.v2-home`: none of these sizes is on the eleven-step interface scale, and
@@ -534,26 +555,25 @@
      greeting now and the other four are already at interface sizes, so the
      block did nothing but grow the four it named. */
   .v2-home-greet {
-    font-size: var(--t-title-l); /* 30 */
-    line-height: 1.14;
-    letter-spacing: -0.018em;
+    font-size: 1.625rem; /* 26 */
+    line-height: 1.18;
+    letter-spacing: -0.016em;
   }
   .v2-home-lede {
-    font-size: 0.9375rem; /* 15 */
+    font-size: 0.875rem; /* 14 */
     line-height: 1.55;
-    letter-spacing: -0.003em;
   }
   .v2-home-title {
-    font-size: 1rem; /* 16 — one step over Library's 15 */
+    font-size: 0.9375rem; /* 15 */
     line-height: 1.4;
-    letter-spacing: -0.006em;
+    letter-spacing: -0.004em;
   }
   .v2-home-sub {
-    font-size: 0.875rem; /* 14 */
+    font-size: 0.8125rem; /* 13 */
     line-height: 1.45;
   }
   .v2-home-meta {
-    font-size: 0.8125rem; /* 13 */
+    font-size: 0.75rem; /* 12 */
     line-height: 1.4;
   }
 
