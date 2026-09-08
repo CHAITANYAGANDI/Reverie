@@ -928,10 +928,15 @@ describe("the docked player", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 
-    // Neither the window-centred `--doc` nor the paragraph measure.
+    /* Neither the window-centred `--doc` nor the paragraph measure -- and
+       capped at something, rather than filling the column. The exact number is
+       the transport's minimum and has been tuned twice; what must not drift is
+       the frame of reference, so that is what this pins. */
     expect(dock(container)?.querySelector(".max-w-doc")).toBeNull();
     expect(dock(container)?.querySelector(".max-w-measure")).toBeNull();
-    expect(dock(container)?.innerHTML).toContain("max-w-[52rem]");
+    const bar = dock(container)?.firstElementChild;
+    expect(bar?.className).toMatch(/max-w-\[\d/);
+    expect(bar?.className).toContain("mx-auto");
     // Inset to the column rather than spanning the window, which is the half
     // of this that the `mx-auto` above depends on.
     expect(dock(container)?.className).not.toContain("inset-x-0");

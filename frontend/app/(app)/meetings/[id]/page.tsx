@@ -1265,14 +1265,16 @@ export default function MeetingDetailPage() {
                 rather than spanning it end to end. `mx-auto` against the
                 column now rather than against the window, which is the whole
                 difference.
-                <p>832px rather than the 680px reading measure, and that number
-                is the transport's rather than a taste: at 680 the trailing
-                group wrapped, so the volume slider dropped onto a second row
-                and the bar grew from 60px to 80. The scrubber is already at
-                its `min-w-[8rem]` by then -- see components/audio-player --
-                so there is nothing left to give. 832 in a ~960px column
-                leaves 65px each side and one row. */}
-            <div className="pointer-events-auto mx-auto w-full max-w-[52rem]">{player}</div>
+                <p>The width is the transport's rather than a taste. At the
+                680px reading measure the trailing group wrapped: the volume
+                slider dropped onto a second row and the bar grew from 60px to
+                80, because the scrubber is already at its `min-w-[8rem]` by
+                then and there is nothing left to give. So the controls came
+                down a step instead -- 28px buttons, a 32px play, tighter gaps
+                -- and the bar came in with them, from 832 to 720. One row, and
+                120px of column back on each side. See
+                components/audio-player. */}
+            <div className="pointer-events-auto mx-auto w-full max-w-[45rem]">{player}</div>
           </div>
         )
       )}
@@ -3560,8 +3562,16 @@ function TranscriptPanel({
                     <p>`aria-hidden`, because the name is right beside it in
                     text. Announcing "AM" before "Alex Morgan" is the same fact
                     twice, the second time as two letters.
+                    <p>CENTRED IN THE GUTTER, and so is every timecode under it
+                    -- see `Timecode`. Both were right-aligned, which lines up
+                    their right EDGES: a 28px circle and a five-character
+                    timecode then have centres about three pixels apart, and the
+                    chip read as sitting off to one side of the column. Centring
+                    both makes the centres identical whatever the timecode says,
+                    which matters because it says "1:02:03" on a long recording
+                    and "00:01" on a short one.
                   */}
-                  <span className="flex justify-end pb-1">
+                  <span className="flex justify-center pb-1">
                     <span
                       aria-hidden
                       className={cn(
@@ -4005,7 +4015,10 @@ function Timecode({
       onClick={() => onSeek(at)}
       aria-label={`Play from ${timecode(at)}`}
       className={cn(
-        "tabular h-fit pt-[0.3rem] text-right font-mono text-cap transition-colors hover:text-brand-text",
+        /* `text-center`, to share a centre line with the speaker chip above
+           it -- see the note in the turn header. It was `text-right`, which
+           aligned the right edges instead. */
+        "tabular h-fit pt-[0.3rem] text-center font-mono text-cap transition-colors hover:text-brand-text",
         editing ? "text-brand-text" : "text-ink-4",
       )}
     >

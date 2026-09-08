@@ -502,7 +502,27 @@ export function AudioPlayer({
             its own line -- `order-last` -- because a transport, a clock, a
             timeline, a speed and a volume do not fit across 358px, and a
             timeline squeezed to forty pixels is not scrubbable. */}
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:flex-nowrap sm:gap-x-1.5">
+        {/* A step tighter than it was: `gap-x-1` above `sm` where it was
+            `gap-x-1.5`, 28px icon buttons where they were 32, and a 32px play
+            button where it was 36. The transport is a control strip under a
+            document, not the subject of the page -- and every pixel it gives
+            back is one the timeline takes, which is the part somebody actually
+            aims at. */}
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:flex-nowrap sm:gap-x-1">
+          {/*
+            THE CLOCK FIRST, before the transport rather than after it.
+            <p>It sat between the five buttons and the timeline, which is where
+            most players put it -- and in a bar this short that left the reading
+            in the middle of the controls, with the eye crossing it on the way
+            to the scrubber. At the head of the row it is read once and then
+            ignored, which is what a clock is for.
+            <p>`shrink-0` and `tabular`, so the row does not reflow every second
+            and the digits do not shuffle as they tick.
+          */}
+          <span className="mr-1 shrink-0 whitespace-nowrap font-mono text-foot tabular-nums text-ink-4">
+            {timecode(controller.currentTime)} / {timecode(duration)}
+          </span>
+
           <IconButton
             label="Previous speaker"
             onClick={() => {
@@ -511,22 +531,22 @@ export function AudioPlayer({
             }}
             disabled={turns.length === 0}
           >
-            <SkipBack className="h-4 w-4" />
+            <SkipBack className="h-3.5 w-3.5" />
           </IconButton>
           <IconButton label={`Back ${NUDGE} seconds`} onClick={() => nudge(-NUDGE)}>
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
           </IconButton>
 
           <button
             onClick={toggle}
             aria-label={playing ? "Pause" : "Play"}
-            className="mx-1 flex h-9 w-9 items-center justify-center rounded-full bg-ink text-surface transition-transform duration-press ease-out hover:scale-105"
+            className="mx-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-ink text-surface transition-transform duration-press ease-out hover:scale-105"
           >
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+            {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="ml-0.5 h-3.5 w-3.5" />}
           </button>
 
           <IconButton label={`Forward ${NUDGE} seconds`} onClick={() => nudge(NUDGE)}>
-            <RotateCw className="h-4 w-4" />
+            <RotateCw className="h-3.5 w-3.5" />
           </IconButton>
           <IconButton
             label="Next speaker"
@@ -536,12 +556,9 @@ export function AudioPlayer({
             }}
             disabled={turns.length === 0}
           >
-            <SkipForward className="h-4 w-4" />
+            <SkipForward className="h-3.5 w-3.5" />
           </IconButton>
 
-          <span className="ml-2 shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
-            {timecode(controller.currentTime)} / {timecode(duration)}
-          </span>
             {/* THE TIMELINE, in the row rather than above it.
                 `19-meeting-transcript.png` draws one horizontal bar: transport,
                 time, then the timeline taking every pixel that is left, then
@@ -607,7 +624,7 @@ export function AudioPlayer({
               disabled={segments.length === 0 || highlightsOnly}
               onClick={() => setSkipSilence((v) => !v)}
             >
-              <AudioLines className="h-4 w-4" />
+              <AudioLines className="h-3.5 w-3.5" />
             </Toggle>
 
             {/* Only offered when there is something marked; a toggle that can
@@ -618,7 +635,7 @@ export function AudioPlayer({
                 active={highlightsOnly}
                 onClick={() => setHighlightsOnly((v) => !v)}
               >
-                <Highlighter className="h-4 w-4" />
+                <Highlighter className="h-3.5 w-3.5" />
               </Toggle>
             )}
 
@@ -626,9 +643,9 @@ export function AudioPlayer({
               <DropdownMenuTrigger asChild>
                 <button
                   aria-label="Playback speed"
-                  className="flex h-8 items-center gap-1 rounded-md px-2 text-foot font-medium text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink"
+                  className="flex h-7 items-center gap-1 rounded-md px-1.5 text-foot font-medium text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink"
                 >
-                  <Gauge className="h-4 w-4" />
+                  <Gauge className="h-3.5 w-3.5" />
                   {rate}×
                 </button>
               </DropdownMenuTrigger>
@@ -656,9 +673,9 @@ export function AudioPlayer({
               }}
             >
               {muted || volume === 0 ? (
-                <VolumeX className="h-4 w-4" />
+                <VolumeX className="h-3.5 w-3.5" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-3.5 w-3.5" />
               )}
             </IconButton>
             <input
@@ -676,7 +693,7 @@ export function AudioPlayer({
                 // element muted would make the control appear to do nothing.
                 media.muted = Number(e.target.value) === 0;
               }}
-              className="h-1 w-20 cursor-pointer accent-[hsl(var(--primary))]"
+              className="h-1 w-16 cursor-pointer accent-[hsl(var(--primary))]"
             />
           </div>
         </div>
@@ -702,7 +719,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
