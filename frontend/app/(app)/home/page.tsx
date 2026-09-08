@@ -76,6 +76,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { FileAudio, Mic, Plus, CalendarDays, RotateCw } from "lucide-react";
 import { useGetMeetingsQuery, useGetPreferencesQuery } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -86,6 +87,7 @@ import { NowActionItems } from "@/components/v2/now/action-items";
 import { useActionItems } from "@/components/v2/now/use-action-items";
 import { cn } from "@/lib/utils";
 import { AskLauncher } from "@/components/v2/now/ask-launcher";
+import { SidePane } from "@/components/side-pane";
 import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { isTerminal } from "@/lib/format";
 import { groupByDay } from "@/lib/days";
@@ -103,6 +105,28 @@ import { LIBRARY, recordHref } from "@/lib/routes";
  * an archive — which is the whole distinction being drawn.
  */
 const RECENT_SIZE = 20;
+
+/**
+ * The Ask pane, fetched the first time it is drawn.
+ *
+ * <p>`dynamic` rather than a plain import, because the workspace chat brings
+ * the composer, the context picker, the conversation archive, the markdown
+ * renderer and the evidence rail with it -- and Home is the page the
+ * application opens on. Statically imported it was 80kB of Home's first load,
+ * every visit, for a panel that only appears when somebody presses Ask.
+ *
+ * <p>`ssr: false` for the same reason it renders nothing on the server anyway:
+ * the pane is a portal into an element the shell owns, which does not exist
+ * until the shell has mounted. See components/side-pane.
+ *
+ * <p>No loading state. It is behind a `SidePane` that is itself a frame late,
+ * and a spinner in a panel that is opening is chrome where the conversation is
+ * about to be.
+ */
+const WorkspaceAskPane = dynamic(
+  () => import("@/components/chat/workspace-ask").then((m) => m.WorkspaceAskPane),
+  { ssr: false },
+);
 
 export default function HomePage() {
   const meetings = useGetMeetingsQuery(
@@ -330,6 +354,34 @@ export default function HomePage() {
           <NowActionItems items={actions} />
         </div>
       </div>
+
+      {/*
+       * ASK, IN THE SHELL'S PANE RATHER THAN ON A PAGE OF ITS OWN.
+       *
+       * <p>Home used to have no pane at all: its chat was an `<aside>` inside
+       * this page, it was removed for being a second workspace chat competing
+       * with `/ask`, and the launcher above became a link to that page. What
+       * that traded away was the ability to ask about the list while the list
+       * is on screen — which is the whole point of asking, and is how the same
+       * question is asked from inside a meeting.
+       *
+       * <p>It is the pane and not an aside because the pane is a column of the
+       * shell: full height, against the window's edge, with this page ending
+       * where it begins. An aside here would begin under the band, end where
+       * this page's padding ends, and need this file to restate the pane's
+       * width to clear it. See components/side-pane.
+       *
+       * <p>Not a second chat, either. Same endpoints and the same conversation
+       * archive as `/ask`; only the open thread is separate, keyed
+       * `workspace:home`. See components/chat/workspace-ask.
+       *
+       * <p>Outside the frame, deliberately. `.v2-page` is a two-track grid and
+       * anything inside it is one of those tracks; the pane belongs to the
+       * window.
+       */}
+      <SidePane>
+        <WorkspaceAskPane />
+      </SidePane>
     </div>
   );
 }

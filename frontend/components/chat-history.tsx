@@ -131,7 +131,12 @@ export function ChatHistory({
   const label = active?.title || "New chat";
 
   return (
-    <div ref={rootRef} className="relative">
+    // `min-w-0` so this can be laid out beside something in a narrow row: as a
+    // flex item it defaults to `min-width: auto`, so without it the trigger's
+    // own `min-w-0` and `truncate` below have nothing to shrink into and a long
+    // conversation title pushes whatever is beside it off the edge. Which is
+    // what it did to the pane's close button — see `AskHeader`.
+    <div ref={rootRef} className="relative min-w-0">
       {/* Quiet by design: a title you can press, and two icons. Everything
           else this component can do — rename, delete, jump to an older
           thread — is inside the menu, because a header carrying every action

@@ -199,13 +199,25 @@ vi.mock("@/lib/auth", () => ({
   }),
 }));
 /*
- * Now mounts no pane. The stub stays because `SidePane` is still the meeting
- * page's, and a test file that silently starts rendering a real one because a
- * stub was tidied away is how the pane would come back unnoticed. The two panel
- * stubs that used to sit here went with the panels.
+ * THE PANE'S STORE IS REAL; ONLY THE PORTAL IS STUBBED.
+ *
+ * <p>Home mounts a pane again -- the launcher opens the workspace chat in it
+ * rather than navigating to `/ask` -- so `useSidePane` and `openSidePane` have
+ * to be the genuine store, or the one thing worth testing about that control
+ * cannot be observed.
+ *
+ * <p>What is replaced is `SidePane` itself, which portals into an element the
+ * shell owns and this file does not render. Stubbing it to null also keeps the
+ * workspace chat's five queries out of a file that mocks none of them: what is
+ * asserted here is that the launcher opens the pane, not what is inside it.
+ * `components/chat/workspace-ask` is where the contents belong.
  */
-vi.mock("@/components/side-pane", () => ({ SidePane: () => null }));
+vi.mock("@/components/side-pane", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/side-pane")>()),
+  SidePane: () => null,
+}));
 
+import { resetSidePane } from "@/components/side-pane";
 import HomePage from "@/app/(app)/home/page";
 
 function aMeeting(overrides: Partial<MeetingResponse> = {}): MeetingResponse {
@@ -253,6 +265,10 @@ beforeEach(() => {
   // See lib/preference-store.ts.
   window.localStorage.clear();
   auth.sessionKey = "sess_1";
+  // The pane's open state is a module store, so it outlives an unmount by
+  // design -- see components/side-pane. It must not outlive a test, or whether
+  // the launcher reads as expanded would depend on the order the suite ran in.
+  resetSidePane();
 });
 
 /**
@@ -875,40 +891,76 @@ describe("the shape of Now", () => {
     expect(washes[0].nextElementSibling?.className).toContain("v2-page");
   });
 
-  it("mounts no side pane, so the margin cannot become a second application", async () => {
+  it("keeps the margin from becoming a second application", async () => {
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
     /*
-     * `SidePane` is stubbed to render nothing in this file, so its absence
-     * cannot be seen in the DOM. What can be seen is the tab bar that only ever
-     * existed to choose between the two things inside it.
+     * The pane is back and the tab bar is not, which is the distinction. What
+     * was wrong was never that Home had a chat -- it is that the chat and the
+     * action items shared a 400px column behind two tabs, so reading one hid
+     * the other and the margin was an application of its own. The items are on
+     * the page; Ask is in the shell's pane, summoned.
      */
+    expect(screen.queryByRole("tab", { name: /Ask Reverie/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /AI Chat/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /Action Items/i })).not.toBeInTheDocument();
   });
 
-  it("keeps the workspace Ask reachable, once", async () => {
+  it("opens Ask beside the list rather than navigating away from it", async () => {
+    /*
+     * CHANGED DELIBERATELY. This used to assert a `<Link>` to `/ask`, on the
+     * reasoning that there is one workspace Ask and it has a page. That was
+     * right about there being one and wrong about where it appears: pressing
+     * it left Home, so asking about your conversations meant losing the list
+     * of them. It opens the pane now, which is how the same question is asked
+     * from inside a meeting.
+     */
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    // One door to one Ask. Not a composer that starts a thread of its own here
-    // and a second thread at /ask.
-    const launcher = screen.getByRole("link", { name: /Ask Reverie about your meetings/ });
-    expect(launcher).toHaveAttribute("href", "/ask");
+    const launcher = screen.getByRole("button", {
+      name: /Ask Reverie about your meetings/,
+    });
+    // A disclosure, not a link and not a composer: it starts no thread here
+    // and it has no address to navigate to.
+    expect(launcher).not.toHaveAttribute("href");
+    expect(launcher).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("textbox", { name: /ask/i })).not.toBeInTheDocument();
+
+    await userEvent.click(launcher);
+
+    expect(launcher).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("leaves Ask open when the launcher is pressed again", async () => {
+    // Not a toggle. A control labelled with a question that shuts the answer
+    // in your face is worse than one that does nothing -- the same rule as the
+    // meeting page's Ask. Closing is the pane's own dismissal.
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", {
+      name: /Ask Reverie about your meetings/,
+    });
+    await userEvent.click(launcher);
+    await userEvent.click(launcher);
+
+    expect(launcher).toHaveAttribute("aria-expanded", "true");
   });
 
   it("draws one glyph in the launcher and no keyboard badge", async () => {
     /*
      * The reference puts a Reverie mark at each end of this control and a `⌘ J`
-     * keycap inside it. Two marks read as a logo pasted twice, and a keycap on
-     * a link that navigates promises a shortcut that does not exist.
+     * keycap inside it. Two marks read as a logo pasted twice, and a keycap
+     * promises a shortcut that does not exist.
      */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const launcher = screen.getByRole("link", { name: /Ask Reverie about your meetings/ });
+    const launcher = screen.getByRole("button", {
+      name: /Ask Reverie about your meetings/,
+    });
     expect(launcher.querySelectorAll("svg")).toHaveLength(1);
     expect(launcher.querySelector("kbd")).toBeNull();
     expect(container.querySelector("kbd")).toBeNull();

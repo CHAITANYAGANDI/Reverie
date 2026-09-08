@@ -78,6 +78,24 @@ export interface PendingTurn {
 interface Entry extends PendingTurn {
   /** Which user messages the server had *before* this question was asked. */
   before: ReadonlySet<string>;
+  /**
+   * The route it was asked on.
+   *
+   * <p>The same fact `origins` records in lib/active-chat, and recorded here
+   * too because the two stores can disagree for a moment. `send()` calls
+   * `begin()` and only then creates the conversation, so for one network round
+   * trip a scope has a question in flight and no thread yet. Navigating in that
+   * window would leave the turn behind with nothing pointing at it: the thread
+   * reset would find no origin to judge, and coming back to the page would show
+   * a "Thinking…" that can never reconcile, because the answer belongs to a
+   * conversation the surface is no longer on.
+   */
+  path: string;
+}
+
+/** The route this is happening on. `""` where there is no window. */
+function here(): string {
+  return typeof window === "undefined" ? "" : window.location.pathname;
 }
 
 let counter = 0;
@@ -106,6 +124,34 @@ export function resetPendingTurns(): void {
   if (entries.size === 0) return;
   entries.clear();
   emit();
+}
+
+/**
+ * Every scope with a question in flight, and the route it was asked on.
+ *
+ * <p>For lib/chat-route.ts. A copy, so nothing outside this file can mutate
+ * the store.
+ */
+export function pendingOrigins(): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const [scope, entry] of entries) out.set(scope, entry.path);
+  return out;
+}
+
+/**
+ * Drop the questions in flight on these scopes. One notification, not one each.
+ *
+ * <p>Nothing is cancelled by this. The request is not aborted by leaving and
+ * the exchange is persisted whatever the browser does — see the note at the top
+ * of this file. What is dropped is the client's copy of the question, which is
+ * only there to be rendered.
+ */
+export function forgetPendingTurns(scopes: Iterable<string>): void {
+  let changed = false;
+  for (const scope of scopes) {
+    if (entries.delete(scope)) changed = true;
+  }
+  if (changed) emit();
 }
 
 export interface PendingTurnController {
@@ -173,6 +219,7 @@ export function usePendingTurn(
         question,
         status: "asking",
         before: new Set((messages ?? []).map((m) => m.id)),
+        path: here(),
       });
       emit();
     },

@@ -573,4 +573,34 @@ describe("where the pane sits", () => {
     expect(aside()).toHaveClass("lg:fixed", "lg:inset-x-0", "lg:top-band", "lg:z-30");
     expect(aside()).not.toHaveClass("lg:w-[var(--side-pane-w)]");
   });
+
+  it("drops the column's alignment when it stops being a column", () => {
+    /*
+     * MEASURED AND WRONG A SECOND TIME, in the same way and on the other axis.
+     *
+     * <p>A maximised pane was 301px tall in a 1000px window, with the page
+     * showing through underneath it. Every declaration looked right --
+     * `position: fixed`, `top: 48px`, `bottom: 0`, `height: auto` -- and an
+     * identical bare div dropped into the same document stretched to 952 as it
+     * should. The difference was `align-self: flex-start`: Chrome declines to
+     * resolve `height: auto` from an out-of-flow box's own top and bottom
+     * while an alignment is asked for.
+     *
+     * <p>`lg:self-start` is what stops the *sticky* column stretching the flex
+     * row, so it belongs on the element -- and it has no conflicting
+     * counterpart in the maximised branch, which is exactly why
+     * `tailwind-merge` carried it into a state where it is wrong. Only the
+     * utilities that collide get replaced, so a branch that changes the layout
+     * model has to reset every property the other model needed.
+     *
+     * <p>A class assertion rather than a measurement, because jsdom
+     * implements no layout: there is no height here to be wrong. The browser
+     * is where this was found and confirmed; this is what stops it returning.
+     */
+    openPane();
+    act(() => toggleSidePaneExpanded());
+
+    expect(aside()).toHaveClass("lg:self-auto");
+    expect(aside()).not.toHaveClass("lg:self-start");
+  });
 });

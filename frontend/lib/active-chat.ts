@@ -1,28 +1,39 @@
 "use client";
 
 /**
- * Which thread each chat surface is currently on.
+ * Which thread each chat surface is currently on, and where it was adopted.
  *
  * ## The behaviour this exists to produce
  *
- * **Opening AI Chat gives you a new chat.** It used to resume whatever you last
+ * **Opening Ask gives you a new chat.** It used to resume whatever you last
  * said: asking the server for history without naming a thread returns the most
  * recent one, so every visit landed mid-conversation from days ago, and a clean
  * sheet was a button press you had to know to look for. Nothing here is
  * persisted, so a page load starts empty and every surface offers a fresh
  * thread.
  *
- * **A thread belongs to one surface.** Home and the full AI Chat page are keyed
- * separately (`workspace:home`, `workspace:ask`) even though they read the same
- * meetings through the same endpoints, because they are two screens and a
- * question asked on one has no business appearing on the other. They briefly
- * shared a key, from when Home's expand button navigated to /ask and the two
- * had to be one conversation; expanding widens the rail in place now.
+ * **And leaving a page gives you one too.** That is a route-boundary rule and
+ * it is not implemented here — see lib/chat-route.ts, which is the only thing
+ * that decides a thread has been left behind. This file's contribution is
+ * `origins`: the path each thread was last spoken to on, recorded so that
+ * something else can answer "was this adopted somewhere I no longer am?"
  *
- * A meeting's chat deliberately does not. Coming back to a meeting is coming
- * back to one document, and what you were asking about it is part of reading
- * it; there is no equivalent of "I have gone somewhere else and I am starting
- * over".
+ * <p>Recording the path rather than reacting to an unmount is the whole point.
+ * A chat panel unmounts for half a dozen reasons that are not navigation — the
+ * pane closes, the pane is maximised, somebody opens the Outline tab — and a
+ * mechanism keyed on unmounting resets the conversation for all of them.
+ *
+ * **A thread belongs to one surface.** The pane Home opens and the full Ask
+ * page are keyed separately (`workspace:home`, `workspace:ask`) even though
+ * they read the same meetings through the same endpoints, because they are two
+ * screens and a question asked on one has no business appearing on the other.
+ * They briefly shared a key, from when Home's expand button navigated to /ask
+ * and the two had to be one conversation; the pane maximises in place now.
+ *
+ * **And a thread does not outlive a navigation.** All three surfaces behave the
+ * same way: leave the page, come back, open Ask, and you are on a new chat with
+ * the previous conversation in the picker. One rule, one implementation, in
+ * lib/chat-route.ts.
  *
  * ## Why it is not component state
  *
@@ -43,11 +54,23 @@
  * and dies on reload, and what it does in between is the caller's choice.
  */
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
-/** Scope -> conversation id. `"workspace"`, or a meeting id. */
+/** Scope -> conversation id. `workspace:home`, `workspace:ask`, `meeting:<id>`. */
 const threads = new Map<string, string>();
+/**
+ * Scope -> the pathname its thread was last spoken to on.
+ *
+ * <p>Kept beside the threads rather than inside them so that reading a thread
+ * stays a map lookup returning a string. Only lib/chat-route.ts reads this.
+ */
+const origins = new Map<string, string>();
 const listeners = new Set<() => void>();
+
+/** The route this is happening on. `""` where there is no window. */
+function here(): string {
+  return typeof window === "undefined" ? "" : window.location.pathname;
+}
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
@@ -67,6 +90,28 @@ export function activeChat(scope: string): string | null {
 
 /** Remember the thread a scope is on, or forget it when given null. */
 export function setActiveChat(scope: string, conversationId: string | null): void {
+  /*
+   * The origin is refreshed before the no-op guard below, so that the field
+   * means exactly what it says: where this thread was last spoken to.
+   *
+   * <p>Deliberately not load-bearing, and worth being precise about. The case
+   * it looks like it exists for -- `send()` adopting the same conversation
+   * twice, once before awaiting the answer and once from the response, with
+   * the second call landing after the reader has navigated away -- is already
+   * handled by the reset, which deletes the thread as they leave. That makes
+   * the late call a change rather than a no-op, so it restamps the origin
+   * whichever order these two statements are in. Mutating the order fails no
+   * test in lib/chat-route.test.tsx, which is how that was established.
+   *
+   * <p>It stays because the alternative is an invariant that holds only while
+   * the reset happens to delete before a late write can arrive. `chatOrigins`
+   * is read by something that has to trust it.
+   */
+  if (conversationId) {
+    origins.set(scope, here());
+  } else {
+    origins.delete(scope);
+  }
   if (activeChat(scope) === conversationId) return;
   if (conversationId) {
     threads.set(scope, conversationId);
@@ -76,9 +121,37 @@ export function setActiveChat(scope: string, conversationId: string | null): voi
   emit();
 }
 
+/**
+ * Every scope holding a thread, and the route it was adopted on.
+ *
+ * <p>For lib/chat-route.ts and its tests. A copy, so nothing outside this file
+ * can quietly mutate the store.
+ */
+export function chatOrigins(): ReadonlyMap<string, string> {
+  return new Map(origins);
+}
+
+/**
+ * Forget which thread these scopes were on. One notification, not one each.
+ *
+ * <p>Only the *active* thread goes. Every conversation is still on the server
+ * and still in the history picker; what is dropped is which of them a surface
+ * opens on.
+ */
+export function forgetActiveChats(scopes: Iterable<string>): void {
+  let changed = false;
+  for (const scope of scopes) {
+    origins.delete(scope);
+    if (threads.delete(scope)) changed = true;
+  }
+  if (changed) emit();
+}
+
 /** Discard every remembered thread. Exists so tests start from a clean sheet. */
 export function resetActiveChats(): void {
-  if (threads.size === 0) return;
+  const had = threads.size > 0;
+  origins.clear();
+  if (!had) return;
   threads.clear();
   emit();
 }
@@ -86,42 +159,30 @@ export function resetActiveChats(): void {
 /**
  * The thread this scope is on, and a setter, as a `useState`-shaped pair.
  *
- * Null until something is asked, which is what puts the starter prompts on
+ * <p>Null until something is asked, which is what puts the starter prompts on
  * screen instead of an old conversation.
+ *
+ * <h2>There is deliberately no `resetOnLeave`</h2>
+ *
+ * <p>There was, and it was the wrong shape for the rule it was implementing.
+ * The rule is about leaving a *page*; the option cleared the thread when the
+ * *component* unmounted, and those are not the same event. A chat panel
+ * unmounts when the side pane closes, when it is maximised and restored, and
+ * every time somebody opens a meeting's Outline tab — none of which is
+ * navigation, and all of which would have thrown away the conversation.
+ *
+ * <p>It survived on Home and `/ask` only because their panels happen to
+ * unmount exactly when their routes do. That is a coincidence of where those
+ * two components sit, not a property of the mechanism, and the meeting chat is
+ * where the coincidence runs out.
+ *
+ * <p>So the option is gone rather than merely unused: leaving it in place is
+ * leaving a plausible-looking way to reintroduce the bug on the one surface it
+ * breaks. The rule lives at the route boundary now — see lib/chat-route.ts.
  */
 export function useActiveChat(
   scope: string,
-  options?: {
-    /**
-     * Forget the thread when this surface leaves the page.
-     *
-     * **Nothing asks for this today**, and the reason it is still here is that
-     * it is one word away from being wanted again.
-     *
-     * The workspace chat used to. Home and the full AI Chat page shared a
-     * single scope key, so the only way to stop one adopting the other's
-     * conversation was for the thread to be forgotten whenever either of them
-     * unmounted. That cost more than it bought: it also meant a trip to a
-     * meeting and back lost what you had been asking on Home. The two surfaces
-     * are keyed apart now — `workspace:home` and `workspace:ask` — which
-     * separates them precisely rather than by clearing everything.
-     *
-     * Turn it back on for a surface that genuinely should open blank every
-     * time. Note the deliberate lack of reference counting: if two surfaces of
-     * one scope overlap for a frame during a navigation, counting would
-     * *preserve* the thread across exactly the move this exists to reset.
-     * Clearing on any unmount errs towards the new chat.
-     */
-    resetOnLeave?: boolean;
-  },
 ): [string | null, (conversationId: string | null) => void] {
-  const resetOnLeave = options?.resetOnLeave ?? false;
-
-  useEffect(() => {
-    if (!resetOnLeave) return;
-    return () => setActiveChat(scope, null);
-  }, [scope, resetOnLeave]);
-
   const conversationId = useSyncExternalStore(
     subscribe,
     () => activeChat(scope),

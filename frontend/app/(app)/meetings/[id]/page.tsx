@@ -166,9 +166,11 @@ import {
 } from "@/components/transcript-editor";
 import { ChatHistory } from "@/components/chat-history";
 import { ChatComposer } from "@/components/chat-composer";
-import { ChatDock, ChatRail } from "@/components/chat/chat-shell";
-import { ChatMessageBubble } from "@/components/chat-message";
-import { PendingTurn } from "@/components/chat/pending-turn";
+import { ChatDock } from "@/components/chat/chat-shell";
+import { AskPanel } from "@/components/chat/ask-panel";
+import { AskThread } from "@/components/chat/ask-thread";
+import { AskEvidence } from "@/components/chat/ask-evidence";
+import { BrandMark } from "@/components/v2/brand-mark";
 import { usePendingTurn, announceAnswer } from "@/lib/pending-turn";
 import { useThreadScroll } from "@/lib/use-thread-scroll";
 import { MEETING_PROMPTS, toPrompts } from "@/lib/chat-prompts";
@@ -1865,8 +1867,27 @@ function MeetingRail({
       */}
       <div className="flex shrink-0 items-center gap-x-6 border-b border-line px-4">
         <TabsList variant="underline" className="flex gap-x-6 border-b-0 px-0">
+          {/*
+            NAMED FOR THE CONTROL THAT OPENS IT, which is `Ask` in the mode row.
+
+            <p>It said "AI Chat" behind a `Sparkles`, which named the
+            technology rather than the feature and spent the one glyph every
+            product in the category spends on the same claim. The mark replaces
+            it: this is the identity row the references put over the panel, and
+            it is on the tab rather than on a second row because a 26rem pane
+            cannot afford two rows of chrome.
+
+            <p>`Ask` and not `Ask Reverie`, which it briefly was. The band
+            carries a global nav item called Ask Reverie that goes to `/ask` and
+            asks across every meeting; this tab is one transcript's chat. Two
+            controls with the same accessible name and different scopes are on
+            screen together here -- found by a QA click landing on the nav item
+            and navigating away from the meeting it was supposed to be testing.
+            Sharing a name with the button that opens this pane is right;
+            sharing one with a link that leaves the page is not.
+          */}
           <TabsTrigger value="chat">
-            <Sparkles className="mr-1.5 h-3.5 w-3.5" /> AI Chat
+            <BrandMark size={14} className="mr-1.5" /> Ask
           </TabsTrigger>
           {showOutline && <TabsTrigger value="outline">Outline</TabsTrigger>}
         </TabsList>
@@ -2481,14 +2502,26 @@ function ChatPanel({
   /** A question pushed in from the transcript's selection menu. */
   composed?: { text: string; send: boolean; nonce: number } | null;
 }) {
-  // Null means "whatever I was last saying about this meeting", which is what
-  // the server returns for an unspecified conversation — so a first visit needs
-  // no conversation to exist.
-  // Scoped to this meeting and empty on load, so opening one offers a clean
-  // sheet rather than the conversation you had about it last week. Outside
-  // component state so that switching to the transcript tab and back does not
-  // abandon a thread mid-question.
-  const [conversationId, setConversationId] = useActiveChat(meetingId);
+  /*
+   * WHICH THREAD THIS MEETING'S CHAT IS ON.
+   *
+   * <p>Null means "a new chat", and it is what a first visit gets: asking the
+   * server for history without naming a conversation returns the most recent
+   * one, so a blank panel would quietly be last week's.
+   *
+   * <p>Outside component state, because this panel is a tab. Opening the
+   * Outline unmounts it, and a `useState` here would abandon a thread
+   * mid-question every time somebody looked at the outline and came back.
+   * Leaving the meeting *route* does forget it — see lib/chat-route.ts, which
+   * is deliberately somewhere else: it is a rule about pages, and this
+   * component's lifetime is not a page's.
+   *
+   * <p>`meeting:` prefixed, matching `usePendingTurn` below and
+   * `workspace:home` / `workspace:ask`. It used to be the bare meeting id,
+   * which meant the two stores keyed the same conversation two different ways
+   * and anything reconciling them had to know both spellings.
+   */
+  const [conversationId, setConversationId] = useActiveChat(`meeting:${meetingId}`);
   // Only for the maximise control's own state. The pane itself is the shell's.
   const pane = useSidePane();
   /*
@@ -2635,8 +2668,27 @@ function ChatPanel({
   }
 
   return (
-    <ChatRail
+    /*
+     * THE SAME PANEL THE WORKSPACE ASK IS, measured narrower.
+     *
+     * <p>`ChatRail` before this, which was the same three regions and is now
+     * only kept for the presentational tests that pin them. What `AskPanel`
+     * adds is the evidence column: it measures itself, so when this pane is
+     * maximised the sources move alongside the answer and when it is a 26rem
+     * rail they stay under it. See components/chat/ask-panel.
+     *
+     * <p>No `AskHeader` here, and no scope chip. The identity row it draws is
+     * the tab above this one -- see `MeetingRail` -- and the scope is in the
+     * composer, by name. Both again in a 26rem pane would be four rows of
+     * chrome over the first answer.
+     */
+    <AskPanel
+      variant="pane"
       scrollRef={threadRef}
+      // The tab row above this one already rules the pane's chrome off from
+      // its content -- see `MeetingRail`. A second hairline 53px under the
+      // first is a panel with two headers.
+      headerRule={false}
       header={
         <ChatHistory
           conversations={conversations ?? []}
@@ -2671,6 +2723,10 @@ function ChatPanel({
       }
       dock={
         <ChatDock
+          // No gutters of its own: `AskPanel` owns the panel's padding, and the
+          // dock's `px-4` inside it set the composer thirty-two pixels in from
+          // the thread above.
+          className="px-0 pb-0"
           prompts={prompts}
           // An empty thread only. A thread with a question in flight is not
           // one, and three disabled pills across the rail put chrome where the
@@ -2696,54 +2752,47 @@ function ChatPanel({
         </ChatDock>
       }
     >
-      <>
-          {isLoading ? (
-            <Skeleton className="h-16 w-full" />
-          ) : messages && messages.length > 0 ? (
-            messages.map((msg) => (
-              <ChatMessageBubble
-                key={msg.id}
-                message={msg}
-                deleting={deleting}
-                onDelete={async (messageId) => {
-                  const result = await deleteExchange({ messageId, scope: meetingId }).unwrap();
-                  // That was the thread's only exchange, so the thread went
-                  // with it. Holding its id would 404 every read from here.
-                  if (result.conversationDeleted) setConversationId(null);
-                }}
-              >
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {msg.citations.map((c, i) =>
-                      c.start != null ? (
-                        <button
-                          key={i}
-                          onClick={() => onCite(c.start as number)}
-                          title={c.text}
-                          className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted"
-                        >
-                          <Quote className="h-3 w-3" /> {timecode(c.start as number)}
-                        </button>
-                      ) : null
-                    )}
-                  </div>
-                )}
-              </ChatMessageBubble>
-            ))
-          ) : (
-            // Nothing in the thread. The starter prompts sit above the
-            // composer instead, so the panel reads bottom-up rather than
-            // opening with a wall of chips where the first answer will appear.
-            null
-          )}
-          {pending.turn && (
-            <PendingTurn
-              turn={pending.turn}
-              onRetry={() => void submit(pending.turn!.question)}
-            />
-          )}
-      </>
-    </ChatRail>
+      {/*
+        THE THREAD, PAIRED INTO EXCHANGES. See components/chat/ask-thread.
+        <p>An empty one renders nothing at all -- the starter prompts sit above
+        the composer instead, so the panel reads bottom-up rather than opening
+        with a wall of chips where the first answer is about to appear.
+      */}
+      <AskThread
+        messages={messages}
+        loading={isLoading}
+        pending={pending.turn}
+        onRetry={() => {
+          if (pending.turn) void submit(pending.turn.question);
+        }}
+        deleting={deleting}
+        onDelete={async (messageId) => {
+          const result = await deleteExchange({ messageId, scope: meetingId }).unwrap();
+          // That was the thread's only exchange, so the thread went with it.
+          // Holding its id would 404 every read from here.
+          if (result.conversationDeleted) setConversationId(null);
+        }}
+        /*
+         * THE PASSAGES THEMSELVES, not a row of timecodes.
+         *
+         * <p>What was here was a round pill per citation reading `02:14`, with
+         * the quoted sentence hidden in a `title` attribute -- a tooltip
+         * nobody hovers, and the only part of the citation worth reading. The
+         * text was already on the object and was being thrown away.
+         *
+         * <p>`onCite` rather than a link: the cited moment is in the
+         * transcript on this page, so each passage seeks the player and the
+         * transcript to that second. Passing `onSeek` is what selects that
+         * behaviour over the workspace chat's deep link -- see
+         * components/chat/ask-evidence.
+         *
+         * <p>No `meetingDates`. Every passage in here is from this meeting and
+         * its date is in the masthead; repeating it under each quote would be
+         * the same fact four times.
+         */
+        evidence={(answer) => <AskEvidence citations={answer.citations} onSeek={onCite} />}
+      />
+    </AskPanel>
   );
 }
 

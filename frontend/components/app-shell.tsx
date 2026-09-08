@@ -53,6 +53,7 @@ import {
   meetingIdFrom,
 } from "@/lib/routes";
 import { SIDE_PANE_ID, useSidePane } from "@/components/side-pane";
+import { useChatRouteBoundary } from "@/lib/chat-route";
 import { RecordingProvider, useRecording } from "@/lib/recording-context";
 import { SearchCommand } from "@/components/search-command";
 import { closeSearch, openSearch, useSearchOverlay } from "@/lib/search-overlay";
@@ -132,6 +133,21 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // Filled by the page underneath, when it has one. See components/side-pane.tsx.
   const pane = useSidePane();
   const showPane = pane.occupied && pane.open;
+
+  /*
+   * LEAVING A PAGE GIVES YOU A NEW CHAT, and this is where that is decided.
+   *
+   * <p>Here because this is the one component that sees every route change in
+   * the group and outlives all of them. The rule is about pages, so it cannot
+   * be enforced by a chat component's lifetime: a chat panel unmounts when the
+   * pane closes, when it is maximised, and every time somebody opens a
+   * meeting's Outline tab, none of which is navigation. See lib/chat-route.ts
+   * for the full account, including the answer that lands after you have gone.
+   *
+   * <p>Nothing is deleted by this. Every conversation stays on the server and
+   * in the history picker; what is forgotten is which one a surface opens on.
+   */
+  useChatRouteBoundary(pathname);
 
   /*
    * How far every page has to end above what is docked at the bottom.
@@ -295,7 +311,32 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             // scroll position and its layout, and putting the pane back is not
             // a re-render of the meeting.
             pane.expanded
-              ? "lg:fixed lg:inset-x-0 lg:bottom-0 lg:top-band lg:z-30 lg:h-auto lg:w-auto"
+              ? /*
+                 * `lg:self-auto` is load-bearing, and its absence was a bug.
+                 *
+                 * <p>Found in the browser: a maximised pane was 301px tall in
+                 * a 1000px window, with the page showing through underneath
+                 * it. Everything about the box looked right — `position:
+                 * fixed`, `top: 48px`, `bottom: 0`, `height: auto` — and an
+                 * identical bare div dropped into the same document stretched
+                 * to 952 as it should. The one declaration that differed was
+                 * `align-self: flex-start`, and setting it to `auto` fixed it.
+                 *
+                 * <p>`lg:self-start` above is what stops the *sticky* column
+                 * stretching this flex row, so it belongs there. It has no
+                 * conflicting counterpart in this branch, which is why
+                 * `tailwind-merge` carried it through into a state where the
+                 * box is out of flow and its own top and bottom decide its
+                 * height — and Chrome declines to resolve `height: auto` from
+                 * those two edges while an alignment is asked for. So the
+                 * branch has to say the alignment does not apply.
+                 *
+                 * <p>Same class of mistake as the `lg:relative` note below:
+                 * only the utilities that actually collide get replaced, so a
+                 * branch that changes the layout model has to reset every
+                 * property the other model needed.
+                 */
+                "lg:fixed lg:inset-x-0 lg:bottom-0 lg:top-band lg:z-30 lg:h-auto lg:w-auto lg:self-auto"
               : "lg:w-[var(--side-pane-w)]",
             /*
              * `relative` unprefixed, NOT `lg:relative`.
