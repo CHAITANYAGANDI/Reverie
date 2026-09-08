@@ -247,11 +247,12 @@ export default function HomePage() {
        * composition is not.
        *
        * <p>Pulled up by the band so the field is continuous through the glass.
-       * 46rem rather than the landing's 60vmax: the masthead here is four
+       * 34rem rather than the landing's 60vmax: the masthead here is four
        * lines, not a hero, and the wash has to be gone by the time the list
-       * starts.
+       * starts. It came down with the type -- at 46rem over the tighter
+       * composition the wash outlasted the rows it was meant to sit behind.
        */}
-      <AmbientCanvas height="46rem" top="calc(var(--band) * -1)" />
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
 
       {/*
        * THE FRAME. Two columns, one grid row, and a rule between them that is
@@ -273,23 +274,24 @@ export default function HomePage() {
           {listState !== "empty" && <AskLauncher />}
 
           {listState === "skeleton" ? (
-            <div className="mt-[3.625rem] space-y-6">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-[3.5rem] w-full" />
+            <div className="mt-9 space-y-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
           ) : listState === "error" ? (
-            <div className="mt-[3.625rem]">
+            <div className="mt-9">
               <HomeLoadError onRetry={() => void meetings.refetch()} />
             </div>
           ) : listState === "empty" ? (
-            <div className="mt-12">
+            <div className="mt-10">
               <EmptyState />
             </div>
           ) : (
-            /* 58px under the launcher, which is the reference's air between
-               the one control on this page and the list it is above. */
-            <div className="mt-[3.625rem] space-y-10">
+            /* 36px under the launcher: enough that the list is a separate
+               thing from the control above it, and no more. It was 58, off
+               the magnified reference. */
+            <div className="mt-9 space-y-8">
               {sections.map((section) => (
                 <Group key={section.key} heading={section.heading} note={section.note}>
                   <Rows meetings={section.items} />
@@ -337,16 +339,16 @@ export default function HomePage() {
 /**
  * A heading, an optional note or control beside it, and the rows.
  *
- * <p>A 17px heading in muted blue-grey, anything else pushed to the far end of
+ * <p>A 14px heading in muted blue-grey, anything else pushed to the far end of
  * the same baseline. No card, and no rule under the heading — the hairlines
  * between rows are the only lines in the list.
  *
  * <p>It was `.v2-label`: 11.5px at 560 with a little tracking, which is the
- * label for a group inside a 680px reading column. Beside a list of 20px row
- * titles it read as a caption that had lost its picture. And it carries no
- * bottom margin now: the first row's own 28px of top padding is the gap, which
- * is what makes the space above the first title the same as the space between
- * every pair of rows after it.
+ * label for a group inside a 680px reading column, and beside Home's row
+ * titles it read as a caption that had lost its picture. It carries no bottom
+ * margin: the first row's own top padding is the gap, which is what makes the
+ * space above the first title the same as the space between every pair of rows
+ * after it.
  */
 function Group({
   heading,
@@ -362,8 +364,8 @@ function Group({
   return (
     <section>
       <div className="flex items-baseline gap-3">
-        <h2 className="text-title-2 text-ink-3">{heading}</h2>
-        {note && <p className="v2-home-meta text-ink-4">{note}</p>}
+        <h2 className="v2-home-sub text-ink-3">{heading}</h2>
+        {note && <p className="v2-home-meta text-ink-3">{note}</p>}
         {aside && <div className="ml-auto">{aside}</div>}
       </div>
       {children}
@@ -440,18 +442,17 @@ function Masthead({ empty }: { empty: boolean }) {
      * band -- because a masthead with its own `pt-10` inside a frame with its
      * own top padding is two numbers deciding one gap.
      *
-     * <p>44px underneath, which is this block's, and it is the reference's gap
-     * between the lede and the launcher. It belongs here rather than on the
-     * launcher: the launcher is not drawn at all on an empty account, and a
-     * top margin on a thing that is sometimes absent is a gap that sometimes
-     * disappears.
+     * <p>28px underneath, which is this block's. It belongs here rather than
+     * on the launcher: the launcher is not drawn at all on an empty account,
+     * and a top margin on a thing that is sometimes absent is a gap that
+     * sometimes disappears.
      */
-    <header className="pb-11">
+    <header className="pb-7">
       {/* Both lines reserve their height, so the greeting arriving one tick
           after the list does not push the list down under a reader's cursor.
           `min-h` rather than `h` on the greeting: at 390px it wraps, and a
           fixed height would print the second line through the lede. */}
-      <p className="v2-home-sub h-6 text-ink-3">
+      <p className="v2-home-sub h-5 text-ink-3">
         {now
           ? now.toLocaleDateString(undefined, {
               weekday: "long",
@@ -460,10 +461,10 @@ function Masthead({ empty }: { empty: boolean }) {
             })
           : ""}
       </p>
-      <h1 className="v2-home-greet mt-4 min-h-[2.875rem] font-headline text-ink">
+      <h1 className="v2-home-greet mt-2.5 min-h-[2.125rem] font-headline text-ink">
         {now ? title : ""}
       </h1>
-      <p className="v2-home-lede mt-3.5 max-w-[64ch] text-ink-3">
+      <p className="v2-home-lede mt-2.5 max-w-[64ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.
           <p>This read "Recent conversations, wherever they are filed, and what

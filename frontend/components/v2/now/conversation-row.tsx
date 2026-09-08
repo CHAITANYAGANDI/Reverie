@@ -33,11 +33,12 @@
  *
  * <h2>Two sizes, and why the markup branches</h2>
  *
- * <p>`size="home"` is a larger presentation of the same row: a 24px glyph in a
- * column of its own, a 20px title, 16px metadata, and 28px of air above and
- * below, in a column about 890px wide. Home's approved reference draws it that
- * way, and at the compact size the same composition read as a dense table with
- * a large heading over it.
+ * <p>`size="home"` is a larger presentation of the same row: a 16px glyph in a
+ * column of its own, a 16px title over 13px metadata, and 16px of air above
+ * and below, in a column about 890px wide. One step over the archive's row
+ * rather than two -- it was 24/20/16 with 28px of padding, measured off an
+ * approved reference that turned out to be a ~1.2x capture, and a 114px row
+ * read as a card without a border.
  *
  * <p>Everything that decides WHAT a row says is shared: the icon, the live
  * status subscription, the facts line and its dots, the failure text. Two
@@ -152,7 +153,7 @@ export function NowConversationRow({
     facts.push(
       big ? (
         <span key="len" className="inline-flex items-center gap-1.5">
-          <Clock className="h-[15px] w-[15px] shrink-0 text-ink-5" aria-hidden />
+          <Clock className="h-3.5 w-3.5 shrink-0 text-ink-5" aria-hidden />
           {formatDuration(meeting.durationSeconds)}
         </span>
       ) : (
@@ -201,7 +202,9 @@ export function NowConversationRow({
         data-row-time
         className={
           big
-            ? "v2-home-meta tabular shrink-0 font-mono text-ink-4"
+            ? // `--ink-4` is documented for >=16px; this is 13px now, so the
+              // clock takes the tier that clears 4.5:1 at any size.
+              "v2-home-meta tabular shrink-0 font-mono text-ink-3"
             : "tabular shrink-0 font-mono text-foot text-ink-4"
         }
       >
@@ -210,7 +213,7 @@ export function NowConversationRow({
       <ChevronRight
         className={
           big
-            ? "h-[18px] w-[18px] shrink-0 translate-y-px text-ink-4"
+            ? "h-4 w-4 shrink-0 translate-y-px text-ink-4"
             : "h-3.5 w-3.5 shrink-0 translate-y-px text-ink-5"
         }
         aria-hidden
@@ -247,25 +250,24 @@ export function NowConversationRow({
            ten pixels of horizontal scroll. */
         className={
           "block rounded-md transition-colors duration-press ease-soft hover:bg-white/[0.035]" +
-          /* 28px above and below at Home's size. With a 28px title line and a
-             22px metadata line that is a 114px row, which is the reference's
-             147px less exactly the preview sentence the list payload does not
-             carry -- see the note in app/(app)/home/page.tsx. */
-          (big ? " py-7 sm:-mx-3 sm:px-3" : " py-3 sm:-mx-2.5 sm:px-2.5") +
+          /* 16px above and below at Home's size, for a ~79px row. It was 28
+             and a 114px row, off the magnified reference. */
+          (big ? " py-4 sm:-mx-3 sm:px-3" : " py-3 sm:-mx-2.5 sm:px-2.5") +
           // Room for the control, so a long title runs out before it rather
           // than under it. Only when there is one.
           (action ? " pr-9 sm:pr-9" : "")
         }
       >
         {big ? (
-          /* HOME. The glyph gets a column: 24px, 32px of gap, and the title
-             and its metadata both begin on the axis that leaves -- 70px in
-             from the row's content edge, which is the indent the reference
-             draws and what makes three tall rows read as a list. */
-          <span className="flex items-start gap-8 pl-3.5">
-            <Icon className="h-6 w-6 shrink-0 translate-y-px text-ink-4" aria-hidden />
+          /* HOME. The glyph gets a column: 16px, 16px of gap, and the title
+             and its metadata both begin on the axis that leaves -- 40px in
+             from the row's content edge. It was 24px and 70px, which at the
+             smaller type left the titles floating a long way from their
+             glyphs. */
+          <span className="flex items-start gap-4 pl-2">
+            <Icon className="h-4 w-4 shrink-0 translate-y-px text-ink-4" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="flex items-baseline gap-4">
+              <span className="flex items-baseline gap-3">
                 <span
                   data-row-title
                   className="v2-home-title min-w-0 flex-1 truncate font-headline text-ink"
@@ -295,7 +297,7 @@ export function NowConversationRow({
           </>
         )}
       </Link>
-      {action && <div className={big ? "absolute right-0 top-7" : "absolute right-0 top-3"}>{action}</div>}
+      {action && <div className="absolute right-0 top-3">{action}</div>}
     </li>
   );
 }

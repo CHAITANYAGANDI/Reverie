@@ -38,10 +38,10 @@
  *
  * <h2>Scale</h2>
  *
- * <p>An 18px title over a 16px owner, a 24px checkbox, a 22px heading and a
- * 40px pill — Home's scale rather than the interface's, from the approved
- * reference. See `.v2-home-*` in app/globals.css. Nothing else in the product
- * uses these sizes, which is why they are scoped to Home's tree.
+ * <p>A 14px title over an 11.5px owner, a 16px checkbox, a 17px heading and a
+ * 32px pill — Home's scale, which is one step over the interface's rather than
+ * two. It was 18/16/24/22/40, measured off an approved reference that turned
+ * out to be a ~1.2x capture. See `.v2-home-*` in app/globals.css.
  */
 
 import * as React from "react";
@@ -91,11 +91,11 @@ export function NowActionItems({ items }: { items: ActionItems }) {
       {/* THE HEADING, at the size of the thing it names.
           <p>It was `.v2-label` — 11.5px at 560, the same treatment as "Today,
           Sep 7" over a group of rows. That label is for a group inside a
-          region; this is the region. `items-start` rather than `items-baseline`
-          because Add is six pixels smaller and baseline-aligning them left it
-          sitting low against a 22px heading. */}
-      <div className="flex items-start gap-3">
-        <h2 id="now-actions" className="text-title-1 font-headline text-ink">
+          region; this is the region, so it takes `--t-title-2`. It was
+          `--t-title-1` at 22px for one turn, off the magnified reference.
+          `items-baseline` now that Add is only four pixels smaller. */}
+      <div className="flex items-baseline gap-3">
+        <h2 id="now-actions" className="text-title-2 font-headline text-ink">
           Action items
         </h2>
         {!adding && !unsettled && (
@@ -103,13 +103,13 @@ export function NowActionItems({ items }: { items: ActionItems }) {
             type="button"
             onClick={() => setAdding(true)}
             className={cn(
-              "v2-home-sub ml-auto flex shrink-0 items-center gap-1.5 pt-0.5",
+              "v2-home-meta ml-auto flex shrink-0 items-center gap-1",
               // Iris as a word, which is what `--brand-text` is for. The one
               // affordance in this column and the only coloured thing in it.
               "text-brand-text transition-opacity duration-press ease-soft hover:opacity-80",
             )}
           >
-            <Plus className="h-[18px] w-[18px]" aria-hidden /> Add
+            <Plus className="h-3.5 w-3.5" aria-hidden /> Add
           </button>
         )}
       </div>
@@ -135,7 +135,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           where one is currently in effect, and it needs no keyboard contract
           beyond the one a button already has.
         */
-        <div className="mt-5 flex items-center gap-1">
+        <div className="mt-3.5 flex items-center gap-1">
           <Tab on={view === "open"} onSelect={() => setView("open")} label="Open" count={open.length} />
           <Tab on={view === "done"} onSelect={() => setView("done")} label="Completed" count={done.length} />
         </div>
@@ -147,12 +147,12 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           request is still out. */}
       <div
         data-actions-rule
-        className={cn("border-t border-line pt-6", unsettled ? "mt-6" : "mt-2.5")}
+        className={cn("border-t border-line pt-4", unsettled ? "mt-4" : "mt-2.5")}
       >
         {adding && (
-          <div className="mb-8 flex items-start gap-5">
+          <div className="mb-5 flex items-start gap-3.5">
             <span
-              className="mt-0.5 h-6 w-6 shrink-0 rounded-[6px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
+              className="mt-px h-4 w-4 shrink-0 rounded-[4px] shadow-[inset_0_0_0_1px_rgb(var(--edge))]"
               aria-hidden
             />
             <input
@@ -171,18 +171,18 @@ export function NowActionItems({ items }: { items: ActionItems }) {
               onBlur={() => void commit()}
               placeholder="What needs doing?"
               aria-label="New action item"
-              className="v2-home-sub h-6 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4"
+              className="v2-home-sub h-5 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4"
             />
             {items.creating && (
-              <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-ink-4" aria-hidden />
+              <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-ink-4" aria-hidden />
             )}
           </div>
         )}
 
         {state === "loading" ? (
-          <div className="space-y-3">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-3/4" />
+          <div className="space-y-2.5">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
           </div>
         ) : state === "error" ? (
           <ResourceLoadError
@@ -199,7 +199,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
              is the case the always-drawn switch made reachable. Every branch
              is reached only from a settled response, so all three are
              statements about the list rather than about the network. */
-          <p className="v2-home-meta text-ink-4">
+          <p className="v2-home-meta text-ink-3">
             {view === "done"
               ? "Nothing finished yet."
               : done.length > 0
@@ -207,9 +207,9 @@ export function NowActionItems({ items }: { items: ActionItems }) {
                 : "Nothing on your list. What a meeting committed you to stays on that meeting."}
           </p>
         ) : (
-          /* 32px between rows. With a 24px title line and a 22px owner line
-             under it that is an 82px pitch, which is the reference's. */
-          <ul className="flex flex-col gap-8">
+          /* 20px between rows, for a ~57px pitch. It was 32 and 82, off the
+             magnified reference. */
+          <ul className="flex flex-col gap-5">
             {showing.map((item) => (
               <Row key={item.id} item={item} onToggle={() => void items.toggle(item)} />
             ))}
@@ -248,8 +248,8 @@ function Tab({
       aria-pressed={on}
       onClick={onSelect}
       className={cn(
-        "v2-home-meta flex h-10 items-center rounded-full px-4 transition-colors duration-press ease-soft",
-        on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-4 hover:text-ink-2",
+        "v2-home-meta flex h-8 items-center rounded-full px-3.5 transition-colors duration-press ease-soft",
+        on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-3 hover:text-ink-2",
       )}
     >
       {/* One plain space between them. `&nbsp;` here put U+00A0 into the
@@ -266,8 +266,8 @@ function Tab({
  *
  * <p>A real checkbox, because it is one — a styled `<span>` with a click
  * handler is the commonest way a list like this stops working for a keyboard.
- * 24px, from the reference, which is also comfortably past the 24px minimum a
- * pointer target wants.
+ * 16px, beside a 14px title. It was 24, off the magnified reference, where it
+ * was the widest glyph in the column.
  *
  * <p>Four columns, and two of them are drawn only when there is something in
  * them: the owner line where somebody set an owner, and the due date where
@@ -280,13 +280,13 @@ function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => voi
   const due = dueColumn(item);
 
   return (
-    <li className="flex items-start gap-5">
+    <li className="flex items-start gap-3.5">
       <input
         type="checkbox"
         checked={done}
         onChange={onToggle}
         aria-label={done ? `Reopen ${item.title}` : `Complete ${item.title}`}
-        className="mt-0.5 h-6 w-6 shrink-0 accent-[hsl(var(--brand))]"
+        className="mt-px h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
       />
       <span className="min-w-0 flex-1">
         <span
@@ -296,7 +296,9 @@ function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => voi
           {item.title}
         </span>
         {item.ownerName && (
-          <span data-task-owner className="v2-home-meta mt-1 block truncate text-ink-4">
+          /* `--ink-4` is documented for >=16px and this is 11.5, so the owner
+             takes the tier that clears 4.5:1 at any size. */
+          <span data-task-owner className="mt-0.5 block truncate text-foot text-ink-3">
             {item.ownerName}
           </span>
         )}
@@ -305,11 +307,16 @@ function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => voi
           is a fixed width and the date is `shrink-0`, so the dates form a
           right-aligned column whatever they say and a row with no date leaves
           the menu where it was. */}
-      <span className="flex shrink-0 items-start gap-3">
+      <span className="flex shrink-0 items-start gap-2.5">
         {due && (
           <span
             data-task-due
-            className={cn("v2-home-meta whitespace-nowrap", dueTone(item.dueStatus))}
+            /* Concatenated, NOT `cn`. tailwind-merge cannot tell that `foot`
+               is a font size and `muted-foreground` is a colour -- both look
+               like `text-*` to it -- so it kept the last and dropped the size,
+               and the date rendered at the inherited 13.5px. Nothing here
+               conflicts, so nothing needs merging. */
+            className={"whitespace-nowrap text-foot " + dueTone(item.dueStatus)}
           >
             {due}
           </span>
@@ -350,12 +357,12 @@ function ItemMenu({ item }: { item: ActionItemResponse }) {
       <DropdownMenuTrigger
         aria-label={`More for ${item.title}`}
         disabled={deleting}
-        className="flex h-6 w-8 shrink-0 items-center justify-center rounded-md text-ink-4 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink-2 disabled:opacity-50"
+        className="flex h-5 w-6 shrink-0 items-center justify-center rounded-md text-ink-4 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink-2 disabled:opacity-50"
       >
         {deleting ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
         ) : (
-          <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

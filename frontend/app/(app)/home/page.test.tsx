@@ -1061,11 +1061,10 @@ describe("the shape of Now", () => {
 
   it("draws its rows at Home's size, which Library's are not", async () => {
     /*
-     * `size="home"`: a 24px glyph in a column of its own, a 20px title and 28px
-     * of air above and below. The archive keeps the compact 15px row -- a
-     * hundred of Home's would be a very long page -- and the default on the
-     * component is `"list"`, so this assertion is what would fail if Home
-     * stopped asking.
+     * `size="home"`: a 16px glyph in a column of its own, a 16px title and
+     * 16px of air above and below. The archive keeps its 15px row at 12px of
+     * padding and no glyph column, and the default on the component is
+     * `"list"`, so this assertion is what would fail if Home stopped asking.
      */
     // With a duration, because the metadata line is drawn only when there is
     // a fact to put in it -- a row with nothing to say renders no empty line.
@@ -1074,11 +1073,11 @@ describe("the shape of Now", () => {
     await screen.findByRole("heading", { level: 1 });
 
     const row = screen.getByRole("link", { name: /Tuesday design review/ });
-    expect(row.className).toContain("py-7");
+    expect(row.className).toContain("py-4");
     expect(row.querySelector("[data-row-title]")?.className).toContain("v2-home-title");
     expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-home-meta");
-    // A 24px glyph in its own column, which is the indent the reference draws.
-    expect(row.querySelector("svg")?.getAttribute("class")).toContain("h-6");
+    // A glyph in a column of its own, which is Home's indent.
+    expect(row.querySelector("svg")?.getAttribute("class")).toContain("h-4");
   });
 
   it("asks for nothing per row, so a wide list is still one request", async () => {

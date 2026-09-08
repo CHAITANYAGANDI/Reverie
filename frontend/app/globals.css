@@ -377,10 +377,19 @@
      and Home's own tree reads these variables, so widening the list cannot
      widen a transcript.
 
-     The numbers below are measured off the reference at 1672px and step down
-     four times. `max-width: 1672px` is the reference viewport itself, which
-     makes the approved layout the design's natural maximum rather than
-     something that only happens at one window size.
+     The horizontal numbers below are measured off the reference at 1672px and
+     step down four times. `max-width: 1672px` is the reference viewport
+     itself, which makes the approved layout the design's natural maximum
+     rather than something that only happens at one window size.
+
+     THE VERTICAL NUMBERS ARE NOT THE REFERENCE'S, and that is deliberate. The
+     approved image turned out to be a magnified capture -- a ~1.2x screenshot
+     of a smaller window -- so reproducing its pixel measurements at 1x gave a
+     40px greeting over 20px rows and a page that read, in a real browser, as
+     three enormous things and a lot of air. Its composition, proportions and
+     hierarchy are what this frame keeps. Its absolute sizes are a scale
+     artefact and were reported as too large the first time it was seen on a
+     real screen. See HOME'S TYPE below.
 
      WHAT THE COLUMNS ARE. Two, and neither spans the other: masthead, launcher
      and list on the left; action items on the right. The margin used to begin
@@ -391,7 +400,7 @@
     /* Phone and tablet: one column, ordinary page padding. */
     --home-pad-l: 1rem;
     --home-pad-r: 1rem;
-    --home-top: 2rem;
+    --home-top: 1.75rem;
     /* The rule and the margin only exist from 1160 up; see below. */
     --home-rule-gap: 0px;
     --home-margin-pad: 0px;
@@ -415,7 +424,7 @@
     .v2-home {
       --home-pad-l: 2rem;
       --home-pad-r: 2rem;
-      --home-top: 2.5rem;
+      --home-top: 2rem;
     }
   }
   /* THE SPREAD POINT. The same 1160px the rest of the product stacks at, so
@@ -424,7 +433,7 @@
     .v2-home {
       --home-pad-l: 2.5rem;
       --home-pad-r: 2rem;
-      --home-top: 4.5rem;
+      --home-top: 2.75rem;
       --home-rule-gap: 2.5rem;
       --home-margin-pad: 2rem;
       --home-margin: 21.75rem; /* 348 */
@@ -437,7 +446,7 @@
     .v2-home {
       --home-pad-l: 4rem;
       --home-pad-r: 3rem;
-      --home-top: 5.25rem;
+      --home-top: 3rem;
       --home-rule-gap: 2.75rem;
       --home-margin-pad: 2.25rem;
       --home-margin: 23.75rem; /* 380 */
@@ -447,7 +456,7 @@
     .v2-home {
       --home-pad-l: 6rem;
       --home-pad-r: 4rem;
-      --home-top: 5.75rem;
+      --home-top: 3.25rem;
       --home-rule-gap: 3rem;
       --home-margin-pad: 2.5rem;
       --home-margin: 26.25rem; /* 420 */
@@ -458,7 +467,7 @@
     .v2-home {
       --home-pad-l: 8.5rem; /* 136 */
       --home-pad-r: 5.125rem; /* 82 */
-      --home-top: 6.1875rem; /* 99 — the date lands at y=147 under a 48px band */
+      --home-top: 3.5rem; /* 56 */
       --home-rule-gap: 3.5rem; /* 56 */
       --home-margin-pad: 2.6875rem; /* 43 */
       --home-margin: 28.9375rem; /* 463 */
@@ -486,65 +495,66 @@
       border-top: 0;
       border-left: 1px solid rgb(var(--line-strong));
       padding-left: var(--home-margin-pad);
-      /* Optical, not structural: 22px puts "Action items" at 22px on the same
-         top composition as an 18px date, which is where the reference has it.
-         Inside the border, so the rule still begins at the top of the row. */
-      padding-top: 1.375rem;
+      /* Zero, and BOTH halves matter. The stacked rule above pads 40px under
+         its horizontal separator; the 22px optical nudge that used to sit here
+         was overriding that as a side effect, so removing the nudge left the
+         heading 40px below the date rather than level with it.
+         <p>Level is now the whole intent: a 17px heading and a 14px date have
+         their text tops within a pixel of each other, so the two regions begin
+         on one line by construction rather than by a measured offset. */
+      padding-top: 0;
     }
   }
 
   /* HOME'S TYPE.
-     <p>Five sizes, and they exist because the interface scale does not fit
-     here. That scale is built for a 680px measure — 13.5px body, a 15px row
-     title — and the approved reference draws this page a step and a half
-     larger throughout: a 40px greeting over a 20px lede, and a list of 20px
-     titles over 16px metadata. At interface sizes in an 890px column the same
-     composition reads as a dense table with a large heading on top of it.
-     <p>Scoped to `.v2-home`, so Library's rows and every transcript keep the
-     scale they were designed at. */
+     ==========================================================================
+     Five sizes, one step above the interface scale rather than two.
+
+     <p>They were 40 / 20 / 20 / 18 / 16, taken from the approved reference by
+     measuring it. That reference is a magnified capture, so those numbers are
+     about 1.2x what was designed, and on a real screen the result was a
+     greeting the size of a marketing headline over rows you could read across
+     the room: "it filled the whole page in a very big way." The proportions
+     were right and the absolute sizes were not.
+
+     <p>So each step came down to the neighbouring value on the product's own
+     scale: the greeting is `--t-title-l`, which is what every other page title
+     in Reverie is; the lede is interface body-plus; a row title is one step
+     over Library's. Home still reads larger than the archive -- it is the
+     default page and its list is a glance rather than a search result -- but
+     it now reads as the same product.
+
+     <p>Still five utilities rather than five tokens, and still scoped to
+     `.v2-home`: none of these sizes is on the eleven-step interface scale, and
+     the point of that scale is that it has eleven steps. Library's rows and
+     every transcript are untouched.
+
+     <p>No phone override any more. There was one, dropping the greeting to
+     `--t-title-l` and everything else a step -- but `--t-title-l` IS the
+     greeting now and the other four are already at interface sizes, so the
+     block did nothing but grow the four it named. */
   .v2-home-greet {
-    font-size: 2.5rem;
-    line-height: 1.15;
-    letter-spacing: -0.022em;
+    font-size: var(--t-title-l); /* 30 */
+    line-height: 1.14;
+    letter-spacing: -0.018em;
   }
   .v2-home-lede {
-    font-size: 1.25rem;
-    line-height: 1.5;
-    letter-spacing: -0.008em;
+    font-size: 0.9375rem; /* 15 */
+    line-height: 1.55;
+    letter-spacing: -0.003em;
   }
   .v2-home-title {
-    font-size: 1.25rem;
+    font-size: 1rem; /* 16 — one step over Library's 15 */
     line-height: 1.4;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.006em;
   }
   .v2-home-sub {
-    font-size: 1.125rem;
-    line-height: 1.5rem;
+    font-size: 0.875rem; /* 14 */
+    line-height: 1.45;
   }
   .v2-home-meta {
-    font-size: 1rem;
-    line-height: 1.375rem;
-  }
-  /* A phone is 390px wide and the same five sizes would spend a third of the
-     screen on the greeting. Down to the interface scale, which is what that
-     scale is for. */
-  @media (max-width: 640px) {
-    .v2-home-greet {
-      font-size: var(--t-title-l);
-      letter-spacing: -0.018em;
-    }
-    .v2-home-lede {
-      font-size: 1.0625rem;
-    }
-    .v2-home-title {
-      font-size: 1.0625rem;
-    }
-    .v2-home-sub {
-      font-size: 1rem;
-    }
-    .v2-home-meta {
-      font-size: 0.875rem;
-    }
+    font-size: 0.8125rem; /* 13 */
+    line-height: 1.4;
   }
 
   /* ==========================================================================

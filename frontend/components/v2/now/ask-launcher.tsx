@@ -47,19 +47,20 @@ export function AskLauncher() {
       className={
         /* The one functional surface on this page. It is a control rather than
            content, which is the whole test for whether something gets a fill.
-           <p>64px and a 10px radius, from the approved reference, where it is
-           one horizontal surface the full width of the list. It was 48px --
-           already up from 44 -- and beside 114px conversation rows in an 890px
-           column that read as one more row rather than as the thing this page
-           is asking you to reach for. Still no glow and no drop shadow: a 1px
-           inset edge and a 4% fill, which is what every other raised control
-           in the product is made of. */
-        "flex h-16 items-center gap-4 rounded-[10px] bg-white/[0.04] px-5 " +
+           <p>48px and a 10px radius. It was 64, taken off the approved
+           reference before that reference turned out to be a ~1.2x capture;
+           at 64 beside a 30px greeting it was the largest thing on the page
+           by area. 48 is still clearly taller than a 79px row is tall, which
+           is all it needs to read as the thing to reach for rather than as
+           one more row. Still no glow and no drop shadow: a 1px inset edge
+           and a 4% fill, which is what every other raised control in the
+           product is made of. */
+        "flex h-12 items-center gap-3 rounded-[10px] bg-white/[0.04] px-4 " +
         "shadow-[inset_0_0_0_1px_rgb(var(--line-strong))] " +
         "transition-colors duration-press ease-soft hover:bg-white/[0.06]"
       }
     >
-      <Waypoints className="h-6 w-6 shrink-0 text-ink-4" aria-hidden />
+      <Waypoints className="h-[18px] w-[18px] shrink-0 text-ink-4" aria-hidden />
       <span className="v2-home-lede flex-1 text-ink-4">Ask Reverie about your meetings…</span>
     </Link>
   );
