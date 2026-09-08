@@ -43,7 +43,16 @@ export interface ActionItems {
   /** Everything ticked off, which is a view rather than a footnote now. */
   done: ActionItemResponse[];
   add: (title: string) => Promise<void>;
-  toggle: (item: ActionItemResponse) => Promise<void>;
+  /**
+   * Tick an item off, or put it back.
+   *
+   * <p>Resolves with the item the server returned and **rejects** when the
+   * write failed, so the row can show the press immediately and take it back
+   * if it did not land. It used to swallow the failure into a toast and
+   * resolve either way, which left the caller unable to tell the two apart --
+   * fine while nothing was drawn optimistically, and not fine now.
+   */
+  toggle: (item: ActionItemResponse) => Promise<ActionItemResponse>;
   creating: boolean;
   retrying: boolean;
   refetch: () => void;
@@ -100,12 +109,14 @@ export function useActionItems(): ActionItems {
   const toggle = React.useCallback(
     async (item: ActionItemResponse) => {
       try {
-        await patch({
+        return await patch({
           id: item.id,
           body: { status: item.status === "DONE" ? "OPEN" : "DONE" },
         }).unwrap();
-      } catch {
+      } catch (err) {
+        // Said once, here, and rethrown so the row can roll its tick back.
         toast.error("Couldn't update that.");
+        throw err;
       }
     },
     [patch],

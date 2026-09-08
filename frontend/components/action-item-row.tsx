@@ -83,13 +83,70 @@ export function ActionItemRow({
 }: ActionItemRowProps) {
   const [open, setOpen] = React.useState(false);
   const [patch, { isLoading: saving }] = usePatchActionItemMutation();
-  const done = item.status === "DONE";
+
+  /*
+   * WHAT THE TICK SHOWS WHILE THE SERVER IS STILL THINKING.
+   *
+   * <p>`checked={item.status === "DONE"}` is a controlled checkbox, so a click
+   * changed nothing until a round trip finished and the invalidated query came
+   * back -- and the box was `disabled` for the duration on top of that.
+   * Measured against the real stack: 120ms after the click the checkbox was
+   * still unchecked, still un-struck, and now greyed out. Clicking a tick and
+   * watching it refuse is indistinguishable from a broken control, which is
+   * exactly how it was reported.
+   *
+   * <p>So the row holds what the reader asked for until the truth arrives.
+   * `null` means "no request outstanding, the prop is the truth".
+   *
+   * <h2>Why here and not in the RTK cache</h2>
+   *
+   * <p>An `onQueryStarted` optimistic patch is the usual answer, and it would
+   * have to find every cached list this item appears in -- `getActionItems`
+   * with whatever arguments each surface passes, plus
+   * `getMeetingActionItems(meetingId)`, whose argument the patch does not even
+   * carry. Walking the cache to patch them all is more machinery than the
+   * defect needs, and getting it half right leaves two lists disagreeing
+   * permanently.
+   *
+   * <p>This cannot: it touches no cache, so nothing can drift. The mutation
+   * already invalidates correctly -- proven at runtime -- so the authoritative
+   * value arrives on its own and this override exists only to cover the gap.
+   */
+  const [pending, setPending] = React.useState<boolean | null>(null);
+  const done = pending ?? item.status === "DONE";
+
+  // The prop caught up: the override has nothing left to say.
+  React.useEffect(() => {
+    setPending(null);
+  }, [item.status]);
 
   async function update(body: Parameters<typeof patch>[0]["body"], failure = "Couldn't update that action item.") {
     try {
       await patch({ id: item.id, body }).unwrap();
     } catch {
       toast.error(failure);
+    }
+  }
+
+  /**
+   * Tick it, or untick it.
+   *
+   * <p>Reconciled against the *response* rather than against what was asked
+   * for, so a server that declines the change is believed immediately instead
+   * of being overridden until the refetch lands. Rolled back on failure, where
+   * `update`'s toast is the explanation.
+   */
+  async function setDone(next: boolean) {
+    setPending(next);
+    try {
+      const updated = await patch({
+        id: item.id,
+        body: { status: next ? "DONE" : "OPEN" },
+      }).unwrap();
+      setPending(updated.status === "DONE");
+    } catch {
+      setPending(null);
+      toast.error("Couldn't update that action item.");
     }
   }
 
@@ -114,12 +171,16 @@ export function ActionItemRow({
           />
         )}
 
+        {/* NOT `disabled={saving}`. A tick that goes dead the moment it is
+            pressed is the whole of what "marking it complete does nothing"
+            looked like; the optimistic value above is what makes the press
+            visible, and a second press is a legitimate change of mind rather
+            than something to guard against. */}
         <input
           type="checkbox"
           checked={done}
-          disabled={saving}
           aria-label={`Mark “${title}” complete`}
-          onChange={(e) => update({ status: e.target.checked ? "DONE" : "OPEN" })}
+          onChange={(e) => void setDone(e.target.checked)}
           className="mt-1.5 h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
         />
 

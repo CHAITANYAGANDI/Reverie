@@ -214,7 +214,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
              magnified reference. */
           <ul className="flex flex-col gap-4">
             {showing.map((item) => (
-              <Row key={item.id} item={item} onToggle={() => void items.toggle(item)} />
+              <Row key={item.id} item={item} onToggle={() => items.toggle(item)} />
             ))}
           </ul>
         )}
@@ -278,16 +278,39 @@ function Tab({
  * item carries a title, a status, and an owner and a date where they were
  * given.
  */
-function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => void }) {
-  const done = item.status === "DONE";
+function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => Promise<unknown> }) {
+  /*
+   * The tick, shown before the server has agreed to it. Same reasoning as
+   * `components/action-item-row` -- a controlled checkbox over a network round
+   * trip is a control that appears to ignore the press. `null` means the prop
+   * is the truth.
+   */
+  const [pending, setPending] = React.useState<boolean | null>(null);
+  const done = pending ?? item.status === "DONE";
   const due = dueColumn(item);
+
+  // The prop caught up, or the item moved between Open and Completed and this
+  // row was rebuilt: either way the override is spent.
+  React.useEffect(() => {
+    setPending(null);
+  }, [item.status]);
+
+  async function toggle() {
+    setPending(!done);
+    try {
+      await onToggle();
+    } catch {
+      // `useActiveItems.toggle` has already said why; this only undoes the tick.
+      setPending(null);
+    }
+  }
 
   return (
     <li className="flex items-start gap-3.5">
       <input
         type="checkbox"
         checked={done}
-        onChange={onToggle}
+        onChange={() => void toggle()}
         aria-label={done ? `Reopen ${item.title}` : `Complete ${item.title}`}
         className="mt-px h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
       />

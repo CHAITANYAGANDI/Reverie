@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /*
@@ -77,7 +77,11 @@ const margin = (over: Partial<ActionItems> = {}) =>
 
 beforeEach(() => {
   add = vi.fn().mockResolvedValue(undefined);
-  toggle = vi.fn().mockResolvedValue(undefined);
+  // Resolves with the server's item, and rejects on failure -- which is what
+  // `useActionItems.toggle` does now, so the row can show the press at once
+  // and take it back if it did not land.
+  toggle = vi.fn().mockImplementation(async (i: ActionItemResponse) =>
+    ({ ...i, status: i.status === "DONE" ? "OPEN" : "DONE" }));
   refetch = vi.fn();
   del.unwrap = vi.fn().mockResolvedValue(undefined);
   del.fn = vi.fn(() => ({ unwrap: del.unwrap }));
@@ -199,6 +203,44 @@ describe("what it says when a view is empty", () => {
     expect(screen.queryByText(/Nothing on your list/)).not.toBeInTheDocument();
     // And the count beside it agrees.
     expect(screen.getByRole("button", { name: "Completed (1)" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE TICK, BEFORE THE SERVER ANSWERS.
+ *
+ * <p>`checked={item.status === "DONE"}` is controlled by the prop, and the
+ * prop only changes when the mutation's invalidation brings the list back. So
+ * a click did nothing visible for a whole round trip -- measured on the real
+ * stack at 120ms after the click: still unchecked, still un-struck.
+ */
+describe("ticking one off, before the list comes back", () => {
+  it("checks and strikes it immediately", async () => {
+    let release = () => {};
+    const held = new Promise<void>((r) => { release = r; });
+    toggle.mockImplementation(async (i: ActionItemResponse) => {
+      await held;
+      return { ...i, status: "DONE" };
+    });
+    margin({ open: [anItem({ title: "Book the room" })] });
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Complete Book the room" }));
+
+    // Nothing has resolved: this is the frame the bug lived in.
+    expect(screen.getByRole("checkbox", { name: /Book the room/ })).toBeChecked();
+    expect(screen.getByText("Book the room").className).toContain("line-through");
+    release();
+  });
+
+  it("takes the tick back when the write fails", async () => {
+    toggle.mockRejectedValue(new Error("refused"));
+    margin({ open: [anItem({ title: "Book the room" })] });
+    const box = screen.getByRole("checkbox", { name: "Complete Book the room" });
+
+    await userEvent.click(box);
+
+    await waitFor(() => expect(box).not.toBeChecked());
+    expect(screen.getByText("Book the room").className).not.toContain("line-through");
   });
 });
 

@@ -24,12 +24,35 @@ const { patch, addComment, deleteComment, deleteItem, commentsAskedFor } = vi.ho
 }));
 
 let comments: ActionItemComment[];
+/** Held open by a test that wants to look at the row mid-request. */
+let patchGate: Promise<void> | null = null;
+/** Whether the write is refused, for the rollback test. */
+let patchFails = false;
 
 vi.mock("@/lib/api", () => ({
   usePatchActionItemMutation: () => [
     (arg: unknown) => {
       patch(arg);
-      return { unwrap: () => Promise.resolve({}) };
+      /*
+       * Echoes the patched item, which is what the endpoint does -- it
+       * returns the whole `ActionItemResponse`. It used to resolve `{}`, and
+       * that mattered once the row started reconciling its optimistic tick
+       * against the response: a body with no `status` reads as "the server
+       * says OPEN".
+       *
+       * `patchGate` lets a test hold the promise open and inspect the row
+       * mid-flight, which is where the reported bug lived.
+       */
+      const a = arg as { body?: { status?: string } };
+      const answer = () => ({ ...item(), status: a.body?.status ?? "OPEN" });
+      return {
+        unwrap: () =>
+          patchGate
+            ? patchGate.then(answer)
+            : patchFails
+              ? Promise.reject(new Error("refused"))
+              : Promise.resolve(answer()),
+      };
     },
     { isLoading: false },
   ],
@@ -61,6 +84,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+import { toast } from "sonner";
 
 import { ActionItemRow } from "@/components/action-item-row";
 
@@ -98,6 +122,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   comments = [];
   commentsAskedFor.length = 0;
+  patchGate = null;
+  patchFails = false;
 });
 
 describe("ActionItemRow completing", () => {
@@ -124,6 +150,91 @@ describe("ActionItemRow completing", () => {
     // happened, and "did we ever do that" is a question people ask.
     expect(screen.getByText("Finish the JWT validation")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Mark .* complete/ })).toBeChecked();
+  });
+});
+
+/**
+ * THE TICK, WHILE THE SERVER IS STILL THINKING.
+ *
+ * <p>`checked={item.status === "DONE"}` is controlled by the prop, and the
+ * prop only changes when the mutation's invalidation brings a fresh list back.
+ * The box was also `disabled` for the duration. So clicking it did nothing
+ * visible, and then went grey — measured against the real stack at 120ms after
+ * the click: still unchecked, still un-struck, now disabled. That is
+ * indistinguishable from a control that ignores you, which is how it was
+ * reported.
+ *
+ * <p>The row now shows what was asked for until the answer arrives, reconciles
+ * to the answer, and takes it back if the write failed.
+ */
+describe("ActionItemRow completing, before the server answers", () => {
+  /** A promise this test controls, so the request can be held open. */
+  function gate() {
+    let release = () => {};
+    patchGate = new Promise<void>((r) => {
+      release = r;
+    });
+    return async () => {
+      release();
+      await patchGate;
+      // Let the resolution and its re-render land.
+      await waitFor(() => expect(true).toBe(true));
+    };
+  }
+
+  it("checks and strikes through immediately, mid-request", async () => {
+    const release = gate();
+    render(<ActionItemRow item={item()} />);
+    const box = screen.getByRole("checkbox", { name: /Mark .* complete/ });
+
+    await userEvent.click(box);
+
+    // Nothing has resolved yet: this is the frame the bug lived in.
+    expect(box).toBeChecked();
+    expect(box).not.toBeDisabled();
+    expect(screen.getByText("Finish the JWT validation").className).toContain("line-through");
+    await release();
+  });
+
+  it("stays checked once the answer agrees", async () => {
+    render(<ActionItemRow item={item()} />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Mark .* complete/ }));
+
+    await waitFor(() => expect(lastPatch()).toEqual({ status: "DONE" }));
+    expect(screen.getByRole("checkbox", { name: /Mark .* complete/ })).toBeChecked();
+  });
+
+  it("rolls back and says so when the write is refused", async () => {
+    patchFails = true;
+    render(<ActionItemRow item={item()} />);
+    const box = screen.getByRole("checkbox", { name: /Mark .* complete/ });
+
+    await userEvent.click(box);
+
+    // Back to the truth, rather than a tick that lies about what was saved.
+    await waitFor(() => expect(box).not.toBeChecked());
+    expect(screen.getByText("Finish the JWT validation").className).not.toContain("line-through");
+    expect(vi.mocked(toast.error)).toHaveBeenCalled();
+  });
+
+  it("believes the server when it answers something else", async () => {
+    /*
+     * Reconciled against the response, not against what was asked for. A
+     * server that declines to complete the item — a policy, a race with
+     * another tab — is believed at once instead of being contradicted until
+     * the refetch lands.
+     */
+    render(<ActionItemRow item={item()} />);
+    // The mock echoes the status in the body, so ask for OPEN on an open item:
+    // the row must not end up showing DONE.
+    await userEvent.click(screen.getByRole("checkbox", { name: /Mark .* complete/ }));
+    await waitFor(() => expect(lastPatch()).toEqual({ status: "DONE" }));
+
+    // And unticking it comes back OPEN.
+    await userEvent.click(screen.getByRole("checkbox", { name: /Mark .* complete/ }));
+    await waitFor(() => expect(lastPatch()).toEqual({ status: "OPEN" }));
+    expect(screen.getByRole("checkbox", { name: /Mark .* complete/ })).not.toBeChecked();
   });
 });
 

@@ -6,6 +6,7 @@ import {
   isOrphaned,
   rangesFromWords,
   resolveRange,
+  highlightOver,
   segmentMarks,
   summarizePrompt,
   tokenize,
@@ -240,6 +241,140 @@ describe("segmentMarks", () => {
       ranges: [{ segmentId: "seg_1", startOffset: 18, endOffset: 26, quote: "Thursday" }],
     });
     expect(segmentMarks("seg_1", text, [later, moment()]).map((m) => m.start)).toEqual([10, 18]);
+  });
+});
+
+/* --------------------------- highlightOver ------------------------------ */
+
+/**
+ * Recognising a highlight the reader can see.
+ *
+ * <h2>The bug these exist for</h2>
+ *
+ * <p>The first version of this compared the new selection against the STORED
+ * offsets on the moment. That agrees with the painted position on any line
+ * nobody has corrected, so it passed every case except the one the offsets
+ * exist to survive — and the failure was invisible in the worst way: the
+ * highlight was still painted, so the reader could see it and had no way to
+ * remove it. `Highlight` was offered again, which stacks a second mark.
+ *
+ * <p>Measured on the running stack before the fix: stored `7..25`, forty
+ * characters inserted ahead of it, the quote found again at `43`, the words at
+ * `43..61` painted yellow, and selecting exactly those words offered
+ * `Highlight`. The last test in this block is that case.
+ *
+ * <p>The input is the same `SegmentMark[]` the renderer paints from, which is
+ * what makes "painted" and "removable" one condition.
+ */
+describe("highlightOver", () => {
+  const text = "We should ship on Thursday.";
+  /** What the transcript paints, for a highlight over "ship" at 10..14. */
+  const resolved = new Map([["seg_1", segmentMarks("seg_1", text, [moment()])]]);
+
+  const sel = (startOffset: number, endOffset: number, segmentId = "seg_1") => [
+    { segmentId, startOffset, endOffset },
+  ];
+
+  it("recognises the same selection that made it", () => {
+    expect(highlightOver(sel(10, 14), resolved)?.id).toBe("mom_1");
+  });
+
+  it("recognises a selection inside it", () => {
+    // One word of a four-word highlight, which is what somebody does when they
+    // want it gone: they drag over part of it rather than reproducing it.
+    expect(highlightOver(sel(11, 13), resolved)?.id).toBe("mom_1");
+  });
+
+  it("recognises a selection overlapping its beginning", () => {
+    expect(highlightOver(sel(3, 12), resolved)?.id).toBe("mom_1");
+  });
+
+  it("recognises a selection overlapping its end", () => {
+    expect(highlightOver(sel(12, 20), resolved)?.id).toBe("mom_1");
+  });
+
+  it("recognises a selection that swallows it whole", () => {
+    expect(highlightOver(sel(0, 27), resolved)?.id).toBe("mom_1");
+  });
+
+  it("does not recognise a selection that only touches its edge", () => {
+    // Half-open, like every other range in this file: a selection ending
+    // exactly where the mark starts shares no character with it.
+    expect(highlightOver(sel(0, 10), resolved)).toBeUndefined();
+    expect(highlightOver(sel(14, 20), resolved)).toBeUndefined();
+  });
+
+  it("does not recognise an unrelated selection", () => {
+    expect(highlightOver(sel(18, 26), resolved)).toBeUndefined();
+  });
+
+  it("does not reach across segments", () => {
+    expect(highlightOver(sel(10, 14, "seg_2"), resolved)).toBeUndefined();
+  });
+
+  it("ignores notes and bookmarks on the same words", () => {
+    // They are anchored to the same passage and are removed where they are
+    // drawn — under the turn, with their own control. This item is about the
+    // highlight and must not offer to delete somebody's note.
+    const others = new Map([
+      [
+        "seg_1",
+        segmentMarks("seg_1", text, [
+          moment({ id: "mom_note", kind: "NOTE", body: "check this" }),
+          moment({ id: "mom_bm", kind: "BOOKMARK", ranges: [] }),
+        ]),
+      ],
+    ]);
+    expect(highlightOver(sel(10, 14), others)).toBeUndefined();
+  });
+
+  it("finds it through a selection on any of several segments", () => {
+    // A drag across an utterance boundary produces one range per segment, and
+    // the highlight may be on either of them.
+    const ranges = [
+      { segmentId: "seg_0", startOffset: 0, endOffset: 4 },
+      { segmentId: "seg_1", startOffset: 10, endOffset: 14 },
+    ];
+    expect(highlightOver(ranges, resolved)?.id).toBe("mom_1");
+  });
+
+  it("still recognises it after a correction moved the words", () => {
+    /*
+     * THE REGRESSION. The line gains an opening clause, so every offset after
+     * it shifts by more than the highlight is long. `resolveRange` repairs the
+     * mark by searching for its quote, so the transcript paints it at its new
+     * position — and the stored offsets now point at completely different
+     * words.
+     *
+     * <p>Against the old implementation this returned undefined and the menu
+     * offered `Highlight` over words that were visibly highlighted.
+     */
+    const edited = "Right, so before we move on, we should ship on Thursday.";
+    const marks = segmentMarks("seg_1", edited, [moment()]);
+    // Repaired: not where it was stored.
+    expect(marks[0].start).toBe(edited.indexOf("ship"));
+    expect(marks[0].start).not.toBe(10);
+
+    const painted = new Map([["seg_1", marks]]);
+    const overPaintedWords = sel(marks[0].start, marks[0].end);
+    expect(highlightOver(overPaintedWords, painted)?.id).toBe("mom_1");
+
+    // And the stored window is genuinely somewhere else now, which is what
+    // the old comparison was looking at.
+    expect(highlightOver(sel(10, 14), painted)).toBeUndefined();
+  });
+
+  it("finds nothing when the mark could not be placed at all", () => {
+    // The words were rewritten, so `resolveRange` gives up and the transcript
+    // paints nothing. There is no highlight to offer to remove.
+    const rewritten = "Nothing of the original sentence survives here.";
+    const painted = new Map([["seg_1", segmentMarks("seg_1", rewritten, [moment()])]]);
+    expect(painted.get("seg_1")).toEqual([]);
+    expect(highlightOver(sel(0, 10), painted)).toBeUndefined();
+  });
+
+  it("finds nothing when the segment has no marks", () => {
+    expect(highlightOver(sel(10, 14), new Map())).toBeUndefined();
   });
 });
 

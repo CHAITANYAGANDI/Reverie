@@ -6,6 +6,7 @@ import type {
   MeetingResponse,
   SummaryResponse,
   SummarySection,
+  TranscriptMoment,
   TranscriptSegment,
 } from "@/lib/types";
 
@@ -69,6 +70,8 @@ const { push, refetch, openPane, ok, none, mut } = vi.hoisted(() => {
 
 let meeting: MeetingResponse;
 let segments: TranscriptSegment[];
+/** The marks on this transcript. Empty unless a test puts one here. */
+let moments: TranscriptMoment[];
 let summary: SummaryResponse | undefined;
 /** How the summary request is going. See the mock. */
 let summaryQuery: "ok" | "loading" | "error" | "absent" | "stale-over-error";
@@ -165,7 +168,7 @@ vi.mock("@/lib/api", () => ({
   useGetTranslationsQuery: () => ok([]),
   useGetLanguagesQuery: () => ok([]),
   useGetSummaryTemplatesQuery: () => ok(templates),
-  useGetMomentsQuery: () => ok([]),
+  useGetMomentsQuery: () => ok(moments),
   useGetInsightsQuery: () => ok([]),
   useGetMeetingConversationsQuery: () => ok([]),
   useDeleteMeetingMutation: mut,
@@ -462,6 +465,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   meeting = aMeeting();
   segments = [aSegment()];
+  moments = [];
   summary = aSummary();
   summaryQuery = "ok";
   templates = [];
@@ -1445,6 +1449,91 @@ describe("the margin's index", () => {
 
     expect(scrollTo).not.toHaveBeenCalled();
     scrollTo.mockRestore();
+  });
+});
+
+/**
+ * NOTES MADE FROM A SELECTION, which had nowhere to appear.
+ *
+ * <p>`turnMarks` requires `ranges.length === 0` — right for a reaction or a
+ * note attached to a whole turn, and wrong for a note attached to words. A
+ * passage note failed that filter and rendered in no element on the page.
+ *
+ * <p>Measured on the running stack before the fix: `POST /moments` returned
+ * 201 with the ranges and the body intact, `GET /moments` returned it, the
+ * selected words were underlined — and the note's text appeared nowhere. The
+ * only trace was a `title` attribute on the word spans, so there was no way to
+ * read it, edit it or delete it. Saved and unreachable.
+ *
+ * <p>The renderer's own comment said passage notes "would exist only in the
+ * collapsed marks list", and the V2 transcript has no such list. So they are
+ * shown where turn-level notes already are: under the words, with the same
+ * delete control.
+ */
+function aNote(over: Partial<TranscriptMoment> = {}): TranscriptMoment {
+  return {
+    id: "mom_note",
+    meetingId: "mtg_1",
+    kind: "NOTE",
+    ranges: [{ segmentId: "seg_1", startOffset: 13, endOffset: 17, quote: "ship" }],
+    quote: "ship",
+    body: "Check this before the launch.",
+    speaker: "Speaker 1",
+    startSeconds: 1,
+    endSeconds: 2,
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    ...over,
+  };
+}
+
+describe("notes on a passage", () => {
+  it("shows the note under the words it is about", async () => {
+    moments = [aNote()];
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    // The whole bug: this text was in no element at all.
+    expect(screen.getByText("Check this before the launch.")).toBeInTheDocument();
+  });
+
+  it("offers the same way to delete it as a turn note", async () => {
+    moments = [aNote()];
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    // One presentation for both kinds, so there is one thing to learn.
+    expect(screen.getByRole("button", { name: "Delete this note" })).toBeInTheDocument();
+  });
+
+  it("still shows a note attached to a whole turn", async () => {
+    // The case that always worked, kept so the fix cannot break it.
+    moments = [aNote({ id: "mom_turn", ranges: [], startSeconds: 0, body: "About this turn." })];
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    expect(screen.getByText("About this turn.")).toBeInTheDocument();
+  });
+
+  it("does not show a note belonging to a different segment", async () => {
+    moments = [aNote({ ranges: [{ segmentId: "seg_other", startOffset: 0, endOffset: 4, quote: "ship" }] })];
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    expect(screen.queryByText("Check this before the launch.")).not.toBeInTheDocument();
+  });
+
+  it("underlines the words the note is on", async () => {
+    // Painting was never the broken half; asserted so the two halves stay
+    // together — a note that paints and cannot be read is the bug again.
+    moments = [aNote()];
+    const { container } = render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    const marked = Array.from(container.querySelectorAll("[data-word]")).filter((w) =>
+      /border-warning/.test(w.className),
+    );
+    expect(marked.map((w) => w.textContent?.trim())).toContain("ship");
   });
 });
 

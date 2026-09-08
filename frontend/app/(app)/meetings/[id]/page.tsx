@@ -188,6 +188,7 @@ import { ActionItemDialog, NoteDialog, type Passage } from "@/components/moment-
 import {
   askPrefix,
   attributedQuote,
+  highlightOver,
   isMarked,
   readSelection,
   segmentMarks,
@@ -3142,7 +3143,7 @@ function TranscriptPanel({
          * one or it does not, and a menu that offers the impossible one greyed
          * out is a row of chrome on every selection to serve one case.
          */
-        const already = highlightOver(p.ranges);
+        const already = highlightUnderSelection(p.ranges);
         if (already) {
           await removeMoment(already.id, "Could not remove that highlight.");
         } else {
@@ -3216,28 +3217,16 @@ function TranscriptPanel({
   /**
    * A highlight the selection lands on, if there is one.
    *
-   * <p>Overlap rather than equality, and that is the point: somebody removing
-   * a highlight re-selects the words by hand, and a hand-made selection almost
-   * never has the same offsets as the one that made the mark -- a character
-   * either side is enough. Any shared character in the same segment counts.
-   *
-   * <p>Only `HIGHLIGHT`. A note and an action item are anchored to the same
-   * words and are not what this item is about; they are removed where they are
-   * drawn, in the margin beside the turn.
+   * <p>The decision is `highlightOver` in lib/moments, next to the
+   * `resolveRange`/`segmentMarks` pair whose coordinates it has to share --
+   * see the note there for the bug that put it in the wrong place. What this
+   * supplies is `marksBySegment`, which is the very map the transcript paints
+   * from, so recognition and painting cannot disagree.
    */
-  function highlightOver(ranges: Passage["ranges"]): TranscriptMoment | undefined {
-    return marks.find(
-      (m) =>
-        m.kind === "HIGHLIGHT" &&
-        m.ranges.some((r) =>
-          ranges.some(
-            (sel) =>
-              sel.segmentId === r.segmentId &&
-              sel.startOffset < r.endOffset &&
-              r.startOffset < sel.endOffset,
-          ),
-        ),
-    );
+  function highlightUnderSelection(
+    ranges: Passage["ranges"],
+  ): TranscriptMoment | undefined {
+    return highlightOver(ranges, marksBySegment);
   }
 
   /** Take a mark away, saying so if the server refuses. */
@@ -3270,6 +3259,43 @@ function TranscriptPanel({
         m.ranges.length === 0 &&
         Math.abs(m.startSeconds - seconds) < 0.01,
     );
+  }
+
+  /**
+   * Every note this turn should show: its own, and the ones on its words.
+   *
+   * <h2>The bug this exists to fix</h2>
+   *
+   * <p>`turnMarks` requires `ranges.length === 0`, which is right for what it
+   * was written for -- a reaction or a note attached to a whole turn has no
+   * ranges, and matching those by start time is exact. A note made from a
+   * *selection* has ranges, so it failed that filter and rendered nowhere.
+   *
+   * <p>Nowhere at all: measured on the running stack, `POST /moments` returned
+   * 201 with the body and the ranges intact, `GET /moments` returned it, the
+   * selected words were underlined by `segmentMarks` -- and the note's text
+   * appeared in no element on the page. The only trace was the `title`
+   * attribute on the word spans, which is a tooltip nobody hovers, and there
+   * was no way to read it, edit it or delete it. Saved and unreachable.
+   *
+   * <p>The comment on the renderer said passage notes "would exist only in the
+   * collapsed marks list", and that list is not in the V2 transcript. So this
+   * is not a new home for them: it is the home turn-level notes already have,
+   * extended to the notes that point at words inside the turn. Same row, same
+   * delete control, one presentation for both.
+   *
+   * <p>Matched by segment id rather than by time, because that is what a
+   * passage note stores and it stays right when a turn is split.
+   */
+  function notesForTurn(turn: Turn): TranscriptMoment[] {
+    const segmentIds = new Set(turn.segments.map((s) => s.id).filter(Boolean));
+    return marks.filter((m) => {
+      if (m.kind !== "NOTE") return false;
+      if (m.ranges.length === 0) {
+        return Math.abs(m.startSeconds - turn.start) < 0.01;
+      }
+      return m.ranges.some((r) => segmentIds.has(r.segmentId));
+    });
   }
 
   /** Every word of a turn, as one string — what Copy puts on the clipboard. */
@@ -3650,7 +3676,9 @@ function TranscriptPanel({
             {turns.map((turn, i) => {
               const bookmarked = bookmarkAt(turn.start);
               const reactions = turnMarks("REACTION", turn.start);
-              const notes = turnMarks("NOTE", turn.start);
+              // Both kinds: the turn's own, and the ones on its words. See
+              // `notesForTurn` -- a selection note used to render nowhere.
+              const notes = notesForTurn(turn);
               return (
               /*
                 ONE TURN, ON THE SHARED GRID.
@@ -3880,11 +3908,12 @@ function TranscriptPanel({
                     busy={marking}
                   />
 
-                  {/* Turn-level notes, in place. They have no ranges, so
-                      nothing paints them over the transcript the way a note on
-                      a selection is painted — without this they would exist
-                      only in the collapsed marks list, which is a poor place to
-                      keep a remark about the sentence above it. */}
+                  {/* Notes, in place, under the words they are about.
+                      <p>Both kinds. A turn-level note has no ranges and is
+                      matched by time; a passage note has ranges and is matched
+                      by segment, and until this it rendered nowhere at all --
+                      the words were underlined and the text was reachable only
+                      as a `title` tooltip. See `notesForTurn`. */}
                   {notes.map((note) => (
                     <div
                       key={note.id}
@@ -3931,7 +3960,7 @@ function TranscriptPanel({
         busy={marking}
         /* So the first item can be the way out of a highlight rather than a
            second one. Computed here because the marks are here. */
-        highlighted={picked ? highlightOver(picked.capture.ranges) !== undefined : false}
+        highlighted={picked ? highlightUnderSelection(picked.capture.ranges) !== undefined : false}
       />
       <ReassignSpeakerDialog
         target={reassignFor}
