@@ -67,7 +67,9 @@ describe("the route", () => {
 
     render(<FoldersPage />);
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("1 folder");
+    // "Folders", not "1 folder": the count is stated over the list now rather
+    // than as the name of the page. See components/folder-list.test.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Folders");
     expect(screen.getByRole("link", { name: /Beta Launch/ })).toHaveAttribute(
       "href",
       "/folder/prj_1",

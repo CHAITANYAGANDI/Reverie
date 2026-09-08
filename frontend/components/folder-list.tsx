@@ -22,7 +22,8 @@
  * <p>The table header was "Name" and "Last Updated ▼", two buttons doubling as
  * the sort control over what was really one column. A column header implies
  * columns to align and scan, and a folder has a name, a count and a date — a
- * sentence, not a record. So: a mark, the name, "9 meetings · Tuesday"
+ * sentence, not a record. So: a mark, the name, "9 conversations · Updated
+ * Tuesday"
  * underneath, the description if somebody wrote one, and a hairline. The sort
  * moved to a chip in the masthead, where the reference puts it.
  *
@@ -55,6 +56,8 @@ import {
   Trash2,
   Star,
   Folder,
+  FileText,
+  Clock,
   ChevronDown,
 } from "lucide-react";
 import {
@@ -66,6 +69,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FolderDialog } from "@/components/folder-dialog";
 import { Masthead } from "@/components/v2/masthead";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { Group, Dot } from "@/components/v2/group";
 import {
   DropdownMenu,
@@ -79,13 +83,6 @@ import { presenceOfList, resourceState } from "@/lib/resource-state";
 import { cn } from "@/lib/utils";
 import { LIBRARY, folderHref } from "@/lib/routes";
 import type { Project } from "@/lib/types";
-
-/** "No folders yet" / "1 folder" / "6 folders" — never a hard-coded count. */
-export function folderCountTitle(n: number): string {
-  if (n === 0) return "No folders yet";
-  if (n === 1) return "1 folder";
-  return `${n} folders`;
-}
 
 export function FolderList() {
   const projects = useGetProjectsQuery();
@@ -116,42 +113,56 @@ export function FolderList() {
   const rest = rows.filter((f) => !f.favorite);
 
   /*
-   * The count in the title, once there is one to state. While the request is
-   * unresolved or failed there is no number that is true, and "No folders yet"
-   * is the wrong headline for both — so the page is headed by what it is until
-   * the answer arrives.
+   * WHAT THE MARGIN'S OVERVIEW STATES, AND WHERE IT COMES FROM.
+   *
+   * <p>All three are read off the list this page already fetched: the folder
+   * count is its length, the conversation count is the sum of the
+   * `meetingCount` each row carries, and "last updated" is the newest
+   * `updatedAt` among them. Not one request between them, and no number that
+   * disagrees with the rows underneath -- which is the whole reason to derive
+   * an overview rather than ask for one.
+   *
+   * <p>`null` rather than 0 when nothing has arrived. A settled empty account
+   * genuinely has zero folders and zero conversations; an unresolved or failed
+   * request has no answer, and the panel says so instead of reporting zeroes
+   * that look like facts.
    */
-  const title =
-    state === "loading" || state === "error" ? "Folders" : folderCountTitle(rows.length);
+  const overview = React.useMemo(() => {
+    if (state !== "ready" && state !== "empty") return null;
+    const list = projects.data ?? [];
+    const newest = list.reduce<string | null>(
+      (latest, f) =>
+        latest === null || new Date(f.updatedAt) > new Date(latest) ? f.updatedAt : latest,
+      null,
+    );
+    return {
+      folders: list.length,
+      conversations: list.reduce((n, f) => n + (f.meetingCount ?? 0), 0),
+      updated: newest,
+    };
+  }, [state, projects.data]);
 
   return (
-    <div className="px-4 pb-16 lg:px-6">
-      <div className="v2-spread" data-margin="empty">
+    <div className="relative">
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
+      <div className="v2-page relative">
         <div className="min-w-0">
+          {/*
+            NO `bar` ON THIS MASTHEAD ANY MORE, and that is the gap somebody
+            noticed. It held the New folder button and, above one folder, the
+            sort chip -- so between the sentence explaining the page and the
+            first heading of the list there were 26px, a 32px control and 22px
+            of padding, about eighty pixels of controls nobody had asked for
+            yet. New folder is in the margin under Manage, where the approved
+            design puts it; ordering is the list's own business and sits on the
+            list's heading. What is left is the masthead's own 24px.
+          */}
           <Masthead
+            size="page"
             back={{ href: LIBRARY, label: "Library" }}
             label="Library · folders"
-            title={title}
-            sub="A folder is a filter with a name. Nothing has to be in one."
-            bar={
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => setCreating(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  New folder
-                </Button>
-                {/* Only where there is something to order. */}
-                {state === "ready" && rows.length > 1 && (
-                  <div className="ml-auto">
-                    <SortChip sort={sort} onSort={setSort} />
-                  </div>
-                )}
-              </>
-            }
+            title="Folders"
+            sub="Organize conversations by project, team, or topic."
           />
 
           {state === "loading" ? (
@@ -178,7 +189,18 @@ export function FolderList() {
             </div>
           ) : state === "empty" ? (
             <div>
-              <p className="max-w-[58ch] text-callout leading-[1.5] text-ink-3">
+              {/*
+                THE HEADLINE MOVED DOWN HERE WITH THE COUNT.
+                <p>"No folders yet" was the page's `h1` -- ``
+                headed the page "1 folder", "3 folders" or that, so the name of
+                the page changed every time somebody made or deleted one. The
+                approved design heads it "Folders" and states the count over the
+                list, which is what the number is about. The empty case still
+                needs a sentence saying which kind of empty it is, so it says
+                it here.
+              */}
+              <p className="text-body font-headline text-ink">No folders yet</p>
+              <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
                 Folders help group conversations around the work they belong to.
               </p>
               <Button
@@ -199,11 +221,43 @@ export function FolderList() {
                   <FolderRows folders={starred} onRename={setRenaming} />
                 </Group>
               )}
-              <Group heading={starred.length > 0 ? "Everything else" : "All folders"}>
+              <Group
+                heading={starred.length > 0 ? "Everything else" : "All folders"}
+                /*
+                  THE COUNT, AND THE ORDERING, ON THE HEADING THEY DESCRIBE.
+                  <p>The count was the page title -- "1 folder" as an `h1` --
+                  which made the name of the page change every time somebody
+                  made or deleted one. The approved design heads the page
+                  "Folders" and states the count over the list, which is what
+                  the number is about. The sort chip is here for the same
+                  reason, and only where there is more than one row to order.
+                */
+                aside={
+                  <div className="flex items-center gap-3">
+                    {rows.length > 1 && <SortChip sort={sort} onSort={setSort} />}
+                    <span data-folder-count className="text-foot text-ink-4">
+                      <span className="tabular font-mono">{rows.length}</span>{" "}
+                      {rows.length === 1 ? "folder" : "folders"}
+                    </span>
+                  </div>
+                }
+              >
                 <FolderRows folders={rest} onRename={setRenaming} />
               </Group>
             </>
           )}
+        </div>
+
+        {/*
+         * THE MARGIN: what the filing system amounts to, and the one thing you
+         * do to it.
+         *
+         * <p>Drawn in every state, including a failed one, so the page does not
+         * change shape as answers arrive -- the same rule Home and Library
+         * follow. What changes is whether the overview has numbers in it.
+         */}
+        <div data-page-margin>
+          <FolderOverview overview={overview} onNew={() => setCreating(true)} />
         </div>
       </div>
 
@@ -213,6 +267,101 @@ export function FolderList() {
         onOpenChange={(open) => !open && setRenaming(null)}
         folder={renaming}
       />
+    </div>
+  );
+}
+
+/* --------------------------- the margin's overview ------------------------ */
+
+/**
+ * WHAT THE FILING SYSTEM AMOUNTS TO, AND THE ONE THING YOU DO TO IT.
+ *
+ * <h2>Three numbers, none of them asked for</h2>
+ *
+ * <p>Every value is derived from the folder list the page already fetched —
+ * see `overview` in {@link FolderList}. The alternative would be an endpoint
+ * returning a summary, which is a second source of truth for numbers sitting
+ * six inches from the rows they count.
+ *
+ * <p>Nothing is stated before the request settles. `null` is not "zero
+ * folders": a settled empty account really has none, and a dropped connection
+ * has no answer at all, and reporting the second as the first is the confusion
+ * `resourceState` exists to prevent everywhere else in this product.
+ *
+ * <h2>The one bordered surface in the V2 pages</h2>
+ *
+ * <p>Deliberate, and the approved design's. The rule elsewhere is that content
+ * is part of the page rather than an object on it — which is why no list here
+ * has a card around it. Three related measurements are the exception the rule
+ * allows for: `--r-md` is documented as "a grouped surface that genuinely is
+ * one object", and this is one. It is a 1px hairline and a radius, not a fill.
+ */
+function FolderOverview({
+  overview,
+  onNew,
+}: {
+  overview: { folders: number; conversations: number; updated: string | null } | null;
+  onNew: () => void;
+}) {
+  return (
+    <aside aria-label="About your folders" className="space-y-7">
+      <section>
+        <h2 className="v2-page-sub mb-3 font-headline text-ink">Folder overview</h2>
+        <dl className="rounded-md border border-line px-4 py-3">
+          <Stat icon={Folder} label="Total folders">
+            {overview ? <span className="tabular">{overview.folders}</span> : Unknown}
+          </Stat>
+          <Stat icon={FileText} label="Conversations">
+            {overview ? <span className="tabular">{overview.conversations}</span> : Unknown}
+          </Stat>
+          <Stat icon={Clock} label="Last updated">
+            {/* Absent rather than "never" on an account with no folders: there
+                is no last update, and "never" reads as a fact about neglect. */}
+            {overview?.updated ? relativeDay(overview.updated) : Unknown}
+          </Stat>
+        </dl>
+      </section>
+
+      <section>
+        <h2 className="v2-page-sub mb-3 font-headline text-ink">Manage</h2>
+        {/*
+          A BUTTON, NOT A ROW WITH A CHEVRON.
+          <p>The approved margin drew this as a full-width row inside a panel
+          with a `>` at the far end, which is the shape of a link to somewhere
+          else. This opens a dialog on this page: there is nowhere to go, so
+          there is no arrow, and what is left is an ordinary outlined control
+          sized to its own label.
+        */}
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={onNew}>
+          <Plus className="h-3.5 w-3.5" />
+          New folder
+        </Button>
+      </section>
+    </aside>
+  );
+}
+
+/** Said instead of a number, where there is no number that is true. */
+const Unknown = <span className="text-ink-4">&mdash;</span>;
+
+/** One measurement: a glyph, what it measures, and the figure. */
+function Stat({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof Folder;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    /* `items-center`, so a 14px glyph sits on the row's centre line rather than
+       on its text baseline -- an inline SVG's baseline is its bottom edge, and
+       aligning to it sits the glyph a few pixels high. */
+    <div className="flex items-center gap-2.5 py-1.5">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-ink-5" aria-hidden />
+      <dt className="v2-page-meta min-w-0 flex-1 text-ink-3">{label}</dt>
+      <dd className="v2-page-meta shrink-0 font-headline text-ink">{children}</dd>
     </div>
   );
 }
@@ -327,13 +476,20 @@ function FolderRow({ folder, onRename }: { folder: Project; onRename: () => void
           </span>
         </span>
         <span className="mt-[5px] flex flex-wrap items-center text-foot text-ink-3">
+          {/* "conversations", which is what this product calls them
+              everywhere a person reads about them -- Home says "your newest
+              conversations", Library's subtitle says the same. "meetings" is
+              the word in the DTO (`meetingCount`) and it had leaked out of it
+              onto the one row where somebody counts them. */}
           <span>
-            {folder.meetingCount} meeting{folder.meetingCount === 1 ? "" : "s"}
+            {folder.meetingCount} conversation{folder.meetingCount === 1 ? "" : "s"}
           </span>
           {/* `updatedAt` is always present; the label is the same relative
-              vocabulary the rest of the product uses. */}
+              vocabulary the rest of the product uses. "Updated" in front of
+              it, because a bare "Yesterday" in a row that also carries a count
+              reads as when the folder was made. */}
           <Dot />
-          <span>{relativeDay(folder.updatedAt)}</span>
+          <span>Updated {relativeDay(folder.updatedAt).toLowerCase()}</span>
         </span>
         {/* Only if somebody wrote one. `description` is a real column on
             Project; the reference's prose about what Reverie is "tracking" in

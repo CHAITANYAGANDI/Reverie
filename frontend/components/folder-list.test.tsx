@@ -124,14 +124,14 @@ describe("the list", () => {
     render(<FolderList />);
 
     expect(screen.getByText("Meetings")).toBeInTheDocument();
-    expect(screen.getByText("1 meeting")).toBeInTheDocument();
+    expect(screen.getByText("1 conversation")).toBeInTheDocument();
   });
 
   it("counts in the plural when it should", () => {
     folders = [folder({ meetingCount: 4 })];
     render(<FolderList />);
 
-    expect(screen.getByText("4 meetings")).toBeInTheDocument();
+    expect(screen.getByText("4 conversations")).toBeInTheDocument();
   });
 
   it("links a folder to itself", () => {
@@ -258,24 +258,51 @@ describe("the two groups", () => {
 });
 
 describe("how the page names itself", () => {
-  it("counts the folders it actually has", () => {
+  /*
+   * THE COUNT LEFT THE TITLE, and these three moved with it.
+   *
+   * <p>`folderCountTitle` headed the page "1 folder", "3 folders" or "No
+   * folders yet", so the name of the page changed every time somebody made or
+   * deleted one -- and the browser tab, and the back link's target, said
+   * something different each visit. The approved design heads it "Folders" and
+   * states the count over the list, which is what the number is about.
+   *
+   * <p>None of the three facts is dropped: the count is asserted on the list's
+   * own heading, the singular still reads "1 folder", and the empty case still
+   * says "No folders yet" -- in the empty state, where it is a sentence about
+   * the account rather than the name of a page.
+   */
+  it("is called Folders, whatever the count", () => {
     folders = [folder({ id: "a" }), folder({ id: "b", name: "Two" })];
     render(<FolderList />);
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("2 folders");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Folders");
+  });
+
+  it("counts the folders it actually has, over the list", () => {
+    /*
+     * Scoped to the list's own heading. The margin's overview states the same
+     * number under "Total folders" -- deliberately, from the same array, so
+     * the two cannot disagree -- which means an unscoped query for "2" finds
+     * both.
+     */
+    folders = [folder({ id: "a" }), folder({ id: "b", name: "Two" })];
+    const { container } = render(<FolderList />);
+    expect(container.querySelector("[data-folder-count]")?.textContent?.trim()).toBe("2 folders");
   });
 
   it("says one folder in the singular", () => {
-    render(<FolderList />);
-
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("1 folder");
+    const { container } = render(<FolderList />);
+    // Exactly, so the plural cannot pass as a substring of the singular.
+    expect(container.querySelector("[data-folder-count]")?.textContent?.trim()).toBe("1 folder");
   });
 
-  it("says none when there are none", () => {
+  it("says none when there are none, as a sentence rather than a title", () => {
     folders = [];
     render(<FolderList />);
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("No folders yet");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Folders");
+    expect(screen.getByText("No folders yet")).toBeInTheDocument();
   });
 
   it("claims no count while the answer is unknown", () => {
@@ -373,9 +400,14 @@ describe("creating", () => {
    *
    * <p>So the list took its own action back, and what these pin is the thing
    * that made the old arrangement worth writing down: there is exactly ONE of
-   * them above the list, never two a centimetre apart.
+   * them on a page with folders in it, never two a centimetre apart.
+   *
+   * <p>It is in the margin now, under Manage, which is where the approved
+   * design puts it -- it was on the masthead's control bar, and that bar was
+   * most of the eighty pixels of empty space between the sentence explaining
+   * the page and the first heading of the list.
    */
-  it("puts a New folder button beside the heading, and only one", () => {
+  it("offers New folder once, from the margin", () => {
     render(<FolderList />);
 
     expect(screen.getAllByRole("button", { name: /New folder/ })).toHaveLength(1);
@@ -393,10 +425,10 @@ describe("creating", () => {
     folders = [];
     render(<FolderList />);
 
-    // Two now, and that is not what the old file argued against: the heading
-    // button and the one inside the explanation are a page-length apart, and
-    // somebody reading "a folder groups meetings by the work they belong to" is
-    // going to press the thing directly under it rather than scroll back.
+    // Two here, and that is not what the old file argued against: the
+    // margin's and the one inside the explanation are a column apart, and
+    // somebody reading "folders help group conversations around the work they
+    // belong to" is going to press the thing directly under it.
     const buttons = screen.getAllByRole("button", { name: /New folder/ });
     expect(buttons).toHaveLength(2);
     await userEvent.click(buttons[1]);
