@@ -197,7 +197,9 @@ describe("ProjectPage", () => {
      */
     render(<ProjectPage />);
 
-    expect(screen.getByText("3 meetings")).toBeInTheDocument();
+    // "conversations", which is the product's word for them; "meetings" is
+    // the one in the DTO and it had leaked out onto the page.
+    expect(screen.getByText("3 conversations")).toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toMatch(/\d+h\s*\d+m/);
     expect(document.body.textContent ?? "").not.toMatch(/tracked/i);
   });
@@ -208,11 +210,36 @@ describe("ProjectPage", () => {
     expect(screen.getByText("The ABC engagement")).toBeInTheDocument();
   });
 
-  it("says nothing is filed here without a bordered box round it", () => {
+  it("says nothing is here yet, centred, with the two ways to change that", () => {
     meetings = [];
     const { container } = render(<ProjectPage />);
 
-    expect(screen.getByText("Nothing filed here yet")).toBeInTheDocument();
+    /*
+     * It was two left-aligned paragraphs where the list would be. The approved
+     * design centres it with a glyph over it and the two ways to put something
+     * in a folder underneath -- and names the folder, because "conversations
+     * you add will appear here" is true of every folder and says nothing about
+     * this one.
+     *
+     * <p>Neither button files INTO the folder and the copy does not claim they
+     * do: `recordHref` carries a return path and no folder, and /upload picks
+     * one in its own form. So the record link comes back here afterwards.
+     */
+    expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeInTheDocument();
+    // Read off the paragraph rather than matched as one text node: the copy
+    // interpolates the folder's name, so React renders it as three.
+    const heading = screen.getByRole("heading", { name: "Nothing here yet" });
+    expect(heading.nextElementSibling?.textContent).toContain(
+      "Conversations you add to Client ABC will appear here.",
+    );
+    expect(screen.getByRole("link", { name: "Record a conversation" })).toHaveAttribute(
+      "href",
+      "/record?r=%2Ffolder%2Fprj_1",
+    );
+    expect(screen.getByRole("link", { name: "Import a recording" })).toHaveAttribute(
+      "href",
+      "/upload",
+    );
     expect(container.querySelectorAll(".border-dashed")).toHaveLength(0);
   });
 
@@ -290,56 +317,75 @@ describe("ProjectPage", () => {
     expect(askProject).not.toHaveBeenCalled();
   });
 
-  it("carries the folder's own actions in its masthead", async () => {
+  it("carries the folder's own actions, as a list in the margin", async () => {
     /*
-     * THIS ASSERTED THE OPPOSITE, and the reversal is the point.
+     * MOVED TWICE NOW, so it is worth saying where from and why.
      *
-     * <p>The actions were rendered by the shell, at the right-hand end of a
-     * full-width row. That was fine while the page was full width and wrong the
-     * moment it became a centred 680px document: they sat about 340px clear of
-     * the folder they act on, reading as chrome rather than as the folder's.
+     * <p>The shell drew them, at the right-hand end of a full-width row --
+     * about 340px clear of a centred 680px document, reading as application
+     * chrome rather than as the folder's. So they came onto the title's line
+     * as a `⋯`.
      *
-     * <p>Still one set of them — the shell no longer draws any, which
+     * <p>The approved design draws them as three rows under "Manage" in the
+     * margin, which is a menu's worth of actions given the room to be read
+     * rather than opened. The `⋯` is gone: two surfaces for one set of actions
+     * is how one of them ends up out of date. Same component, same dialogs,
+     * same confirmation -- `variant="list"`.
+     *
+     * <p>Still one set of them. The shell draws none, which
      * components/app-shell.test.tsx pins from the other side.
      */
     render(<ProjectPage />);
 
-    const trigger = screen.getByRole("button", { name: "Folder actions" });
-    await userEvent.click(trigger);
+    expect(screen.queryByRole("button", { name: "Folder actions" })).not.toBeInTheDocument();
 
-    expect(await screen.findByRole("menuitem", { name: /Rename folder/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Search in folder/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Delete folder/ })).toBeInTheDocument();
+    const margin = screen.getByRole("complementary", { name: "About this folder" });
+    for (const label of ["Search folder", "Rename folder", "Delete folder"]) {
+      expect(margin).toContainElement(screen.getByRole("button", { name: label }));
+    }
   });
 
-  it("puts them on the title's line, at the edge of the measure", () => {
+  it("states what the folder holds, and never whether it is starred", () => {
     /*
-     * Structural rather than pixel-counting: the star and the menu are inside
-     * the masthead and after the name, which is what "beside the folder" means
-     * once the document is a centred column.
+     * The approved margin has a "Starred / No" row. It is the one reading here
+     * not worth a row: the star beside the folder's name already says it and
+     * is the control that changes it, so a second statement of the same bit is
+     * a fact somebody has to reconcile with a toggle six inches away. Asked
+     * for and removed.
+     */
+    render(<ProjectPage />);
+
+    const margin = screen.getByRole("complementary", { name: "About this folder" });
+    expect(margin).toHaveTextContent("Conversations");
+    expect(margin).toHaveTextContent("Last updated");
+    expect(margin).not.toHaveTextContent("Starred");
+  });
+
+  it("keeps the star on the title's line, which is the one control that stays", () => {
+    /*
+     * Structural rather than pixel-counting. The star is what "this is the
+     * folder I am in this week" means -- starred folders sort to the top of
+     * the Library margin and of the folders page -- so it belongs beside the
+     * name it describes, on its line and before the facts.
+     *
+     * <p>The three that opened dialogs went to the margin; this one changes a
+     * field on the thing the title names, and it reports its own state.
      */
     render(<ProjectPage />);
 
     const h1 = screen.getByRole("heading", { level: 1 });
-    const menu = screen.getByRole("button", { name: "Folder actions" });
     const star = screen.getByRole("button", { name: "Star this folder" });
+    const meta = screen.getByText(/Updated/);
 
-    // After the name and BEFORE the facts line: on the title's row rather than
-    // in a bar under the metadata, which is where a `bar` slot would put them
-    // and is the arrangement this asserts against.
-    const meta = screen.getByText(/last updated/);
-    for (const control of [star, menu]) {
-      expect(h1.compareDocumentPosition(control)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(control.compareDocumentPosition(meta)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(h1.parentElement).toContainElement(control);
-    }
+    expect(h1.compareDocumentPosition(star)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(star.compareDocumentPosition(meta)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(h1.parentElement).toContainElement(star);
   });
 
   it("renames the folder from there", async () => {
     render(<ProjectPage />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Folder actions" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: /Rename folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Rename folder" }));
 
     expect(await screen.findByRole("heading", { name: "Rename folder" })).toBeInTheDocument();
   });
@@ -347,8 +393,7 @@ describe("ProjectPage", () => {
   it("deletes it from there, promising the meetings survive first", async () => {
     render(<ProjectPage />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Folder actions" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: /Delete folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete folder" }));
 
     await waitFor(() => expect(deleteProject).toHaveBeenCalledWith("prj_1"));
     // The sentence people read at the moment they are deciding.

@@ -58,7 +58,16 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Star, MoreHorizontal, FileText, FolderMinus } from "lucide-react";
+import {
+  Star,
+  MoreHorizontal,
+  FileText,
+  FolderMinus,
+  Folder as FolderIcon,
+  Clock,
+  Mic,
+  Plus,
+} from "lucide-react";
 import { FolderActions } from "@/components/folder-actions";
 import {
   useGetProjectQuery,
@@ -66,7 +75,9 @@ import {
   useUpdateProjectMutation,
   useAssignProjectMutation,
 } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { Masthead } from "@/components/v2/masthead";
 import { Group, Dot } from "@/components/v2/group";
 import { NowConversationRow } from "@/components/v2/now/conversation-row";
@@ -76,9 +87,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { groupByDay, relativeDay } from "@/lib/days";
+import { groupByDay, relativeDay, updatedPhrase } from "@/lib/days";
+import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { FOLDERS, LIBRARY } from "@/lib/routes";
+import { FOLDERS, LIBRARY, folderHref, recordHref } from "@/lib/routes";
 import type { MeetingResponse } from "@/lib/types";
 
 export default function FolderPage() {
@@ -96,8 +108,9 @@ export default function FolderPage() {
   const groups = React.useMemo(() => groupByDay(meetings ?? []), [meetings]);
 
   return (
-    <div className="px-4 pb-16 lg:px-6">
-      <div className="v2-spread" data-margin="empty">
+    <div className="relative">
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
+      <div className="v2-page relative">
         <div className="min-w-0">
           {isLoading ? (
             <div className="pt-10" aria-busy="true">
@@ -127,17 +140,22 @@ export default function FolderPage() {
           ) : (
             <>
               <Masthead
+                size="page"
                 back={{ href: FOLDERS, label: "Folders" }}
                 label="Library · folder"
                 title={folder.name}
                 sub={folder.description?.trim() || undefined}
                 meta={
                   <>
+                    {/* "conversations", which is the word this product uses
+                        wherever a person reads about them -- "meetings" is the
+                        one in the DTO and it had leaked out of it. */}
                     <span>
-                      {folder.meetingCount} meeting{folder.meetingCount === 1 ? "" : "s"}
+                      {folder.meetingCount} conversation
+                      {folder.meetingCount === 1 ? "" : "s"}
                     </span>
                     <Dot />
-                    <span>last updated {relativeDay(folder.updatedAt)}</span>
+                    <span>Updated {updatedPhrase(folder.updatedAt)}</span>
                   </>
                 }
                 actions={
@@ -163,23 +181,18 @@ export default function FolderPage() {
                         aria-hidden
                       />
                     </button>
-                    {/* Rename, search-in-folder and delete, with the
-                        confirmation that says the meetings survive. Rendered
-                        by the shell until now; see the note at the top. */}
-                    <FolderActions folderId={id} />
+                    {/* NO `⋯` HERE ANY MORE. Rename, search-in-folder and
+                        delete are three rows under Manage in the margin, which
+                        is what the approved design draws -- same component,
+                        same dialogs, same confirmation, drawn as a list. Two
+                        surfaces for one set of actions is how one of them ends
+                        up out of date. */}
                   </>
                 }
               />
 
               {rows.length === 0 ? (
-                <div>
-                  <p className="text-body font-headline text-ink">Nothing filed here yet</p>
-                  <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
-                    Open a meeting and choose this folder, or pick it when you
-                    import. A folder is a filter with a name — nothing has to be
-                    in one.
-                  </p>
-                </div>
+                <EmptyFolder name={folder.name} folderId={id} />
               ) : (
                 /* Named, so it is a landmark a screen reader can jump to. */
                 <section aria-label={`Conversations in ${folder.name}`}>
@@ -211,6 +224,137 @@ export default function FolderPage() {
             </>
           )}
         </div>
+
+        {/*
+         * THE MARGIN: what the folder is, and what you can do to it.
+         *
+         * <p>Drawn only once the folder has resolved. Before that there is
+         * nothing to describe, and a "Manage" list for a folder that may not
+         * exist would offer to rename and delete it.
+         */}
+        <div data-page-margin>
+          {folder && <FolderMargin folder={folder} folderId={id} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- the margin ------------------------------ */
+
+/**
+ * WHAT THE FOLDER IS, AND WHAT YOU CAN DO TO IT.
+ *
+ * <p>Both readings come off the folder this page already fetched — the
+ * conversation count and when it last changed. No request of its own.
+ *
+ * <p><b>No "Starred" row.</b> The approved design has one, reading "No", and it
+ * is the one thing here that is not worth a row: the star beside the folder's
+ * name already states it and is the control that changes it, so a second
+ * statement of the same bit is a fact somebody has to reconcile with a toggle
+ * six inches away. Asked for and removed.
+ */
+function FolderMargin({ folder, folderId }: { folder: Project; folderId: string }) {
+  return (
+    <aside aria-label="About this folder" className="space-y-7">
+      <section>
+        <h2 className="v2-page-sub mb-3 font-headline text-ink">Folder details</h2>
+        <dl className="space-y-1">
+          <Detail icon={FileText} label="Conversations">
+            <span className="tabular">{folder.meetingCount}</span>
+          </Detail>
+          <Detail icon={Clock} label="Last updated">
+            {relativeDay(folder.updatedAt)}
+          </Detail>
+        </dl>
+      </section>
+
+      <section>
+        <h2 className="v2-page-sub mb-2 font-headline text-ink">Manage</h2>
+        {/* The same three actions the `⋯` beside the name used to hold; see
+            components/folder-actions. */}
+        <FolderActions folderId={folderId} variant="list" />
+      </section>
+    </aside>
+  );
+}
+
+/** One reading: a glyph, what it measures, and the figure. */
+function Detail({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof Clock;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    /* `items-center`, so a 14px glyph sits on the row's centre line rather than
+       on its text baseline -- an inline SVG's baseline is its bottom edge. */
+    <div className="flex items-center gap-2.5 py-1.5">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-ink-5" aria-hidden />
+      <dt className="v2-page-meta min-w-0 flex-1 text-ink-3">{label}</dt>
+      <dd className="v2-page-meta shrink-0 font-headline text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/* ------------------------------ nothing in it ---------------------------- */
+
+/**
+ * A FOLDER WITH NOTHING IN IT, WHICH IS A NORMAL FOLDER TO HAVE.
+ *
+ * <p>It was two left-aligned paragraphs where the list would be. The approved
+ * design centres it in the column with a glyph over it and the two ways to put
+ * something in a folder underneath, which is the right shape for the one screen
+ * in this product that is entirely about what to do next.
+ *
+ * <p>The copy names the folder, because "conversations you add will appear
+ * here" is true of every folder and says nothing about this one.
+ *
+ * <p><b>Neither button files into this folder, and the copy does not say they
+ * do.</b> `recordHref` carries a return path and no folder, and /upload picks
+ * one in its own form — so "record, import, or organize a conversation into
+ * this folder" describes three steps, the last of which is the filing. A button
+ * promising to record straight into a folder would be promising a parameter
+ * that does not exist.
+ */
+function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
+  return (
+    <div className="flex flex-col items-center pt-16 text-center">
+      {/* A ring, not a filled disc. The one ornament on this screen, and it is
+          the folder's own glyph at the size a page with nothing on it can
+          afford to give it. */}
+      <div
+        aria-hidden
+        className="flex h-28 w-28 items-center justify-center rounded-full border border-line"
+      >
+        <FolderIcon className="h-10 w-10 text-ink-4" strokeWidth={1.25} />
+      </div>
+
+      <h2 className="v2-page-greet mt-7 font-headline text-ink">Nothing here yet</h2>
+      <p className="v2-page-lede mt-2.5 max-w-[46ch] text-ink-3">
+        Conversations you add to {name} will appear here. Record, import, or
+        organize a conversation into this folder.
+      </p>
+
+      {/* Labelled for anything that cannot see them: two glyphs on their own
+          would be a pair of unnamed buttons at the end of an empty page. */}
+      <div className="mt-7 flex items-center gap-3">
+        <Button variant="outline" size="icon" asChild title="Record a conversation">
+          {/* Back to this folder afterwards, which is the only thing
+              `recordHref` carries -- see the note above for why it cannot
+              carry the folder itself. */}
+          <Link href={recordHref(folderHref(folderId))} aria-label="Record a conversation">
+            <Mic className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Button variant="outline" size="icon" asChild title="Import a recording">
+          <Link href="/upload" aria-label="Import a recording">
+            <Plus className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ import { useGetProjectQuery, useDeleteProjectMutation } from "@/lib/api";
 import { FolderDialog } from "@/components/folder-dialog";
 import { LIBRARY } from "@/lib/routes";
 import { openSearch } from "@/lib/search-overlay";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -40,7 +41,23 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-export function FolderActions({ folderId }: { folderId: string }) {
+export function FolderActions({
+  folderId,
+  variant = "menu",
+}: {
+  folderId: string;
+  /**
+   * How the three actions are drawn.
+   *
+   * <p>`"menu"` is the `⋯` beside a folder's name, which is where they were.
+   * `"list"` draws the same three as rows under a "Manage" heading in the
+   * page's margin, which is what the approved folder design does — and the
+   * reason this is a variant rather than a second component is everything
+   * below it: one rename dialog, one delete confirmation, one mutation, one
+   * redirect. Two copies of that is how one of them stops matching the other.
+   */
+  variant?: "menu" | "list";
+}) {
   const router = useRouter();
   const { data: folder } = useGetProjectQuery(folderId);
   const [remove, { isLoading: removing }] = useDeleteProjectMutation();
@@ -73,6 +90,29 @@ export function FolderActions({ folderId }: { folderId: string }) {
     } catch {
       toast.error("Couldn't delete that folder.");
     }
+  }
+
+  if (variant === "list") {
+    return (
+      <>
+        <div className="flex flex-col">
+          <ManageRow icon={SearchIcon} onClick={() => openSearch(`in:"${folder.name}" `)}>
+            Search folder
+          </ManageRow>
+          <ManageRow icon={Pencil} onClick={() => setRenaming(true)}>
+            Rename folder
+          </ManageRow>
+          {/* Danger, and last. The confirmation behind it is the same one the
+              menu asks, and it says the meetings survive before anything is
+              deleted rather than after. */}
+          <ManageRow icon={Trash2} danger disabled={removing} onClick={() => void onDelete()}>
+            Delete folder
+          </ManageRow>
+        </div>
+
+        <FolderDialog open={renaming} onOpenChange={setRenaming} folder={folder} />
+      </>
+    );
   }
 
   return (
@@ -123,3 +163,45 @@ export function FolderActions({ folderId }: { folderId: string }) {
     </>
   );
 }
+
+/**
+ * One action in the margin: a glyph, a label, and nothing else.
+ *
+ * <p>A button rather than a link, because none of the three navigates: two open
+ * a dialog and one opens the search box. `text-left` because a label in a
+ * column of labels aligns with the ones above it rather than centring in its
+ * own width.
+ */
+function ManageRow({
+  icon: Icon,
+  onClick,
+  danger = false,
+  disabled = false,
+  children,
+}: {
+  icon: typeof Pencil;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-2 text-left",
+        "v2-page-meta transition-colors duration-press ease-soft",
+        "disabled:pointer-events-none disabled:opacity-50",
+        danger
+          ? "text-danger hover:bg-danger/10"
+          : "text-ink-2 hover:bg-white/[0.035] hover:text-ink",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+      {children}
+    </button>
+  );
+}
+

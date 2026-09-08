@@ -78,7 +78,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { sortFolders, SORTS, type FolderSort } from "@/lib/folders";
-import { relativeDay } from "@/lib/days";
+import { relativeDay, updatedPhrase } from "@/lib/days";
 import { presenceOfList, resourceState } from "@/lib/resource-state";
 import { cn } from "@/lib/utils";
 import { LIBRARY, folderHref } from "@/lib/routes";
@@ -489,7 +489,7 @@ function FolderRow({ folder, onRename }: { folder: Project; onRename: () => void
               it, because a bare "Yesterday" in a row that also carries a count
               reads as when the folder was made. */}
           <Dot />
-          <span>Updated {relativeDay(folder.updatedAt).toLowerCase()}</span>
+          <span>Updated {updatedPhrase(folder.updatedAt)}</span>
         </span>
         {/* Only if somebody wrote one. `description` is a real column on
             Project; the reference's prose about what Reverie is "tracking" in
