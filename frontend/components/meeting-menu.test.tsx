@@ -91,9 +91,11 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
     hasTranscript: true,
     hasSummary: true,
     canTranslate: true,
+    // Summary by default, because that is the mode a meeting opens on -- and
+    // the mode that carries the two summary actions.
+    mode: "summary" as const,
     onCopySummary: vi.fn(),
     onExport: vi.fn(),
-    onJumpTo: vi.fn(),
     onAddTag: vi.fn(),
     onCopyTranscript: vi.fn(),
     onRegenerateSummary: vi.fn(),
@@ -107,30 +109,55 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
 }
 
 describe("Jump to", () => {
-  it("is offered, with the shortcut it answers to", async () => {
-    const props = menu();
+  it("is not in this menu any more", async () => {
+    /*
+     * It was the first row of the transcript group, with a `⌘.` keycap beside
+     * it, and it was `disabled` on a meeting with no transcript.
+     *
+     * <p>The navigator itself is untouched: `JumpTo` and its suite are where
+     * they were, and the meeting page still binds `⌘.` to it. What went is
+     * this way in, from the approved menu -- so the assertion is inverted
+     * rather than deleted, because a menu item quietly coming back is exactly
+     * the kind of drift this file exists to catch.
+     */
+    menu();
 
     await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
 
-    expect(props.onJumpTo).toHaveBeenCalled();
+    expect(screen.queryByRole("menuitem", { name: /Jump to/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("the two actions that belong to the brief", () => {
+  it("are offered while the summary is being read", async () => {
+    menu({ mode: "summary" });
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: "Copy summary" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Regenerate summary" })).toBeInTheDocument();
   });
 
-  it("is closed to a meeting with no transcript", async () => {
+  it("are not offered over the transcript, which is a different document", async () => {
     /*
-     * Every row in the navigator is a place in a transcript: an outline
-     * heading's timestamp, a speaker's first line, a mark's second. A failed
-     * meeting has none of them, so the way in says so rather than opening a
-     * dialog that can only say "nothing to jump to".
+     * Both act on a brief that is not on screen. The approved transcript menu
+     * has neither, and this is the same rule the mode items already follow in
+     * the other direction: find, speakers and correcting the words are drawn
+     * over a transcript and nowhere else.
      */
-    menu({ hasTranscript: false });
+    menu({ mode: "transcript" });
 
     await userEvent.click(screen.getByLabelText("More actions"));
 
-    expect(screen.getByRole("menuitem", { name: /Jump to/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(screen.queryByRole("menuitem", { name: "Copy summary" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Regenerate summary" }),
+    ).not.toBeInTheDocument();
+    // Everything that acts on the meeting itself stays.
+    for (const label of ["Move…", "Copy link", "Add a tag", "Export…", "Copy transcript",
+      "Change language", "Reprocess meeting", "Delete this meeting"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
   });
 });
 
@@ -233,7 +260,6 @@ describe("MeetingMenu", () => {
       "Add a tag",
       "Export…",
       // The shortcut rides in the row, which is why it is in the label here.
-      "Jump to…⌘.",
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -606,7 +632,6 @@ describe("MeetingMenu when the minutes are gone", () => {
       "Add a tag",
       "Export…",
       // The shortcut rides in the row, which is why it is in the label here.
-      "Jump to…⌘.",
       "Copy transcript",
       "Change language",
       "Copy summary",

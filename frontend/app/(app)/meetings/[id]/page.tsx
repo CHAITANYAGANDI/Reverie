@@ -128,6 +128,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import { speakerColor } from "@/lib/speakers";
+import { initialsOf } from "@/lib/avatar";
 import {
   MeetingMargin,
   ACTION_ITEMS_ANCHOR,
@@ -949,10 +951,10 @@ export default function MeetingDetailPage() {
           <TemplateItems meetingId={id} current={summary.data?.templateSlug ?? "general"} />
         )}
         {transcriptItems && (
+          /* NO GROUP LABEL. It read "This transcript" over these four items,
+             which is a heading explaining a separator -- and the separator
+             already says the group is a group. The approved menu has none. */
           <>
-            <DropdownMenuLabel className="text-foot font-normal text-ink-4">
-              This transcript
-            </DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => setTool("find")}>
               <Search /> Find in transcript
             </DropdownMenuItem>
@@ -964,20 +966,30 @@ export default function MeetingDetailPage() {
             {/* Gated on there being lines rather than on the server having
                 sent `speakers[]`: the strip derives the voices from the
                 segments and falls back to them, so a transcript cached before
-                the stats existed still has speakers to show. */}
+                the stats existed still has speakers to show.
+
+                <p>"Edit speakers", and no count. It read "Speakers (3)", which
+                named the panel after the noun rather than after what opening it
+                lets you do -- the panel renames a voice. The count belonged to
+                a menu that was also an index; the margin states it now, beside
+                the other facts, where it is read rather than counted twice. */}
             <DropdownMenuItem onSelect={() => setTool("speakers")}>
-              <Users /> Speakers{voices.length > 0 ? ` (${voices.length})` : ""}
+              <Users /> Edit speakers
             </DropdownMenuItem>
             {/* Only over the original. A translated transcript is derived text:
                 correcting it would edit a copy nothing else reads, leave the
                 words it was translated from untouched, and be overwritten the
                 next time the translation was refreshed. */}
             {!showing && (
+              /* "Edit transcript". It was "Correct transcript", which named the
+                 reason rather than the action -- and sat one row under a
+                 "Speakers" that named a noun. Both say what pressing them
+                 does now. */
               <DropdownMenuItem
                 disabled={editingTranscript}
                 onSelect={() => setEditingTranscript(true)}
               >
-                <Pencil /> Correct transcript
+                <Pencil /> Edit transcript
               </DropdownMenuItem>
             )}
           </>
@@ -999,7 +1011,10 @@ export default function MeetingDetailPage() {
       meetingId={id}
       projectId={m.projectId}
       hasTranscript={(transcript.data?.segments?.length ?? 0) > 0}
-      onJumpTo={() => setJumping(true)}
+      /* Which of the two documents is on screen. Copy summary and Regenerate
+         summary are the brief's, and the transcript's menu does not carry
+         them. */
+      mode={tab === "summary" ? "summary" : "transcript"}
       hasSummary={ready && Boolean(summary.data)}
       canTranslate={ready}
       // Change language and Regenerate grey while either is running.
@@ -3496,8 +3511,34 @@ function TranscriptPanel({
                   document does.
                 */}
                 <div className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3">
-                  {/* The gutter has nothing to say about who is speaking. */}
-                  <span aria-hidden />
+                  {/*
+                    WHO IS SPEAKING, IN THE GUTTER THAT WAS EMPTY.
+                    <p>It held `<span aria-hidden />` and a comment saying the
+                    gutter had nothing to say about the speaker. The approved
+                    transcript draws an initials chip exactly here, and it is
+                    the right place for one: the gutter is otherwise timecodes,
+                    so the eye already runs down it, and a chip on the turn's
+                    own line costs the reading column nothing.
+                    <p>Coloured by `speakerColor`, which keys off `speakerKey`
+                    rather than the display name -- so renaming Speaker 2 to
+                    Sarah keeps her the same colour, and the chip agrees with
+                    the scrubber's bands and the speaker strip.
+                    <p>`aria-hidden`, because the name is right beside it in
+                    text. Announcing "AM" before "Alex Morgan" is the same fact
+                    twice, the second time as two letters.
+                  */}
+                  <span className="flex justify-end pb-1">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-full",
+                        "font-mono text-cap text-white/95",
+                        speakerColor(turn.speaker, turn.speakerKey),
+                      )}
+                    >
+                      {initialsOf(turn.speaker)}
+                    </span>
+                  </span>
                   <span className="flex items-baseline gap-2 pb-1">
                     {/* Sans, because a name is interface — it is what you scan
                         down the page to find who said something. The words

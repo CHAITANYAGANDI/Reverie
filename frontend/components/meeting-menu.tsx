@@ -70,7 +70,6 @@ import {
   Check,
   ClipboardCopy,
   FileText,
-  ListTree,
   FolderInput,
   Languages,
   Link2,
@@ -159,7 +158,15 @@ export interface MeetingMenuProps {
    * the two reading modes, Ask and this menu. Gated on a transcript because
    * every row in it is a place in one -- a failed meeting has nowhere to jump.
    */
-  onJumpTo: () => void;
+  /**
+   * Which reading mode is on screen.
+   *
+   * <p>The menu is one surface for the whole meeting, and two of its items act
+   * on a document that may not be the one being read: Copy summary and
+   * Regenerate summary belong to the brief. They are drawn on `"summary"`
+   * only, which is what the approved transcript menu shows.
+   */
+  mode: "summary" | "transcript";
   /**
    * Reveal the tag input on the meeting's facts line.
    *
@@ -268,22 +275,18 @@ export function MeetingMenu(props: MeetingMenuProps) {
             </>
           ) : null}
 
-          {/* The transcript: what was said, who said it, and what language you
-              read it in. Together because they are one subject, and above the
-              summary because the summary is written from them. */}
+          {/* The transcript: what was said, and what language you read it in.
+              Together because they are one subject, and above the summary
+              because the summary is written from them.
+
+              NO "Jump to…" HERE ANY MORE. It was first in this group, with its
+              `⌘.` keycap beside it. The navigator itself is untouched and the
+              shortcut still opens it — see the keydown handler on the meeting
+              page — but the item is gone from the menu at the request of the
+              approved list, and the outline it mostly answered for is now a
+              permanent region of the margin. */}
           <DropdownMenuSeparator />
 
-          {/* First in the group, and the only one that navigates rather than
-              acts. `⌘.` is the reference's own shortcut for it and is free --
-              `⌘K` belongs to global search. */}
-          <DropdownMenuItem disabled={!props.hasTranscript} onSelect={props.onJumpTo}>
-            <ListTree /> Jump to…
-            {/* Shown rather than taught, and mono because it is a key -- the
-                same `<kbd>` the band uses for search. */}
-            <kbd className="ml-auto rounded-xs border border-line px-1 font-mono text-[10px] leading-4 text-ink-4">
-              ⌘.
-            </kbd>
-          </DropdownMenuItem>
           <DropdownMenuItem disabled={!props.hasTranscript} onSelect={props.onCopyTranscript}>
             <FileText /> Copy transcript
           </DropdownMenuItem>
@@ -299,18 +302,28 @@ export function MeetingMenu(props: MeetingMenuProps) {
 
           {/* The brief, and the one control that rewrites it — which is what
               you reach for after correcting a name above, or to have it
-              written in the language you just switched to. */}
-          <DropdownMenuSeparator />
+              written in the language you just switched to.
 
-          <DropdownMenuItem disabled={!props.hasSummary} onSelect={props.onCopySummary}>
-            <ClipboardCopy /> Copy summary
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!props.hasSummary || props.working || spent !== null}
-            onSelect={props.onRegenerateSummary}
-          >
-            <Sparkles /> Regenerate summary
-          </DropdownMenuItem>
+              <p>ON THE SUMMARY ONLY. Both act on a document that is not on
+              screen while somebody is reading the transcript, and the approved
+              transcript menu has neither. They are not removed: the mode that
+              owns them still offers them, which is the same rule `extra`
+              already follows for find, speakers and correcting the words. */}
+          {props.mode === "summary" && (
+            <>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem disabled={!props.hasSummary} onSelect={props.onCopySummary}>
+                <ClipboardCopy /> Copy summary
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!props.hasSummary || props.working || spent !== null}
+                onSelect={props.onRegenerateSummary}
+              >
+                <Sparkles /> Regenerate summary
+              </DropdownMenuItem>
+            </>
+          )}
 
           <DropdownMenuSeparator />
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ActionItemResponse,
@@ -276,10 +276,9 @@ vi.mock("@/components/meeting-menu", async () => {
           <button type="button" role="menuitem" onClick={onExport}>
             Export…
           </button>
-          {/* A real item, unlike the two above: this one opens a dialog, and
-              Radix has to close the menu for the dialog to be reachable --
-              an open menu makes the rest of the page inert. */}
-          <dd.DropdownMenuItem onSelect={onJumpTo}>Jump to…</dd.DropdownMenuItem>
+          {/* NO Jump to. The real menu dropped it, so a stub that still drew
+              it would let a test pass through a way in that no longer exists.
+              The navigator is opened by `⌘.` now; see the describe below. */}
           {extra}
         </dd.DropdownMenuContent>
       </dd.DropdownMenu>
@@ -997,14 +996,40 @@ describe("the meeting's own controls", () => {
  * seek pipeline, and that choosing a timed target from the summary brings the
  * transcript with it rather than leaving the reader to switch tabs.
  */
+/**
+ * The navigator, and the one way into it.
+ *
+ * <p>It had a menu item with a `⌘.` keycap beside it. The approved menu does
+ * not, so the item is gone and the shortcut is the whole of the way in — which
+ * is what these now drive. The dialog, its rows and the seek pipeline behind
+ * them are untouched.
+ *
+ * <p>Asserted absent from the menu as well, in components/meeting-menu.test,
+ * because an item quietly returning is the drift worth catching.
+ */
 describe("Jump to", () => {
-  it("opens from the meeting menu", async () => {
+  /** `⌘.`, on the window, which is where the page binds it. */
+  const jump = () =>
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: ".", metaKey: true, bubbles: true }),
+      );
+    });
+
+  it("opens on its shortcut", async () => {
+    render(<MeetingDetailPage />);
+
+    jump();
+
+    expect(await screen.findByRole("dialog", { name: "Jump to" })).toBeInTheDocument();
+  });
+
+  it("is not offered by the menu any more", async () => {
     render(<MeetingDetailPage />);
 
     await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
 
-    expect(screen.getByRole("dialog", { name: "Jump to" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Jump to/ })).not.toBeInTheDocument();
   });
 
   it("is not a third reading mode", () => {
@@ -1039,9 +1064,10 @@ describe("Jump to", () => {
     render(<MeetingDetailPage />);
     expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
 
-    await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
-    await userEvent.click(screen.getByRole("option", { name: /Moving the beta date/ }));
+    jump();
+    await userEvent.click(
+      await screen.findByRole("option", { name: /Moving the beta date/ }),
+    );
 
     expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute(
       "aria-selected",
@@ -1054,8 +1080,8 @@ describe("Jump to", () => {
     // reader left it, which after 0a3aaa2 is closed.
     render(<MeetingDetailPage />);
 
-    await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Jump to/ }));
+    jump();
+    await screen.findByRole("dialog", { name: "Jump to" });
 
     expect(openPane).not.toHaveBeenCalled();
   });
@@ -1817,7 +1843,7 @@ describe("the transcript", () => {
     await readTranscript();
     await userEvent.click(screen.getByLabelText("More actions"));
 
-    for (const item of [/Find in transcript/, /Speakers/, /Correct transcript/]) {
+    for (const item of [/Find in transcript/, /Edit speakers/, /Edit transcript/]) {
       expect(screen.getByRole("menuitem", { name: item })).toBeInTheDocument();
     }
   });
@@ -1832,7 +1858,7 @@ describe("the transcript", () => {
     await openTool(/Find in transcript/);
     expect(screen.getByLabelText("Find in transcript")).toBeInTheDocument();
 
-    await openTool(/Speakers/);
+    await openTool(/Edit speakers/);
     expect(screen.queryByLabelText("Find in transcript")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit speakers" })).toBeInTheDocument();
   });
@@ -1881,7 +1907,7 @@ describe("the transcript", () => {
 
     // Behind the Speakers item, with the same real stats and the same editor
     // behind them.
-    await openTool(/Speakers/);
+    await openTool(/Edit speakers/);
     expect(screen.getByText(/Priya \(\d+%\)/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Edit speakers" }));
     expect(screen.getByTestId("speaker-editor")).toBeInTheDocument();
@@ -1909,7 +1935,7 @@ describe("the transcript", () => {
     // Ask and the overflow, and nothing else.
     await readTranscript();
 
-    await openTool(/Correct transcript/);
+    await openTool(/Edit transcript/);
 
     expect(screen.getByTestId("transcript-editor")).toBeInTheDocument();
   });
@@ -1933,7 +1959,7 @@ describe("correcting the transcript", () => {
     render(<MeetingDetailPage />);
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
     await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Correct transcript/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Edit transcript/ }));
 
     expect(screen.getByRole("status")).toHaveTextContent("Correcting the transcript");
   });
@@ -1944,7 +1970,7 @@ describe("correcting the transcript", () => {
     render(<MeetingDetailPage />);
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
     await userEvent.click(screen.getByLabelText("More actions"));
-    await userEvent.click(screen.getByRole("menuitem", { name: /Correct transcript/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Edit transcript/ }));
 
     expect(screen.getByRole("button", { name: /Done/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
