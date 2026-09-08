@@ -62,7 +62,7 @@ export function AskLauncher() {
       }
     >
       <Waypoints className="h-[18px] w-[18px] shrink-0 text-ink-4" aria-hidden />
-      <span className="v2-home-lede flex-1 text-ink-4">Ask Reverie about your meetings…</span>
+      <span className="v2-page-lede flex-1 text-ink-4">Ask Reverie about your meetings…</span>
     </Link>
   );
 }

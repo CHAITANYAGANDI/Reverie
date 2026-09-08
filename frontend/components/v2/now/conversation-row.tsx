@@ -33,17 +33,31 @@
  *
  * <h2>Two sizes, and why the markup branches</h2>
  *
- * <p>`size="home"` is the same row with a glyph column: a 16px glyph, a 15px
+ * <p>`size="page"` is the same row with a glyph column: a 16px glyph, a 15px
  * title over 12px metadata, and 14px of air above and below. It began at
  * 24/20/16 with 28px of padding, measured off an approved reference that
  * turned out to be a ~1.2x capture -- a 114px row that read as a card without
- * a border -- and came down in two steps to a ~72px one. What still separates
- * it from the archive's row is the glyph column, the indent that creates, and
- * a chevron at the trailing edge.
+ * a border -- and came down in two steps to a ~72px one. What separates it
+ * from `"list"` is the glyph column, the indent that creates, and a chevron at
+ * the trailing edge.
  *
- * <p>The two sizes also disagree about the clock, which is the one FACT that
- * differs rather than a treatment of the same fact. Home does not show a time
- * at all; Library reads it first in the metadata line. See `facts` below.
+ * <p>It is `"page"` rather than `"home"` because Library draws it too: both
+ * pages are a list with something quieter beside it, on the same frame. A
+ * folder's own page is still `"list"`, which is the compact row the archive
+ * was designed at.
+ *
+ * <h2>The clock is a separate decision</h2>
+ *
+ * <p>It was tied to the size, and that was wrong the moment a second page took
+ * the roomy row: whether a row is drawn large and whether it states a
+ * time-of-day are two different questions. `clock` answers the second one.
+ *
+ * <p>Home passes `false`. It had the time at the far end of the row, opposite
+ * the title, and on a real screen that column was the loudest thing in the
+ * list -- competing with the titles for a fact almost nobody opens Home for,
+ * when the day heading above the group already says which day. Library keeps
+ * it: there the row is a search result, and the time is part of telling which
+ * of two meetings called Product Weekly this one is.
  *
  * <p>Everything that decides WHAT a row says is shared: the icon, the live
  * status subscription, the facts line and its dots, the failure text. Two
@@ -80,6 +94,7 @@ export function NowConversationRow({
   meeting,
   action,
   size = "list",
+  clock = true,
 }: {
   meeting: MeetingResponse;
   /**
@@ -98,12 +113,19 @@ export function NowConversationRow({
   /**
    * How large the row is drawn. See the note above.
    *
-   * <p>`"list"` is the default, so Library, a folder and every other caller is
-   * untouched by Home's correction.
+   * <p>`"list"` is the default, so a folder's page and any later caller get
+   * the compact row rather than inheriting a decision made for Home.
    */
-  size?: "list" | "home";
+  size?: "list" | "page";
+  /**
+   * Whether the row states the time of day, first in its metadata line.
+   *
+   * <p>On by default, because for most of this product's lists it is a fact
+   * worth having. Home turns it off; see the note above.
+   */
+  clock?: boolean;
 }) {
-  const big = size === "home";
+  const big = size === "page";
   const Icon =
     meeting.sourceType === "YOUTUBE"
       ? Youtube
@@ -128,22 +150,8 @@ export function NowConversationRow({
   });
 
   const facts: React.ReactNode[] = [];
-  /*
-   * FIRST IN THE LINE, AND ONLY AT LIST SIZE.
-   *
-   * <p>Home draws no clock. It had one at the far end of the row, opposite the
-   * title, on the reasoning that twenty rows with one time each give the eye a
-   * column to run down -- and on a real screen that column was the loudest
-   * thing in the list, in mono, competing with the titles for a fact almost
-   * nobody came to the page for. The day heading above the group already says
-   * which day, and the rows are in order within it.
-   *
-   * <p>Library keeps it. There the row is a search result: the archive is
-   * ordered and filtered, and the time is part of identifying which of two
-   * meetings called Product Weekly this one is. It reads beside the duration
-   * at 11.5px, where it has always been.
-   */
-  if (!big) {
+  // First in the line, where the caller wants one at all. See `clock` above.
+  if (clock) {
     facts.push(
       <span key="at" className="tabular font-mono">
         {at}
@@ -198,7 +206,7 @@ export function NowConversationRow({
       data-row-meta
       className={
         big
-          ? "v2-home-meta mt-2 flex flex-wrap items-center text-ink-3"
+          ? "v2-page-meta mt-2 flex flex-wrap items-center text-ink-3"
           : "mt-[5px] flex flex-wrap items-center text-foot text-ink-3"
       }
     >
@@ -242,7 +250,7 @@ export function NowConversationRow({
               <span className="flex items-baseline gap-2.5">
                 <span
                   data-row-title
-                  className="v2-home-title min-w-0 flex-1 truncate font-headline text-ink"
+                  className="v2-page-title min-w-0 flex-1 truncate font-headline text-ink"
                 >
                   {meeting.title}
                 </span>

@@ -41,7 +41,7 @@
  * <p>A 13px title over an 11.5px owner, a 16px checkbox, a 15px heading and a
  * 28px pill — Home's scale, which is the interface's with a greeting of its
  * own. It was 18/16/24/22/40, measured off an approved reference that turned
- * out to be a ~1.2x capture, and came down in two steps. See `.v2-home-*` in
+ * out to be a ~1.2x capture, and came down in two steps. See `.v2-page-*` in
  * app/globals.css.
  */
 
@@ -93,12 +93,12 @@ export function NowActionItems({ items }: { items: ActionItems }) {
           <p>It was `.v2-label` — 11.5px at 560, the same treatment as "Today,
           Sep 7" over a group of rows. That label is for a group inside a
           region. It was `--t-title-1` at 22px off the magnified reference,
-          then `--t-title-2` at 17, and it is `.v2-home-title` at 15 now --
+          then `--t-title-2` at 17, and it is `.v2-page-title` at 15 now --
           the same size as a conversation title, which inside this column is
           still the largest thing in it, over 13px task titles. Weight and
           `--ink` carry the rest. */}
       <div className="flex items-baseline gap-3">
-        <h2 id="now-actions" className="v2-home-title font-headline text-ink">
+        <h2 id="now-actions" className="v2-page-title font-headline text-ink">
           Action items
         </h2>
         {!adding && !unsettled && (
@@ -106,7 +106,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
             type="button"
             onClick={() => setAdding(true)}
             className={cn(
-              "v2-home-meta ml-auto flex shrink-0 items-center gap-1",
+              "v2-page-meta ml-auto flex shrink-0 items-center gap-1",
               // Iris as a word, which is what `--brand-text` is for. The one
               // affordance in this column and the only coloured thing in it.
               "text-brand-text transition-opacity duration-press ease-soft hover:opacity-80",
@@ -174,7 +174,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
               onBlur={() => void commit()}
               placeholder="What needs doing?"
               aria-label="New action item"
-              className="v2-home-sub h-5 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4"
+              className="v2-page-sub h-5 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4"
             />
             {items.creating && (
               <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-ink-4" aria-hidden />
@@ -202,7 +202,7 @@ export function NowActionItems({ items }: { items: ActionItems }) {
              is the case the always-drawn switch made reachable. Every branch
              is reached only from a settled response, so all three are
              statements about the list rather than about the network. */
-          <p className="v2-home-meta text-ink-3">
+          <p className="v2-page-meta text-ink-3">
             {view === "done"
               ? "Nothing finished yet."
               : done.length > 0
@@ -251,7 +251,7 @@ function Tab({
       aria-pressed={on}
       onClick={onSelect}
       className={cn(
-        "v2-home-meta flex h-7 items-center rounded-full px-3 transition-colors duration-press ease-soft",
+        "v2-page-meta flex h-7 items-center rounded-full px-3 transition-colors duration-press ease-soft",
         on ? "bg-white/[0.06] font-headline text-ink" : "text-ink-3 hover:text-ink-2",
       )}
     >
@@ -294,7 +294,7 @@ function Row({ item, onToggle }: { item: ActionItemResponse; onToggle: () => voi
       <span className="min-w-0 flex-1">
         <span
           data-task-title
-          className={cn("v2-home-sub block text-ink-2", done && "text-ink-4 line-through")}
+          className={cn("v2-page-sub block text-ink-2", done && "text-ink-4 line-through")}
         >
           {item.title}
         </span>

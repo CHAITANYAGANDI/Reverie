@@ -7,7 +7,7 @@
  *
  * <p>From the approved 1672x941 reference, and it is a frame of Home's own:
  * ~890px of list, a quiet vertical rule, and a ~463px margin, with the whole
- * thing held to the reference width and centred past it. See `.v2-home` in
+ * thing held to the reference width and centred past it. See `.v2-page` in
  * app/globals.css for the numbers, and for why this is not `.v2-spread`.
  *
  * <p>What was here before that was the spread: a 680px reading measure with a
@@ -256,9 +256,9 @@ export default function HomePage() {
 
       {/*
        * THE FRAME. Two columns, one grid row, and a rule between them that is
-       * the margin's own left edge -- see `.v2-home` in app/globals.css.
+       * the margin's own left edge -- see `.v2-page` in app/globals.css.
        */}
-      <div className="v2-home relative">
+      <div className="v2-page relative">
         <div className="min-w-0">
           {/* `empty` is unqualified now. With no window there is only one way
               for this list to be empty -- the account is -- where before the
@@ -303,7 +303,7 @@ export default function HomePage() {
                   nothing at the bottom is a list somebody scrolls to the end
                   of and believes. `totalElements` is on the response already. */}
               {data && data.totalElements > data.content.length && (
-                <p className="v2-home-meta text-ink-4">
+                <p className="v2-page-meta text-ink-4">
                   Showing the {data.content.length} most recent of{" "}
                   <span className="tabular">{data.totalElements}</span>.{" "}
                   <Link href={LIBRARY} className="underline underline-offset-2 hover:text-ink-2">
@@ -319,14 +319,14 @@ export default function HomePage() {
         {/*
          * THE MARGIN. Not a pane and not a card: no fill, no radius, no
          * scrollbar of its own. One 1px rule down its left edge, which is
-         * `[data-home-margin]` in app/globals.css, and the page's background
+         * `[data-page-margin]` in app/globals.css, and the page's background
          * running underneath it uninterrupted. There is nothing beneath the
          * list either, because a promotional card in the core product is
          * marketing standing where whitespace belongs.
          *
          * <p>Always drawn. See the note beside `useActionItems` above.
          */}
-        <div data-home-margin>
+        <div data-page-margin>
           <NowActionItems items={actions} />
         </div>
       </div>
@@ -364,8 +364,8 @@ function Group({
   return (
     <section>
       <div className="flex items-baseline gap-3">
-        <h2 className="v2-home-sub text-ink-3">{heading}</h2>
-        {note && <p className="v2-home-meta text-ink-3">{note}</p>}
+        <h2 className="v2-page-sub text-ink-3">{heading}</h2>
+        {note && <p className="v2-page-meta text-ink-3">{note}</p>}
         {aside && <div className="ml-auto">{aside}</div>}
       </div>
       {children}
@@ -378,11 +378,10 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
   return (
     <ul className="[&>li+li>a]:shadow-[inset_0_1px_0_rgb(var(--line))]">
       {meetings.map((meeting) => (
-        /* Home's drawing of the row: a glyph column, a chevron at the far
-           end, and no clock. Library's is the compact one the archive was
-           designed at, and it reads the time first in its metadata line --
-           see `size` and `facts` on the row. */
-        <NowConversationRow key={meeting.id} meeting={meeting} size="home" />
+        /* The frame's drawing of the row -- a glyph column and a chevron at
+           the far end -- and no clock. Library takes the same size and keeps
+           its clock; see `size` and `clock` on the row. */
+        <NowConversationRow key={meeting.id} meeting={meeting} size="page" clock={false} />
       ))}
     </ul>
   );
@@ -452,7 +451,7 @@ function Masthead({ empty }: { empty: boolean }) {
           after the list does not push the list down under a reader's cursor.
           `min-h` rather than `h` on the greeting: at 390px it wraps, and a
           fixed height would print the second line through the lede. */}
-      <p className="v2-home-sub h-[19px] text-ink-3">
+      <p className="v2-page-sub h-[19px] text-ink-3">
         {now
           ? now.toLocaleDateString(undefined, {
               weekday: "long",
@@ -461,10 +460,10 @@ function Masthead({ empty }: { empty: boolean }) {
             })
           : ""}
       </p>
-      <h1 className="v2-home-greet mt-2 min-h-[1.875rem] font-headline text-ink">
+      <h1 className="v2-page-greet mt-2 min-h-[1.875rem] font-headline text-ink">
         {now ? title : ""}
       </h1>
-      <p className="v2-home-lede mt-2 max-w-[68ch] text-ink-3">
+      <p className="v2-page-lede mt-2 max-w-[68ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.
           <p>This read "Recent conversations, wherever they are filed, and what

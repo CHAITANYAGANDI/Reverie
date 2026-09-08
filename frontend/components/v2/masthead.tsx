@@ -45,6 +45,7 @@ export function Masthead({
   sub,
   meta,
   bar,
+  size = "doc",
 }: {
   back?: MastheadBack;
   /** The eyebrow: "Library", "Library · folders". */
@@ -69,9 +70,23 @@ export function Masthead({
   meta?: React.ReactNode;
   /** Controls that act on the list below. Last, under everything they narrow. */
   bar?: React.ReactNode;
+  /**
+   * Which scale to draw at.
+   *
+   * <p>`"doc"` is the interface scale this was written at: a 30px title over
+   * 15px prose in a 680px measure. `"page"` is the frame's -- see `.v2-page-*`
+   * in app/globals.css -- and it is a step smaller, because the frame's list is
+   * 960px of 15px rows and a 30px title over them was reported as looking
+   * blown up on a real screen.
+   *
+   * <p>Additive on purpose. Library asks for `"page"`; the folders index and a
+   * folder's own page are unchanged.
+   */
+  size?: "doc" | "page";
 }) {
+  const page = size === "page";
   return (
-    <header className="pt-10">
+    <header className={page ? "" : "pt-10"}>
       {back && (
         <Link
           href={back.href}
@@ -82,21 +97,39 @@ export function Masthead({
         </Link>
       )}
 
-      {label && <p className="v2-label mb-[9px]">{label}</p>}
+      {label && (
+        <p className={page ? "v2-page-meta mb-1.5 text-ink-3" : "v2-label mb-[9px]"}>{label}</p>
+      )}
 
       {actions ? (
         <div className="flex items-start gap-4">
-          <h1 className="min-w-0 flex-1 text-title-l font-headline text-ink">{title}</h1>
+          <h1
+            className={
+              page
+                ? "v2-page-greet min-w-0 flex-1 font-headline text-ink"
+                : "min-w-0 flex-1 text-title-l font-headline text-ink"
+            }
+          >
+            {title}
+          </h1>
           {/* `pt-0.5` sits a 28px control against the cap height of a 30px
               line rather than against the line box. */}
           <div className="flex shrink-0 items-center gap-0.5 pt-0.5">{actions}</div>
         </div>
       ) : (
-        <h1 className="text-title-l font-headline text-ink">{title}</h1>
+        <h1 className={page ? "v2-page-greet font-headline text-ink" : "text-title-l font-headline text-ink"}>
+          {title}
+        </h1>
       )}
 
       {sub && (
-        <p className="mt-2.5 max-w-[58ch] text-title-3 font-body leading-[1.5] text-ink-3">
+        <p
+          className={
+            page
+              ? "v2-page-lede mt-2 max-w-[68ch] text-ink-3"
+              : "mt-2.5 max-w-[58ch] text-title-3 font-body leading-[1.5] text-ink-3"
+          }
+        >
           {sub}
         </p>
       )}
@@ -108,8 +141,18 @@ export function Masthead({
       {/* 26px under the prose and 22px over the first group heading, which is
           the reference's rhythm: the bar belongs to the masthead rather than
           floating between it and the list. */}
-      {bar && <div className="mt-[26px] flex flex-wrap items-center gap-2 pb-[22px]">{bar}</div>}
-      {!bar && <div className="pb-5" />}
+      {bar && (
+        <div
+          className={
+            page
+              ? "mt-6 flex flex-wrap items-center gap-2 pb-8"
+              : "mt-[26px] flex flex-wrap items-center gap-2 pb-[22px]"
+          }
+        >
+          {bar}
+        </div>
+      )}
+      {!bar && <div className={page ? "pb-6" : "pb-5"} />}
     </header>
   );
 }

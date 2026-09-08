@@ -51,6 +51,23 @@ let errored: boolean;
 /** What `GET /projects` answers with. `undefined` is "not yet". */
 let folders: Project[] | undefined;
 let foldersErrored: boolean;
+/*
+ * THE OTHER TWO SCOPES.
+ *
+ * <p>Library asks a different endpoint per scope rather than adding a
+ * parameter `GET /meetings` does not have: a folder is
+ * `GET /projects/{id}/meetings` and "not in a folder" is
+ * `GET /projects/unfiled`. Recorded here, so a test can assert that choosing a
+ * folder CHANGED THE REQUEST rather than merely changed a label.
+ */
+const scoped = vi.hoisted(() => ({
+  folderId: null as string | null,
+  unfiledAsked: false,
+}));
+/** What a folder's own endpoint answers with, per test. */
+let folderRows: MeetingResponse[];
+/** What `GET /projects/unfiled` answers with. */
+let unfiledRows: MeetingResponse[];
 
 function aPage(content: MeetingResponse[]): Page<MeetingResponse> {
   return {
@@ -98,6 +115,20 @@ vi.mock("@/lib/api", () => ({
    * a stub would let that pass while the page still drew a table.
    */
   useGetProjectsQuery: () => result(folders, { isError: foldersErrored }),
+  useGetProjectMeetingsQuery: (id: string, options?: { skip?: boolean }) => {
+    if (options?.skip) {
+      return { ...result<MeetingResponse[]>(undefined), isUninitialized: true };
+    }
+    scoped.folderId = id;
+    return result(folderRows);
+  },
+  useGetUnfiledMeetingsQuery: (_arg: undefined, options?: { skip?: boolean }) => {
+    if (options?.skip) {
+      return { ...result<MeetingResponse[]>(undefined), isUninitialized: true };
+    }
+    scoped.unfiledAsked = true;
+    return result(unfiledRows);
+  },
   // Reached through the dialog the margin keeps mounted for its empty state.
   useCreateProjectMutation: () => [
     () => ({ unwrap: () => Promise.resolve({}) }),
@@ -151,6 +182,10 @@ beforeEach(() => {
   errored = false;
   folders = [aFolder()];
   foldersErrored = false;
+  scoped.folderId = null;
+  scoped.unfiledAsked = false;
+  folderRows = [];
+  unfiledRows = [];
   /*
    * Both. The remembered date window lives in `localStorage` -- see
    * lib/preference-store -- so a test that narrows it leaves the next one
@@ -170,13 +205,24 @@ describe("the masthead", () => {
     expect(screen.getByText("Library")).toBeInTheDocument();
   });
 
-  it("describes the archive truthfully", async () => {
+  it("describes the archive in the approved words", async () => {
+    /*
+     * MOVED, NOT DROPPED. This asserted "Everything in this workspace, filed
+     * or not. Reverie keeps a meeting until you delete it or your retention
+     * policy does." Both clauses were true. Neither belonged in a subtitle.
+     *
+     * <p>"Filed or not" was this page's statement of a guarantee that lives on
+     * the wire, and the test that holds it is "asks for everything, filed or
+     * not" below -- which cannot pass while the query narrows, where prose can.
+     * The retention sentence is a fact about an account setting, and it is on
+     * the page that holds the setting.
+     */
     render(<LibraryPage />);
 
     await screen.findByRole("heading", { level: 1 });
-    // The retention clause is kept only because retention is real here:
-    // RetentionService, RetentionJob, and a window on the account.
-    expect(screen.getByText(/Everything in this workspace, filed or not/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Everything you\u2019ve captured, organized in one place."),
+    ).toBeInTheDocument();
   });
 });
 
@@ -243,19 +289,92 @@ describe("the filters", () => {
     expect(screen.getByRole("button", { name: /Any time/ })).toBeInTheDocument();
   });
 
-  it("draws none of the three the API cannot honour", async () => {
+  it("draws neither of the two the API cannot honour", async () => {
     /*
-     * "Every folder", "Any kind" and "Any voice" are in the reference. There is
-     * no folder, source or speaker parameter on `GET /meetings` — and a folder
-     * chip would be the very predicate this app removed from both lists.
+     * NARROWED FROM THREE TO TWO, because one of them turned out to be real.
+     *
+     * <p>"Any kind" and "Any voice" still are not: nothing filters by source
+     * or by speaker, and two of the reference's four kinds are not concepts
+     * this product has. Those would be controls that cannot narrow anything.
+     *
+     * <p>"Every folder" was refused on the same grounds, and that part was
+     * wrong. It is true that `GET /meetings` has no folder parameter, and this
+     * page still sends none -- but a folder's meetings have always had an
+     * endpoint of their own, which is what a folder's page reads. Narrowing to
+     * a folder is a different question rather than a filter on the archive,
+     * and the tests below assert it is asked as one.
      */
     render(<LibraryPage />);
 
     await screen.findByText("Tuesday design review");
     const text = document.body.textContent ?? "";
-    for (const fake of ["Every folder", "Any kind", "Any voice"]) {
+    for (const fake of ["Any kind", "Any voice"]) {
       expect(text).not.toContain(fake);
     }
+  });
+
+  it("offers every folder, the unfiled, and each real folder by name", async () => {
+    folders = [aFolder({ id: "p1", name: "AWD" }), aFolder({ id: "p2", name: "Hiring" })];
+    render(<LibraryPage />);
+    await screen.findByText("Tuesday design review");
+
+    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+
+    expect(await screen.findByRole("menuitem", { name: /Every folder/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Not in a folder/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /AWD/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Hiring/ })).toBeInTheDocument();
+  });
+
+  it("asks the folder's own endpoint, rather than inventing a parameter", async () => {
+    /*
+     * THE ASSERTION THAT MATTERS. A folder filter is only real if it changes
+     * the request -- a label that changes over the same "everything" query is
+     * exactly the convincing-but-useless control this page has always refused.
+     *
+     * <p>And `unfiled=true` must still never be sent. That flag is what made
+     * Home's name a lie; "Not in a folder" is `GET /projects/unfiled`, a
+     * different endpoint answering a question somebody asked for.
+     */
+    folders = [aFolder({ id: "p1", name: "AWD" })];
+    folderRows = [aMeeting({ id: "mtg_awd", title: "Filed in AWD" })];
+    render(<LibraryPage />);
+    await screen.findByText("Tuesday design review");
+
+    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /AWD/ }));
+
+    expect(scoped.folderId).toBe("p1");
+    expect(await screen.findByText("Filed in AWD")).toBeInTheDocument();
+    expect(query.last?.unfiled).toBeUndefined();
+  });
+
+  it("asks the unfiled endpoint for Not in a folder, and never the flag", async () => {
+    unfiledRows = [aMeeting({ id: "mtg_loose", title: "Never filed" })];
+    render(<LibraryPage />);
+    await screen.findByText("Tuesday design review");
+
+    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Not in a folder/ }));
+
+    expect(scoped.unfiledAsked).toBe(true);
+    expect(await screen.findByText("Never filed")).toBeInTheDocument();
+    expect(query.last?.unfiled).toBeUndefined();
+  });
+
+  it("names the folder when the folder is what emptied the list", async () => {
+    // Not "Nothing here yet", which would be a claim about the whole account.
+    folders = [aFolder({ id: "p2", name: "Hiring" })];
+    folderRows = [];
+    render(<LibraryPage />);
+    await screen.findByText("Tuesday design review");
+
+    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Hiring/ }));
+
+    expect(await screen.findByText(/Nothing in Hiring/)).toBeInTheDocument();
+    expect(screen.queryByText("Nothing here yet")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Every folder" })).toBeInTheDocument();
   });
 });
 
@@ -508,18 +627,27 @@ describe("when a date window has emptied it", () => {
     ).toBeInTheDocument();
   });
 
-  it("gives the measure to the explanation, and no margin", async () => {
+  it("keeps the margin, rather than changing shape while it is read", async () => {
     /*
-     * The other half of the rule, and the one the reference actually draws:
-     * this screen has something to say about the filter, so it gets the whole
-     * column to say it in. An account with nothing in it keeps its folders —
-     * see "keeps the folders reachable" above.
+     * INVERTED. This asserted the opposite: a window that had excluded
+     * everything dropped the margin, so the explanation got the whole column
+     * to say itself in.
+     *
+     * <p>Two things changed. The column is ~960px wide on the frame rather
+     * than 680px centred, so the explanation has room either way -- and a
+     * second column that comes and goes on two of four states appears and
+     * disappears as answers arrive, under somebody who is reading. It also
+     * mattered more than it looked: `/folders` is linked from this margin and
+     * nowhere else, so reaching the filing system depended on which state the
+     * archive happened to be in.
+     *
+     * <p>The same correction as Home's zero-item margin, for the same reason.
      */
     await narrow();
 
     await screen.findByText(/Nothing from/);
-    expect(screen.queryByRole("heading", { name: "Folders" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Manage" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Folders" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage" })).toBeInTheDocument();
   });
 
   it("keeps the way to widen it", async () => {

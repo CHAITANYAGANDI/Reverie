@@ -826,13 +826,13 @@ describe("the shape of Now", () => {
      * this page widened it to 780 with a variable override. Home reads nothing
      * -- it is a list of rows and a margin -- and at the reference width the
      * spread put the whole composition in the middle of the window with 236px
-     * of nothing down each side. `.v2-home` is the frame with the reference's
+     * of nothing down each side. `.v2-page` is the frame with the reference's
      * numbers in it; see app/globals.css.
      */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    expect(container.querySelector(".v2-home")).toBeInTheDocument();
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
     expect(container.querySelector(".v2-spread")).toBeNull();
     // And no `--measure` override left behind on it.
     expect(container.innerHTML).not.toContain("--measure:");
@@ -849,12 +849,12 @@ describe("the shape of Now", () => {
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const frame = container.querySelector(".v2-home");
+    const frame = container.querySelector(".v2-page");
     expect(frame).toBeInTheDocument();
     expect(frame!.innerHTML).not.toContain("col-span-2");
     // Two children, and the second is the margin.
     expect(frame!.children).toHaveLength(2);
-    expect(frame!.children[1].hasAttribute("data-home-margin")).toBe(true);
+    expect(frame!.children[1].hasAttribute("data-page-margin")).toBe(true);
   });
 
   it("lays one wash behind the whole page rather than one per column", async () => {
@@ -872,7 +872,7 @@ describe("the shape of Now", () => {
     expect(washes[0].getAttribute("aria-hidden")).toBe("true");
     expect(washes[0].className).toContain("pointer-events-none");
     // Behind, not inside: the frame is its next sibling.
-    expect(washes[0].nextElementSibling?.className).toContain("v2-home");
+    expect(washes[0].nextElementSibling?.className).toContain("v2-page");
   });
 
   it("mounts no side pane, so the margin cannot become a second application", async () => {
@@ -944,7 +944,7 @@ describe("the shape of Now", () => {
     expect(screen.getByRole("button", { name: /Open \(0\)/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Completed \(0\)/ })).toBeInTheDocument();
     // The frame is the same frame, with the margin in it either way.
-    expect(container.querySelector("[data-home-margin]")).toBeInTheDocument();
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
   });
 
   it("keeps the margin while the list is still loading, and when it fails", async () => {
@@ -955,7 +955,7 @@ describe("the shape of Now", () => {
     const { container, unmount } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
     expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
-    expect(container.querySelector("[data-home-margin]")).toBeInTheDocument();
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
     // Nothing is claimed about the counts before an answer arrives.
     expect(screen.queryByRole("button", { name: /Open \(/ })).not.toBeInTheDocument();
     unmount();
@@ -1014,7 +1014,7 @@ describe("the shape of Now", () => {
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const margin = container.querySelector("[data-home-margin]")!;
+    const margin = container.querySelector("[data-page-margin]")!;
     for (const banned of ["rounded-", "bg-surface", "bg-white/", "border ", "border-"]) {
       expect(margin.getAttribute("class") ?? "").not.toContain(banned);
     }
@@ -1056,7 +1056,7 @@ describe("the shape of Now", () => {
     expect(row.className).not.toContain("border");
     // And it still goes where it always went.
     expect(row).toHaveAttribute("href", "/meetings/mtg_a");
-    expect(container.querySelector(".v2-home")).toBeInTheDocument();
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
   });
 
   it("shows no clock on a row, and still the way in", async () => {
@@ -1103,7 +1103,7 @@ describe("the shape of Now", () => {
 
   it("draws its rows at Home's size, which Library's are not", async () => {
     /*
-     * `size="home"`: a glyph in a column of its own, a `.v2-home-title` and
+     * `size="home"`: a glyph in a column of its own, a `.v2-page-title` and
      * 14px of air above and below. The archive keeps its 12px padding and no
      * glyph column, and the default on the component is `"list"`, so this
      * assertion is what would fail if Home stopped asking.
@@ -1116,8 +1116,8 @@ describe("the shape of Now", () => {
 
     const row = screen.getByRole("link", { name: /Tuesday design review/ });
     expect(row.className).toContain("py-3.5");
-    expect(row.querySelector("[data-row-title]")?.className).toContain("v2-home-title");
-    expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-home-meta");
+    expect(row.querySelector("[data-row-title]")?.className).toContain("v2-page-title");
+    expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-page-meta");
     // A glyph in a column of its own, which is Home's indent.
     expect(row.querySelector("svg")?.getAttribute("class")).toContain("h-4");
   });
