@@ -290,12 +290,21 @@ export default function HomePage() {
               to return nothing. */}
           <Masthead empty={listState === "empty"} />
 
-          {/* The one functional surface on the page, and it is a door to the
-              workspace Ask rather than a chat of its own. Full width of the
-              column: the reference draws it as one horizontal surface the
-              width of the list, and it was held to `--measure` only because
-              the masthead above it used to span both tracks. */}
-          {listState !== "empty" && <AskLauncher />}
+          {/*
+            The one functional surface on the page, and it opens the pane
+            rather than being a chat of its own.
+
+            <p>It was a 40px field the full width of the list, because the
+            approved reference drew a search-shaped field here. It is a button
+            now, and the same button a meeting has -- the two open the same
+            panel, so there was no reason for one of them to be the width of
+            the page. `mt-4` is the air the bar used to occupy as height.
+          */}
+          {listState !== "empty" && (
+            <div className="mt-4">
+              <AskLauncher />
+            </div>
+          )}
 
           {listState === "skeleton" ? (
             <div className="mt-8 space-y-5">

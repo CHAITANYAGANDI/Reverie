@@ -20,7 +20,6 @@ import {
   Minimize2,
   Pencil,
   Plus,
-  Sparkles,
   Trash2,
   Check,
   X,
@@ -170,7 +169,15 @@ export function ChatHistory({
            */
           className="flex min-w-0 max-w-sm items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:bg-accent"
         >
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+          {/*
+            NO GLYPH. It was a `Sparkles` in the accent colour, and it was the
+            third thing claiming to be this panel's identity: the Reverie mark
+            is immediately to its left in the header, the pane is opened by a
+            control that already carries one, and a four-pointed star is what
+            every product in the category spends on the same claim. What is
+            left is the conversation's name and the chevron that opens the
+            archive -- a label and its affordance, and nothing else.
+          */}
           <span className="truncate">{label}</span>
           <ChevronDown
             className={cn(

@@ -94,6 +94,8 @@ let speakers: { speaker: string; speakingSeconds: number; percentage: number; se
 let actionItems: ActionItemResponse[];
 /** How the action-items request is going. */
 let actionsQuery: "ok" | "error";
+/** Whether `SidePane` renders its children. See the mock below. */
+let renderPane = false;
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "mtg_1" }),
@@ -190,7 +192,16 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/lib/ws", () => ({ subscribeMeetingStatus: () => ({ deactivate: () => {} }) }));
-vi.mock("@/lib/active-chat", () => ({ useActiveChat: () => ({ id: null, set: () => {} }) }));
+/*
+ * A TUPLE, because that is what the hook returns.
+ *
+ * <p>It returned `{ id: null, set: () => {} }`, which is not the shape of
+ * `useActiveChat` and would throw the moment anything destructured it. Nothing
+ * did, because the pane was stubbed away below and the chat never rendered --
+ * so a mock that could not possibly work sat here passing 113 tests. Corrected
+ * so that the block at the end of this file can render the pane for real.
+ */
+vi.mock("@/lib/active-chat", () => ({ useActiveChat: () => [null, () => {}] }));
 vi.mock("@/lib/recording-context", () => ({
   useRecordingJob: () => ({ phase: "idle", job: null, stop: () => Promise.resolve(false) }),
 }));
@@ -327,7 +338,17 @@ vi.mock("@/components/speaker-editor", () => ({
 
 // The side pane is the shell's, and its portal target does not exist here.
 vi.mock("@/components/side-pane", () => ({
-  SidePane: () => null,
+  /*
+   * Rendered in place, and only when a test asks for it.
+   *
+   * <p>The real one portals into an element the shell owns and this file does
+   * not render, so it was stubbed to nothing -- which meant the pane's whole
+   * contents went untested from this page. The flag renders it inline for the
+   * few tests that are about the pane itself, and leaves the other 113 seeing
+   * exactly what they saw before: a page with no chat in it.
+   */
+  SidePane: ({ children }: { children: React.ReactNode }) =>
+    renderPane ? <>{children}</> : null,
   useSidePane: () => ({ occupied: false, open: paneOpen, expanded: false }),
   toggleSidePaneExpanded: () => {},
   // Imported by components/pane-close, which the pane's header renders. The
@@ -451,6 +472,7 @@ beforeEach(() => {
   folder = undefined;
   speakers = [];
   paneOpen = false;
+  renderPane = false;
 });
 
 /**
@@ -1132,24 +1154,41 @@ describe("Jump to", () => {
   });
 });
 
+/**
+ * THE CONTROL THAT OPENS THE PANE, on the mode row.
+ *
+ * <p>Named `AI` and marked with the Reverie glyph. It was `Ask` behind a
+ * `Sparkles`, and both changed: the star is what every product in the category
+ * spends on the same claim, and the word collided with a band nav item called
+ * Ask Reverie that navigates to the workspace chat instead of opening this
+ * one. Home's launcher carries the same label, so one name opens one panel.
+ *
+ * <p>Matched by its accessible name, which is longer than what is drawn: the
+ * visible label is `AI` and a hidden continuation makes it
+ * "AI — ask about this conversation", because "AI" alone is a poor thing to
+ * hear announced. The visible text is contained in the spoken name, so the two
+ * cannot disagree.
+ */
+const AI_BUTTON = /^AI — ask about this conversation$/;
+
 describe("Ask", () => {
   it("is on the mode row, at the far end", () => {
     render(<MeetingDetailPage />);
 
     const modes = screen.getAllByRole("tablist")[0];
-    const ask = screen.getByRole("button", { name: /^Ask$/ });
+    const ask = screen.getByRole("button", { name: AI_BUTTON });
     expect(modes.parentElement).toContainElement(ask);
   });
 
   it("opens the meeting's own chat, and does not leave for the workspace one", async () => {
     render(<MeetingDetailPage />);
 
-    await userEvent.click(screen.getByRole("button", { name: /^Ask$/ }));
+    await userEvent.click(screen.getByRole("button", { name: AI_BUTTON }));
 
     expect(openPane).toHaveBeenCalled();
     // Not a link: /ask is the workspace chat, which knows nothing about this
     // transcript.
-    expect(screen.queryByRole("link", { name: /^Ask$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: AI_BUTTON })).not.toBeInTheDocument();
   });
 
   it("wires the selection menu to the same handler", async () => {
@@ -1187,7 +1226,7 @@ describe("Ask", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
     const player = screen.getByRole("slider", { name: "Seek" });
 
-    await userEvent.click(screen.getByRole("button", { name: /^Ask$/ }));
+    await userEvent.click(screen.getByRole("button", { name: AI_BUTTON }));
 
     expect(screen.getByRole("slider", { name: "Seek" })).toBe(player);
     expect(screen.getByText("Transcript")).toBeInTheDocument();
@@ -1198,7 +1237,105 @@ describe("Ask", () => {
     // always been; only its default visibility changed.
     render(<MeetingDetailPage />);
 
-    expect(screen.getAllByRole("button", { name: /^Ask$/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: AI_BUTTON })).toHaveLength(1);
+  });
+});
+
+/**
+ * THE PANE'S ONE HEADER ROW.
+ *
+ * <p>There were two: a tab row reading `[mark] Ask | Outline` with the pane's
+ * collapse glyph at its far end, and then the conversation's own row under it.
+ * Two rows of chrome over the first answer in a 26rem rail, and two full-width
+ * hairlines 53px apart — a panel with two headers.
+ *
+ * <p>What is here now is the row Home's pane has, drawn by the same component:
+ * the mark, the conversation, New chat, maximise, the way out, and — over the
+ * transcript only — the outline.
+ *
+ * <p>These are the first tests in this file to render the pane at all. It was
+ * stubbed to nothing because the real one portals into the shell; see the
+ * `renderPane` flag and the `useActiveChat` mock above, which had to be
+ * corrected before any of this could mount.
+ */
+describe("the pane's one header row", () => {
+  /** Open the pane and put its contents on the page. */
+  async function openTheChat() {
+    renderPane = true;
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("button", { name: AI_BUTTON }));
+  }
+
+  it("carries the way out as a cross, not a panel-collapse glyph", async () => {
+    await openTheChat();
+
+    /*
+     * It was `PaneClose`, whose glyph is a rectangle with a bar down one side
+     * — a fair icon for "collapse this panel" and one that only reads that way
+     * to somebody who already knows. An `X` beside maximise is what Home's
+     * pane has and what a panel with a header is expected to have, so the two
+     * panes are now shut the same way.
+     */
+    expect(screen.getByRole("button", { name: "Close Ask Reverie" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /hide ai chat/i })).not.toBeInTheDocument();
+  });
+
+  it("says what the panel is with the mark rather than a second name", async () => {
+    await openTheChat();
+
+    // The tab said `Ask` and the header said nothing; now the mark says it.
+    // The conversation is what reads first, because it is the only thing up
+    // there that changes.
+    expect(screen.queryByRole("tab", { name: /^Ask$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /previous chat history/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+  });
+
+  it("carries no outline of its own, because the margin already has one", async () => {
+    /*
+     * THIS PANE HAD AN `Outline` TAB, and it took a screenshot to see that it
+     * should not.
+     *
+     * <p>The argument for it was sound: a transcript has no headings of its
+     * own, and the summary's outline is the only thing that makes an hour of
+     * speech navigable. What the argument missed is that the margin has been
+     * carrying exactly that since this page went on the frame -- a `Transcript
+     * outline` region, gated on the same condition, from the same headings,
+     * with the same timecodes and the same seek, and permanently visible
+     * rather than behind a toggle.
+     *
+     * <p>So the tab was the same list twice on one screen about 250px apart,
+     * and the copy in here was the worse of the two. Both halves are asserted
+     * together, because the only thing that makes removing it safe is that the
+     * other one is there.
+     */
+    renderPane = true;
+    // The margin's outline is built from the summary's `outline` sections, and
+    // the default fixture has none -- so without this the second assertion
+    // would pass for the wrong reason.
+    summary = aSummary({
+      sections: [
+        {
+          key: "discussed",
+          title: "What was discussed",
+          kind: "outline",
+          text: "",
+          bullets: [],
+          groups: [
+            { heading: "Moving the beta date", bullets: [], startSeconds: 330 },
+          ],
+        },
+      ],
+    });
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("button", { name: AI_BUTTON }));
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+
+    // Not in the pane, under any of the names it has had.
+    expect(screen.queryByRole("button", { name: "Outline" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Outline" })).not.toBeInTheDocument();
+    // And still on the page, in the margin.
+    expect(screen.getByRole("heading", { name: "Transcript outline" })).toBeInTheDocument();
   });
 });
 

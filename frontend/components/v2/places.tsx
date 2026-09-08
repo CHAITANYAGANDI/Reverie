@@ -16,7 +16,7 @@ import { ASK, HOME, LIBRARY, placeFor, type PlaceId } from "@/lib/places";
  * meeting, Library is not where you are but it is where you came from, and a
  * navigation that goes blank one level down makes people feel lost.
  *
- * Three, and the third is Ask Reverie. Record, Import and Search are
+ * Three, and the third is Reverie AI. Record, Import and Search are
  * deliberately not here — they are verbs, and putting them in a row of
  * destinations is what makes a nav look symmetrical and behave wrongly.
  */
@@ -24,14 +24,20 @@ import { ASK, HOME, LIBRARY, placeFor, type PlaceId } from "@/lib/places";
 /*
  * The third slot is where the V2 design reference put Memory. Memory does not
  * exist — the migrations dropped the tables it was drawn from and nothing has
- * replaced them — so the slot carries the real third destination instead, at
- * its full name. "Ask Reverie" rather than "Ask" because the bare verb beside
- * two nouns reads as a control that got into the wrong row.
+ * replaced them — so the slot carries the real third destination instead.
+ *
+ * <p>A noun, like the two beside it. It was "Ask" first, which is a bare verb
+ * in a row of destinations, then "Ask Reverie" — and that collided with the
+ * control that opens the chat *in place* on a meeting and on Home. Two things
+ * on one screen called Ask Reverie, one of which navigates away from the page
+ * and one of which does not, is a distinction nobody should have to learn by
+ * pressing. "Reverie AI" names the destination; the panels are opened by a
+ * button labelled `AI`.
  */
 const PLACES: { id: PlaceId; href: string; label: string }[] = [
   { id: "home", href: HOME, label: "Home" },
   { id: "library", href: LIBRARY, label: "Library" },
-  { id: "ask", href: ASK, label: "Ask Reverie" },
+  { id: "ask", href: ASK, label: "Reverie AI" },
 ];
 
 export function Places({

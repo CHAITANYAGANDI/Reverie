@@ -21,6 +21,23 @@
  *
  * <p>Not a toggle. It only ever renders on an open pane, and a control labelled
  * "Hide" that can show is a control that lies — see `closeSidePane`.
+ *
+ * <h2>NOTHING RENDERS THIS ANY MORE</h2>
+ *
+ * <p>The meeting pane was the only occupant, and its two header rows became
+ * one: the tab row this sat at the end of is gone, and the way out is now the
+ * `X` in `AskHeader` — the same control Home's pane has, so both panes are shut
+ * the same way. A panel-collapse glyph is a fair icon for what it did and one
+ * that only reads that way to somebody who already knows.
+ *
+ * <p>Left here rather than deleted, on the same terms as `ChatRail`: it is a
+ * presentational component with its own passing tests and no data of its own,
+ * and the redesign that replaced it is not yet approved. Deleting it in the
+ * same change would mean reverting two things to reverse one.
+ *
+ * <p>It should go in the sweep once the panel is settled — this note, the
+ * component, and components/pane-close.test.tsx, together. `closeSidePane` in
+ * components/side-pane is what survives it and is what `AskHeader` calls.
  */
 
 import * as React from "react";

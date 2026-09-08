@@ -66,6 +66,16 @@ vi.mock("@/lib/use-workspace-chat", async () => {
 import { openSidePane, closeSidePane, resetSidePane, useSidePane } from "@/components/side-pane";
 import { WorkspaceAsk, WorkspaceAskPane } from "@/components/chat/workspace-ask";
 
+/**
+ * How the tests tell whether the chat is mounted.
+ *
+ * <p>It was `getByRole("heading", { name: "Ask Reverie" })` — the panel's
+ * title, which no longer exists: the header identifies itself with the mark
+ * alone now. The three region markers are what `AskPanel` always draws and are
+ * the honest structural signal.
+ */
+const MOUNTED = '[data-ask-region="header"]';
+
 /** Whether the shell would be showing the pane. */
 function PaneState() {
   const pane = useSidePane();
@@ -101,7 +111,7 @@ describe("WorkspaceAskPane", () => {
 
     // Not merely hidden: not mounted, so the hook has not run and no request
     // has been made.
-    expect(screen.queryByRole("heading", { name: "Ask Reverie" })).not.toBeInTheDocument();
+    expect(document.querySelector(MOUNTED)).toBeNull();
     expect(useWorkspaceChat).not.toHaveBeenCalled();
   });
 
@@ -110,7 +120,7 @@ describe("WorkspaceAskPane", () => {
 
     act(() => openSidePane());
 
-    expect(screen.getByRole("heading", { name: "Ask Reverie" })).toBeInTheDocument();
+    expect(document.querySelector(MOUNTED)).not.toBeNull();
     // Home's own thread, not `/ask`'s. See `ChatSurface`.
     expect(useWorkspaceChat).toHaveBeenCalledWith("home");
   });
@@ -125,7 +135,7 @@ describe("WorkspaceAskPane", () => {
     // nothing on screen — and it is what makes closing and reopening resume
     // the same thread with the same box. See lib/chat-route.test.tsx for the
     // thread half of that.
-    expect(screen.getByRole("heading", { name: "Ask Reverie" })).toBeInTheDocument();
+    expect(document.querySelector(MOUNTED)).not.toBeNull();
   });
 
   it("resumes the same panel when the pane is opened again", () => {

@@ -891,6 +891,21 @@ describe("the shape of Now", () => {
     expect(washes[0].nextElementSibling?.className).toContain("v2-page");
   });
 
+  /**
+   * What the control that opens Ask is called.
+   *
+   * <p>Longer than what is drawn. The visible label is `AI` — the same word
+   * the meeting page's button carries, so one name opens one panel — and a
+   * hidden continuation makes the accessible name
+   * "AI — ask about your conversations", because "AI" alone is a poor thing to
+   * hear announced. The visible text is contained in the spoken name, so a
+   * person reading and a person listening are told the same thing.
+   *
+   * <p>It read "Ask Reverie about your meetings…" when it was a full-width
+   * field, which was the placeholder of a box that could not be typed into.
+   */
+  const LAUNCHER = /^AI — ask about your conversations$/;
+
   it("keeps the margin from becoming a second application", async () => {
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
@@ -919,9 +934,7 @@ describe("the shape of Now", () => {
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const launcher = screen.getByRole("button", {
-      name: /Ask Reverie about your meetings/,
-    });
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
     // A disclosure, not a link and not a composer: it starts no thread here
     // and it has no address to navigate to.
     expect(launcher).not.toHaveAttribute("href");
@@ -940,9 +953,7 @@ describe("the shape of Now", () => {
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const launcher = screen.getByRole("button", {
-      name: /Ask Reverie about your meetings/,
-    });
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
     await userEvent.click(launcher);
     await userEvent.click(launcher);
 
@@ -951,16 +962,16 @@ describe("the shape of Now", () => {
 
   it("draws one glyph in the launcher and no keyboard badge", async () => {
     /*
-     * The reference puts a Reverie mark at each end of this control and a `⌘ J`
-     * keycap inside it. Two marks read as a logo pasted twice, and a keycap
-     * promises a shortcut that does not exist.
+     * One mark, and it is the Reverie mark rather than the `Waypoints` glyph
+     * the bar carried or the `Sparkles` every product in the category spends
+     * on the same claim. The reference put a mark at each end of this control
+     * and a `⌘ J` keycap inside it: two marks read as a logo pasted twice,
+     * and a keycap promises a shortcut that does not exist.
      */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
-    const launcher = screen.getByRole("button", {
-      name: /Ask Reverie about your meetings/,
-    });
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
     expect(launcher.querySelectorAll("svg")).toHaveLength(1);
     expect(launcher.querySelector("kbd")).toBeNull();
     expect(container.querySelector("kbd")).toBeNull();

@@ -3,20 +3,26 @@
 /**
  * THE ONE ASK HEADER, on every surface that asks.
  *
- * <p>The references draw it identically over Home and over a meeting:
+ * <p>One row, on every surface that asks:
  *
- *     [mark] Ask Reverie  [scope]                      ...        ✕
+ *     [mark]  Which conversation ⌄              +    ⤢    ✕
  *
  * <p>Which is a change of shape rather than of content. What was there was
  * `ChatHistory` alone — a conversation title that opened a picker, New chat,
  * maximise, and the close button pushed in beside them by whichever surface was
- * rendering it. Nothing said what the panel was, and nothing said what it was
- * reading; both are the first two questions somebody opening a chat has.
+ * rendering it. Nothing said what the panel was.
  *
- * <p>So the identity and the scope go on the left where they are read first,
- * and the archive, the maximise and the close stay on the right where they
- * were. `ChatHistory` is unchanged and passed in as `actions` — every one of
- * its behaviours (open a thread, rename, delete, new, maximise) is its own and
+ * <h2>The mark says it, and the words used to</h2>
+ *
+ * <p>It read `[mark] Ask Reverie` and the conversation title was pushed out to
+ * the middle of the row. Two things were wrong with that in a 26rem rail: the
+ * panel's name is the least useful thing in a header somebody opens
+ * deliberately, and it was spending about eighty pixels to say what the mark
+ * beside it already said. So the words go and the mark stays, with the
+ * conversation — the one piece of state up here that changes — reading first.
+ *
+ * <p>`ChatHistory` is unchanged and passed in as `actions`: every one of its
+ * behaviours (open a thread, rename, delete, new, maximise) is its own and
  * survives untouched.
  *
  * <h2>Scope is a slot, and nothing fills it yet</h2>
@@ -49,7 +55,16 @@ export function AskHeader({
 }: {
   /** The scope chip: the workspace picker, or a meeting's static pill. */
   scope?: React.ReactNode;
-  /** Real state and real controls only — the archive, maximise. */
+  /**
+   * The row between the mark and the way out.
+   *
+   * <p>Real state and real controls only — the conversation, New chat,
+   * maximise, and on a meeting the outline. Laid out as a flex row here, and
+   * composed by the caller: what goes in it differs by surface, and a header
+   * that knew which of its children was the conversation picker would be
+   * deciding a layout it cannot see. Callers give `ChatHistory` a
+   * `min-w-0 flex-1` wrapper so its own `ml-auto` reaches the end of the row.
+   */
   actions?: React.ReactNode;
   /**
    * Shut the panel.
@@ -62,32 +77,37 @@ export function AskHeader({
 }) {
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
-      {/* The mark, at the size it takes in the band. Not a decoration: it is
-          what says this panel is Reverie answering rather than a form on the
-          page underneath. */}
+      {/* The mark, at the size it takes in the band. Not a decoration and not
+          a control: it is the whole of what says this panel is Reverie
+          answering rather than a form on the page underneath. */}
       <span className="flex shrink-0 items-center gap-2 text-ink" aria-hidden>
         <BrandMark size={16} />
       </span>
-      <h2 className="v2-page-sub shrink-0 font-headline text-ink">Ask Reverie</h2>
 
       {scope && <div className="min-w-0">{scope}</div>}
 
       {/*
-        `min-w-0`, NOT `shrink-0`, and the difference was a bug worth the note.
-        <p>It was `shrink-0`, which is the obvious thing to write for a row of
-        buttons -- and this region also holds the conversation's title, which
-        in a 26rem pane is the one thing here that has to give. With the region
-        unable to shrink, a title like "Is the beta date still real?" pushed
-        the row 55px past the pane's right edge and took the close button with
-        it: the panel could not be shut at all. Measured at 1440, where the
-        button landed at x=1451 in a 1440px window.
-        <p>`ChatHistory` was already built to truncate -- `min-w-0 max-w-sm`
-        and a `truncate` on the label -- and could not, because a chain of
-        `min-w-0` is only as good as its weakest link and this was it. The
-        close button carries its own `shrink-0` instead, which is the one thing
+        `flex-1` AND `min-w-0`, and neither is spare.
+
+        <p>`flex-1` because the conversation title now reads immediately after
+        the mark rather than in the middle of the row. It was `ml-auto`, which
+        pushed the whole group right and left an eighty-pixel hole where the
+        panel's name had been.
+
+        <p>`min-w-0` because this region holds that title, which in a 26rem
+        pane is the one thing here that has to give -- and it was `shrink-0`,
+        the obvious thing to write for a row of buttons. Unable to shrink, a
+        title like "Is the beta date still real?" pushed the row 55px past the
+        pane's right edge and took the close button with it: the panel could
+        not be shut at all. Measured at 1440, where the button landed at x=1451
+        in a 1440px window. `ChatHistory` was already built to truncate --
+        `min-w-0 max-w-sm` and a `truncate` on the label -- and could not,
+        because a chain of `min-w-0` is only as good as its weakest link.
+
+        <p>The close button carries its own `shrink-0`, which is the one thing
         in the row that must never be the thing that gives.
       */}
-      <div className="ml-auto flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
         {actions}
         {onClose && (
           <button

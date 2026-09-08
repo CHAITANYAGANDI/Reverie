@@ -5,13 +5,25 @@ import userEvent from "@testing-library/user-event";
 import { AskHeader } from "@/components/chat/ask-header";
 
 describe("AskHeader", () => {
-  it("says what the panel is", () => {
-    render(<AskHeader />);
+  it("says what the panel is with the mark, and not in words", () => {
+    const { container } = render(<AskHeader />);
 
-    // The first two questions somebody opening a chat has are "what is this"
-    // and "what is it reading". `ChatHistory` alone answered neither: it showed
-    // a conversation title and three icons.
-    expect(screen.getByRole("heading", { level: 2, name: "Ask Reverie" })).toBeInTheDocument();
+    /*
+     * INVERTED DELIBERATELY. This asserted an `h2` reading "Ask Reverie".
+     *
+     * <p>The words went and the mark stayed. Two things were wrong with them
+     * in a 26rem rail: the panel's name is the least useful thing in a header
+     * somebody opens deliberately, and it spent about eighty pixels saying
+     * what the glyph beside it already said — pushing the conversation title,
+     * which is the one piece of state up here that changes, out to the middle
+     * of the row.
+     */
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask Reverie")).not.toBeInTheDocument();
+    // One mark, and it is decorative: the panel is identified, not labelled.
+    const mark = container.querySelector("svg");
+    expect(mark).not.toBeNull();
+    expect(mark!.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("offers a way out where there is one, and none where there is not", async () => {

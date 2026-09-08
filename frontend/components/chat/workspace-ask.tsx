@@ -92,24 +92,28 @@ export function WorkspaceAsk({
         <AskHeader
           onClose={onClose}
           actions={
-            <ChatHistory
-              conversations={chat.conversations}
-              activeId={chat.conversationId}
-              atNewChat={chat.isNew}
-              busy={chat.starting}
-              /* In the pane it maximises in place. On `/ask` the control is
-                 drawn and refused: this page is already as big as the chat
-                 gets, and a maximise button simply missing from one of three
-                 surfaces reads as a panel that has lost something. See
-                 `expandDisabled` in components/chat-history. */
-              onExpand={variant === "pane" ? toggleSidePaneExpanded : undefined}
-              expanded={variant === "pane" ? pane.expanded : undefined}
-              expandDisabled={variant === "page"}
-              onSelect={chat.setConversationId}
-              onNew={() => void chat.startNew()}
-              onRename={chat.rename}
-              onDelete={chat.remove}
-            />
+            /* Block and full width, so `ChatHistory`'s own `ml-auto` puts New
+               chat and maximise at the end of the row. */
+            <div className="min-w-0 flex-1">
+              <ChatHistory
+                conversations={chat.conversations}
+                activeId={chat.conversationId}
+                atNewChat={chat.isNew}
+                busy={chat.starting}
+                /* In the pane it maximises in place. On `/ask` the control is
+                   drawn and refused: this page is already as big as the chat
+                   gets, and a maximise button simply missing from one of three
+                   surfaces reads as a panel that has lost something. See
+                   `expandDisabled` in components/chat-history. */
+                onExpand={variant === "pane" ? toggleSidePaneExpanded : undefined}
+                expanded={variant === "pane" ? pane.expanded : undefined}
+                expandDisabled={variant === "page"}
+                onSelect={chat.setConversationId}
+                onNew={() => void chat.startNew()}
+                onRename={chat.rename}
+                onDelete={chat.remove}
+              />
+            </div>
           }
         />
       }

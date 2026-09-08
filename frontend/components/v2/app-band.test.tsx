@@ -92,12 +92,16 @@ describe("what is always there", () => {
     const nav = screen.getByRole("navigation", { name: "Places" });
     const names = Array.from(nav.querySelectorAll("a")).map((a) => a.textContent);
     /*
-     * "Ask Reverie", not "Ask". The V2 reference puts Memory in this slot and
-     * Memory does not exist, so the slot carries the real third destination at
-     * its full name — a bare verb beside two nouns reads as a control that got
-     * into the wrong row.
+     * A noun, like the two beside it. The V2 reference puts Memory in this slot
+     * and Memory does not exist, so the slot carries the real third
+     * destination — and it has been renamed twice for the same reason each
+     * time. "Ask" is a bare verb in a row of destinations. "Ask Reverie"
+     * collided with the control that opens the chat *in place* on Home and on
+     * a meeting: two things on one screen with that name, one of which
+     * navigates away and one of which does not. "Reverie AI" names the
+     * destination, and the panels are opened by a button labelled `AI`.
      */
-    expect(names).toEqual(["Home", "Library", "Ask Reverie"]);
+    expect(names).toEqual(["Home", "Library", "Reverie AI"]);
   });
 
   it("sends each place to its own page", () => {
@@ -105,7 +109,7 @@ describe("what is always there", () => {
 
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
-    expect(screen.getByRole("link", { name: "Ask Reverie" })).toHaveAttribute("href", "/ask");
+    expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute("href", "/ask");
   });
 
   it("takes the mark home", () => {
@@ -113,7 +117,7 @@ describe("what is always there", () => {
     // been corners.
     band();
 
-    // By its exact name: "Ask Reverie" also matches /Reverie/, and a loose
+    // By its exact name: "Reverie AI" also matches /Reverie/, and a loose
     // pattern that starts matching a second element is a test that fails for a
     // reason unrelated to the thing it is about.
     expect(screen.getByRole("link", { name: "Reverie — home" })).toHaveAttribute(
@@ -155,7 +159,7 @@ describe("marking where you are", () => {
 
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Ask Reverie" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Reverie AI" })).not.toHaveAttribute("aria-current");
   });
 
   it("keeps the parent marked one level down, without claiming to be it", () => {
@@ -172,7 +176,7 @@ describe("marking where you are", () => {
   it("marks nothing on a page that is not a place", () => {
     band({ pathname: "/record" });
 
-    for (const name of ["Home", "Library", "Ask Reverie"]) {
+    for (const name of ["Home", "Library", "Reverie AI"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });
@@ -307,7 +311,7 @@ describe("no future destination in the band", () => {
 
     // Not a new chat, not a modal, not a placeholder: the destination the
     // product already has, with its thread, its composer and its citations.
-    expect(screen.getByRole("link", { name: "Ask Reverie" })).toHaveAttribute("href", "/ask");
+    expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute("href", "/ask");
   });
 });
 

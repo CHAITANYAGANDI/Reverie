@@ -10,7 +10,6 @@ import {
   Loader2,
   AlertTriangle,
   Clock,
-  Sparkles,
   Languages,
   Users,
   Check,
@@ -75,6 +74,7 @@ import type {
 import { useActiveChat } from "@/lib/active-chat";
 import {
   SidePane,
+  closeSidePane,
   openSidePane,
   toggleSidePaneExpanded,
   useSidePane,
@@ -82,7 +82,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useRecordingJob } from "@/lib/recording-context";
 import { ProcessingCard } from "@/components/processing-card";
-import { PaneClose } from "@/components/pane-close";
 import { JumpTo } from "@/components/jump-to";
 import {
   ProcessingSummary,
@@ -119,7 +118,6 @@ import { TranslationDialog, ReadingIn, ORIGINAL } from "@/components/translation
 import { TranslatedTranscript } from "@/components/translated-transcript";
 import { AudioPlayer, useAudioController } from "@/components/audio-player";
 import { MeetingTitle, MeetingTags } from "@/components/meeting-title";
-import { OutlineNav } from "@/components/outline-nav";
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -168,6 +166,7 @@ import { ChatHistory } from "@/components/chat-history";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatDock } from "@/components/chat/chat-shell";
 import { AskPanel } from "@/components/chat/ask-panel";
+import { AskHeader } from "@/components/chat/ask-header";
 import { AskThread } from "@/components/chat/ask-thread";
 import { AskEvidence } from "@/components/chat/ask-evidence";
 import { BrandMark } from "@/components/v2/brand-mark";
@@ -1451,7 +1450,20 @@ export default function MeetingDetailPage() {
                   reverses the state, and it carries `aria-pressed`. */}
               {ready && (
                 <Button variant="ghost" size="sm" className="gap-1.5" onClick={openSidePane}>
-                  <Sparkles className="h-4 w-4" /> Ask
+                  {/*
+                    THE MARK, NOT A STAR. It was a `Sparkles`, which is the
+                    glyph every product in the category spends on the same
+                    claim and says nothing about whose assistant this is.
+
+                    <p>`AI` rather than `Ask`, and the same label Home's
+                    launcher carries -- one name for one panel. The hidden
+                    continuation is because "AI" alone is a poor thing to hear
+                    announced: the accessible name becomes "AI - ask about this
+                    conversation", which contains the visible text, so what is
+                    read and what is spoken cannot disagree.
+                  */}
+                  <BrandMark size={16} /> AI
+                  <span className="sr-only"> — ask about this conversation</span>
                 </Button>
               )}
             </div>
@@ -1705,17 +1717,33 @@ export default function MeetingDetailPage() {
           {view.chat === "locked" ? (
             <ProcessingChatRail />
           ) : (
-          <MeetingRail
+          <ChatPanel
             meetingId={id}
             title={m.title}
-            showOutline={tab === "transcript"}
-            sections={showing?.sections ?? summary.data?.sections ?? []}
+            /*
+             * NO OUTLINE IN HERE, and it took a screenshot to see why.
+             *
+             * <p>This pane had an `Outline` tab beside the chat, offered over
+             * the transcript on the argument that a transcript has no headings
+             * of its own and the summary's outline is the only thing that makes
+             * an hour of speech navigable. True — and the margin has been
+             * carrying exactly that since the meeting page went on the frame:
+             * `MeetingMargin` renders a `Transcript outline` region, gated on
+             * the same condition, from the same headings, with the same
+             * timecodes and the same seek.
+             *
+             * <p>So the tab was the same list twice on one screen, about 250px
+             * apart, and the copy behind a toggle was the worse of the two.
+             * Measured in a browser at 1440 with both on screen. It went with
+             * the tab row; nothing was lost, because the margin's copy is
+             * permanent and does not have to be asked for.
+             */
             suggestions={summary.data?.suggestions}
             composed={composed}
-            // Through the switch, not straight to the player: this rail is
+            // Through the switch, not straight to the player: this pane is
             // beside both tabs, so a chat citation can be clicked while the
             // summary is on screen and the player does not exist yet.
-            onSeek={playFrom}
+            onCite={playFrom}
           />
           )}
         </SidePane>
@@ -1810,116 +1838,6 @@ export default function MeetingDetailPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-/* -------------------------------- The rail ------------------------------- */
-
-/**
- * What sits beside the document: the chat, and — over the transcript — a way
- * around it.
- *
- * The Outline tab is only offered against the transcript, and that is the point
- * of it. Over the summary the outline is already on screen, in full, a few
- * inches to the left; repeating it in a narrower column would be the same list
- * twice. Over the transcript it is the only thing that makes an hour of speech
- * navigable, because a transcript has no headings of its own.
- */
-function MeetingRail({
-  meetingId,
-  title,
-  showOutline,
-  sections,
-  suggestions,
-  composed,
-  onSeek,
-}: {
-  meetingId: string;
-  /** What the chat is reading, by name. See `scope` in ChatPanel. */
-  title: string;
-  showOutline: boolean;
-  sections: SummarySection[];
-  suggestions?: string[];
-  composed: { text: string; send: boolean; nonce: number } | null;
-  onSeek: (seconds: number) => void;
-}) {
-  const [pane, setPane] = React.useState("chat");
-
-  // Falling back rather than stranding the reader on an empty tab: leaving the
-  // transcript takes the outline with it, and a rail showing nothing would look
-  // broken rather than finished.
-  React.useEffect(() => {
-    if (!showOutline && pane === "outline") setPane("chat");
-  }, [showOutline, pane]);
-
-  return (
-    <Tabs
-      value={pane}
-      onValueChange={setPane}
-      className="flex h-full min-h-0 flex-col"
-    >
-      {/*
-        THE PANE'S HEADER, and the one place its controls live.
-        <p>The rule moves to this row so it spans the full width of the pane
-        with the close button sitting on it, and so the `tablist` holds nothing
-        but tabs — a bare `<button>` among them is invalid ARIA and would join
-        the arrow-key roster as a tab that goes nowhere.
-      */}
-      <div className="flex shrink-0 items-center gap-x-6 border-b border-line px-4">
-        <TabsList variant="underline" className="flex gap-x-6 border-b-0 px-0">
-          {/*
-            NAMED FOR THE CONTROL THAT OPENS IT, which is `Ask` in the mode row.
-
-            <p>It said "AI Chat" behind a `Sparkles`, which named the
-            technology rather than the feature and spent the one glyph every
-            product in the category spends on the same claim. The mark replaces
-            it: this is the identity row the references put over the panel, and
-            it is on the tab rather than on a second row because a 26rem pane
-            cannot afford two rows of chrome.
-
-            <p>`Ask` and not `Ask Reverie`, which it briefly was. The band
-            carries a global nav item called Ask Reverie that goes to `/ask` and
-            asks across every meeting; this tab is one transcript's chat. Two
-            controls with the same accessible name and different scopes are on
-            screen together here -- found by a QA click landing on the nav item
-            and navigating away from the meeting it was supposed to be testing.
-            Sharing a name with the button that opens this pane is right;
-            sharing one with a link that leaves the page is not.
-          */}
-          <TabsTrigger value="chat">
-            <BrandMark size={14} className="mr-1.5" /> Ask
-          </TabsTrigger>
-          {showOutline && <TabsTrigger value="outline">Outline</TabsTrigger>}
-        </TabsList>
-
-        {/*
-          THE WAY OUT OF THE PANE, in the pane. See components/pane-close.
-          <p>Here rather than in `ChatHistory` beside New chat and maximise:
-          those two belong to the conversation, and this closes the pane from
-          whichever tab is showing. `ml-auto` puts it at the far end of the
-          header that already existed, which is why there is still only one.
-        */}
-        <PaneClose className="-mr-1 ml-auto" />
-      </div>
-
-      {/* mt-0 overrides the tab content's default gap: the chat's own header
-          supplies the spacing, and doubling it pushes the composer down. */}
-      <TabsContent value="chat" className="mt-0 min-h-0 flex-1">
-        <ChatPanel
-          meetingId={meetingId}
-          title={title}
-          onCite={onSeek}
-          suggestions={suggestions}
-          composed={composed}
-        />
-      </TabsContent>
-
-      {showOutline && (
-        <TabsContent value="outline" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
-          <OutlineNav sections={sections} onSeek={onSeek} />
-        </TabsContent>
-      )}
-    </Tabs>
   );
 }
 
@@ -2671,54 +2589,85 @@ function ChatPanel({
     /*
      * THE SAME PANEL THE WORKSPACE ASK IS, measured narrower.
      *
-     * <p>`ChatRail` before this, which was the same three regions and is now
-     * only kept for the presentational tests that pin them. What `AskPanel`
-     * adds is the evidence column: it measures itself, so when this pane is
-     * maximised the sources move alongside the answer and when it is a 26rem
-     * rail they stay under it. See components/chat/ask-panel.
+     * <p>`ChatRail` before this, which was the same three regions. What
+     * `AskPanel` adds is the evidence column: it measures itself, so when this
+     * pane is maximised the sources move alongside the answer and when it is a
+     * 26rem rail they stay under it. See components/chat/ask-panel.
      *
-     * <p>No `AskHeader` here, and no scope chip. The identity row it draws is
-     * the tab above this one -- see `MeetingRail` -- and the scope is in the
-     * composer, by name. Both again in a 26rem pane would be four rows of
-     * chrome over the first answer.
+     * <h2>ONE HEADER ROW, where there were two</h2>
+     *
+     * <p>There was a tab row above this one -- `[mark] Ask | Outline` with the
+     * pane's close button at its far end -- and then this row with the
+     * conversation in it. Two rows of chrome over the first answer in a 26rem
+     * rail, and two full-width hairlines 53px apart, which reads as a panel
+     * with two headers.
+     *
+     * <p>So the tab row is gone and this row carries all of it: the mark, the
+     * conversation, New chat, maximise, the way out, and -- over the
+     * transcript -- the outline. Which also makes this pane and the one Home
+     * opens the same header, drawn by the same component, instead of two
+     * arrangements that happened to hold the same controls.
+     *
+     * <p>The outline is a body swap rather than a route or a tab, so the chat
+     * stays mounted underneath it. That is a small improvement on the tabs it
+     * replaced: `TabsContent` unmounted the chat every time somebody looked at
+     * the outline, and the thread only survived because it lives in a module
+     * store.
      */
     <AskPanel
       variant="pane"
       scrollRef={threadRef}
-      // The tab row above this one already rules the pane's chrome off from
-      // its content -- see `MeetingRail`. A second hairline 53px under the
-      // first is a panel with two headers.
-      headerRule={false}
       header={
-        <ChatHistory
-          conversations={conversations ?? []}
-          activeId={conversationId}
-          // Same rule as the workspace chat: an empty thread has nothing to
-          // start. See `isNew` in lib/use-workspace-chat.
-          atNewChat={!isLoading && (messages?.length ?? 0) === 0}
-          onSelect={setConversationId}
-          onNew={onNew}
-          busy={starting}
-          // In place rather than by navigating. There is no full page for one
-          // meeting's chat, and adding a route to hold a second copy of this
-          // conversation would be a URL nobody could get back from with the
-          // transcript still on screen. See components/side-pane.tsx.
-          onExpand={toggleSidePaneExpanded}
-          expanded={pane.expanded}
-          onRename={async (id, title) => {
-            await rename({ conversationId: id, title, scope: meetingId }).unwrap();
-          }}
-          onDelete={async (id) => {
-            await removeConversation({ conversationId: id, scope: meetingId }).unwrap();
-            // The open thread just went, so this chat has none: a clean sheet
-            // with the starter prompts, not the messages of a conversation
-            // that no longer exists.
-            if (id === conversationId) {
-              setConversationId(null);
-              pending.clear();
-              setComposeText({ text: "", nonce: Date.now() });
-            }
-          }}
+        <AskHeader
+          /*
+           * THE WAY OUT, here rather than in a row of its own.
+           *
+           * <p>It was `PaneClose` on the tab row: a panel-collapse glyph at
+           * the far end of a strip that existed mostly to hold it. An `X`
+           * beside maximise is what Home's pane has, it is what a panel with
+           * a header is expected to have, and it means the two panes are shut
+           * the same way.
+           */
+          onClose={closeSidePane}
+          actions={
+            <>
+              {/* Block and full width, so `ChatHistory`'s own `ml-auto` puts
+                  New chat and maximise at the end of the row. */}
+              <div className="min-w-0 flex-1">
+                <ChatHistory
+                  conversations={conversations ?? []}
+                  activeId={conversationId}
+                  // Same rule as the workspace chat: an empty thread has nothing to
+                  // start. See `isNew` in lib/use-workspace-chat.
+                  atNewChat={!isLoading && (messages?.length ?? 0) === 0}
+                  onSelect={setConversationId}
+                  onNew={onNew}
+                  busy={starting}
+                  // In place rather than by navigating. There is no full page for one
+                  // meeting's chat, and adding a route to hold a second copy of this
+                  // conversation would be a URL nobody could get back from with the
+                  // transcript still on screen. See components/side-pane.tsx.
+                  onExpand={toggleSidePaneExpanded}
+                  expanded={pane.expanded}
+                  onRename={async (id, title) => {
+                    await rename({ conversationId: id, title, scope: meetingId }).unwrap();
+                  }}
+                  onDelete={async (id) => {
+                    await removeConversation({ conversationId: id, scope: meetingId }).unwrap();
+                    // The open thread just went, so this chat has none: a clean sheet
+                    // with the starter prompts, not the messages of a conversation
+                    // that no longer exists.
+                    if (id === conversationId) {
+                      setConversationId(null);
+                      pending.clear();
+                      setComposeText({ text: "", nonce: Date.now() });
+                    }
+                  }}
+                />
+              </div>
+
+            </>
+          }
         />
       }
       dock={
