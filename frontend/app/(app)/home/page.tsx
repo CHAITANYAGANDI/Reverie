@@ -378,11 +378,11 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
   return (
     <ul className="[&>li+li>a]:shadow-[inset_0_1px_0_rgb(var(--line))]">
       {meetings.map((meeting) => (
-        /* The clock at the far end with the way in beside it, and Home's
-           larger drawing of the row. Library groups its rows under a date and
-           reads the time beside the duration, at the compact size the archive
-           was designed at -- see `trailingTime` and `size` on the row. */
-        <NowConversationRow key={meeting.id} meeting={meeting} trailingTime size="home" />
+        /* Home's drawing of the row: a glyph column, a chevron at the far
+           end, and no clock. Library's is the compact one the archive was
+           designed at, and it reads the time first in its metadata line --
+           see `size` and `facts` on the row. */
+        <NowConversationRow key={meeting.id} meeting={meeting} size="home" />
       ))}
     </ul>
   );

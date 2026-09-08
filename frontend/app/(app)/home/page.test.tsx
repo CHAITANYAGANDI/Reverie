@@ -1059,6 +1059,48 @@ describe("the shape of Now", () => {
     expect(container.querySelector(".v2-home")).toBeInTheDocument();
   });
 
+  it("shows no clock on a row, and still the way in", async () => {
+    /*
+     * The time used to sit at the far end of every row, opposite the title, in
+     * mono. On a real screen that column was the loudest thing in the list --
+     * competing with the titles for a fact almost nobody opens Home for. The
+     * day heading above the group says which day and the rows are in order
+     * within it, so the clock was carrying very little and charging a lot.
+     *
+     * <p>Removed rather than moved. Dropping the old `trailingTime` prop alone
+     * would have pushed the time back into the metadata line, which is where
+     * it lives in Library -- so the row now decides by size, and this asserts
+     * the time is nowhere on the row at all. `chevron` stays: it is what says
+     * the row is a way in.
+     *
+     * <p>Asserted against a fixed `createdAt` so the time being looked for is
+     * a known string rather than whatever the clock said when the suite ran.
+     */
+    rows = [
+      aMeeting({
+        id: "mtg_a",
+        title: "Tuesday design review",
+        createdAt: "2026-09-07T14:26:00Z",
+        durationSeconds: 1920,
+      }),
+    ];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    // Whatever this machine renders 14:26Z as, in either 12- or 24-hour form.
+    const at = new Date("2026-09-07T14:26:00Z").toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    expect(row.textContent).not.toContain(at);
+    expect(row.querySelector("[data-row-time]")).toBeNull();
+    // The duration is a different fact and stays.
+    expect(row.textContent).toContain("32m 0s");
+    // Two glyphs and no more: the source icon, and the chevron.
+    expect(row.querySelectorAll("svg")).toHaveLength(3); // icon, clock-in-meta, chevron
+  });
+
   it("draws its rows at Home's size, which Library's are not", async () => {
     /*
      * `size="home"`: a glyph in a column of its own, a `.v2-home-title` and

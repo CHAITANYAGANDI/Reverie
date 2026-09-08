@@ -39,7 +39,11 @@
  * turned out to be a ~1.2x capture -- a 114px row that read as a card without
  * a border -- and came down in two steps to a ~72px one. What still separates
  * it from the archive's row is the glyph column, the indent that creates, and
- * the clock and chevron at the trailing edge.
+ * a chevron at the trailing edge.
+ *
+ * <p>The two sizes also disagree about the clock, which is the one FACT that
+ * differs rather than a treatment of the same fact. Home does not show a time
+ * at all; Library reads it first in the metadata line. See `facts` below.
  *
  * <p>Everything that decides WHAT a row says is shared: the icon, the live
  * status subscription, the facts line and its dots, the failure text. Two
@@ -75,7 +79,6 @@ function Dot() {
 export function NowConversationRow({
   meeting,
   action,
-  trailingTime = false,
   size = "list",
 }: {
   meeting: MeetingResponse;
@@ -92,19 +95,6 @@ export function NowConversationRow({
    * status pill ends up on one screen and not the other.
    */
   action?: React.ReactNode;
-  /**
-   * Put the clock at the far end of the row, with a chevron, instead of first
-   * in the metadata line.
-   *
-   * <p>Opt-in, and Home is the only caller that opts in. Library and a folder
-   * share this one drawing of the row on purpose -- two drawings is how a
-   * status pill ends up on one screen and not the other -- so a change that
-   * suits a short list on the default page must not silently re-lay-out the
-   * archive. On Home the list is twenty rows with one time each and the eye
-   * runs down that column; in Library the same rows carry a date group
-   * heading above them and the time belongs beside the duration.
-   */
-  trailingTime?: boolean;
   /**
    * How large the row is drawn. See the note above.
    *
@@ -138,8 +128,22 @@ export function NowConversationRow({
   });
 
   const facts: React.ReactNode[] = [];
-  // First in the line, unless it is being drawn at the other end of the row.
-  if (!trailingTime) {
+  /*
+   * FIRST IN THE LINE, AND ONLY AT LIST SIZE.
+   *
+   * <p>Home draws no clock. It had one at the far end of the row, opposite the
+   * title, on the reasoning that twenty rows with one time each give the eye a
+   * column to run down -- and on a real screen that column was the loudest
+   * thing in the list, in mono, competing with the titles for a fact almost
+   * nobody came to the page for. The day heading above the group already says
+   * which day, and the rows are in order within it.
+   *
+   * <p>Library keeps it. There the row is a search result: the archive is
+   * ordered and filtered, and the time is part of identifying which of two
+   * meetings called Product Weekly this one is. It reads beside the duration
+   * at 11.5px, where it has always been.
+   */
+  if (!big) {
     facts.push(
       <span key="at" className="tabular font-mono">
         {at}
@@ -188,39 +192,6 @@ export function NowConversationRow({
       </span>,
     );
   }
-
-  /*
-   * THE CLOCK AND THE WAY IN, at the end of the title's line.
-   *
-   * <p>`shrink-0` on both and `flex-1 truncate` on the title, so a long name
-   * runs out of room before it runs under the time -- which at 390px is the
-   * difference between a readable row and a title with a clock printed
-   * through it. Shared by both sizes because it is the same pair of things.
-   */
-  const trailing = trailingTime && (
-    <>
-      <span
-        data-row-time
-        className={
-          big
-            ? // `--ink-4` is documented for >=16px; this is 13px now, so the
-              // clock takes the tier that clears 4.5:1 at any size.
-              "v2-home-meta tabular shrink-0 font-mono text-ink-3"
-            : "tabular shrink-0 font-mono text-foot text-ink-4"
-        }
-      >
-        {at}
-      </span>
-      <ChevronRight
-        className={
-          big
-            ? "h-4 w-4 shrink-0 translate-y-px text-ink-4"
-            : "h-3.5 w-3.5 shrink-0 translate-y-px text-ink-5"
-        }
-        aria-hidden
-      />
-    </>
-  );
 
   const meta = facts.length > 0 && (
     <span
@@ -275,7 +246,16 @@ export function NowConversationRow({
                 >
                   {meeting.title}
                 </span>
-                {trailing}
+                {/* THE WAY IN, and nothing else out here now.
+                    <p>`shrink-0` against the title's `flex-1 truncate`, so a
+                    long name runs out of room before it runs under the
+                    chevron. It is the only thing at this end: the clock that
+                    used to sit beside it is gone, and at list size the time
+                    reads in the metadata line where it always did. */}
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 translate-y-px text-ink-4"
+                  aria-hidden
+                />
               </span>
               {meta}
             </span>
@@ -292,7 +272,6 @@ export function NowConversationRow({
               >
                 {meeting.title}
               </span>
-              {trailing}
             </span>
             {meta}
           </>
