@@ -16,6 +16,7 @@
 
 import * as React from "react";
 import {
+  Eraser,
   Highlighter,
   Copy,
   MessageSquarePlus,
@@ -71,6 +72,17 @@ export interface SelectionMenuProps {
   onAction: (action: SelectionAction) => void;
   /** Hidden while a mark is being saved, so a double click cannot double-save. */
   busy?: boolean;
+  /**
+   * The selection already lands on a highlight.
+   *
+   * <p>Turns the first item into the way out of one. There was no way out:
+   * highlighting was a one-way action, so selecting highlighted words offered
+   * `Highlight` again -- which either did nothing visible or stacked a second
+   * mark over the first. The undo for every other kind of mark is where the
+   * mark is; a passage highlight is drawn as a tint on the words themselves,
+   * so the only place it can be is here, on the words.
+   */
+  highlighted?: boolean;
 }
 
 /**
@@ -107,7 +119,12 @@ const MENU_WIDTH = 210;
 const MENU_HEIGHT = 300;
 const GAP = 8;
 
-export function SelectionMenu({ anchor, onAction, busy }: SelectionMenuProps) {
+export function SelectionMenu({
+  anchor,
+  onAction,
+  busy,
+  highlighted,
+}: SelectionMenuProps) {
   if (!anchor) return null;
 
   // Flip above the selection when there is no room below, and never let the
@@ -136,18 +153,57 @@ export function SelectionMenu({ anchor, onAction, busy }: SelectionMenuProps) {
       // so the page recognises the menu by attribute instead.
       onMouseDown={(e) => e.preventDefault()}
     >
-      {ITEMS.map(({ action, label, icon: Icon }) => (
-        <button
-          key={action}
-          role="menuitem"
-          disabled={busy}
-          onClick={() => onAction(action)}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
-        >
-          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-          {label}
-        </button>
+      {ITEMS.map((item) => (
+        <MenuItem
+          key={item.action}
+          item={item}
+          /* The only item that reads its own state. See `highlighted`. */
+          highlighted={item.action === "highlight" && Boolean(highlighted)}
+          busy={busy}
+          onAction={onAction}
+        />
       ))}
     </div>
+  );
+}
+
+/**
+ * One row of the menu.
+ *
+ * <p>Its own component only because one of the eight reads state: `Highlight`
+ * becomes `Remove highlight` over words that already carry one. Branching on
+ * that inside the `map` would have put a conditional in every row to serve a
+ * single case.
+ */
+function MenuItem({
+  item: { action, label, icon: Icon },
+  highlighted,
+  busy,
+  onAction,
+}: {
+  item: Item;
+  /** This row is the highlight row, and the selection is already highlighted. */
+  highlighted: boolean;
+  busy?: boolean;
+  onAction: (action: SelectionAction) => void;
+}) {
+  return (
+    <button
+      role="menuitem"
+      disabled={busy}
+      onClick={() => onAction(action)}
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+    >
+      {/* An eraser rather than a struck-through highlighter: lucide has no
+          "off" variant of this glyph, and the two shapes are hard to tell
+          apart at 16px, which is exactly the size at which a destructive
+          action must not be mistakable for the one that creates it. */}
+      {highlighted ? (
+        <Eraser className="h-4 w-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      {highlighted ? "Remove highlight" : label}
+    </button>
   );
 }

@@ -92,6 +92,7 @@ export function MeetingMargin({
   showOutline,
   tags,
   onSeek,
+  onIndex,
 }: {
   meeting: MeetingResponse;
   /** Real diarization output. Empty for a document, or before the transcript. */
@@ -117,6 +118,13 @@ export function MeetingMargin({
    */
   tags?: React.ReactNode;
   onSeek: (seconds: number) => void;
+  /**
+   * Show the part of the document an index row points at.
+   *
+   * <p>The page's, because only the page knows that its summary and its
+   * transcript are two tabs and that one of them is not mounted. See `Index`.
+   */
+  onIndex: (anchor: string) => void;
 }) {
   const isDocument = meeting.sourceType === "DOCUMENT";
 
@@ -271,6 +279,7 @@ export function MeetingMargin({
           <Index
             icon={ListChecks}
             anchor={actions.total > 0 ? ACTION_ITEMS_ANCHOR : undefined}
+              onNavigate={onIndex}
             label={
               actions.total === 0
                 ? "No action items"
@@ -288,6 +297,7 @@ export function MeetingMargin({
             <Index
               icon={GitBranch}
               anchor={decisions > 0 ? INSIGHTS_ANCHOR : undefined}
+              onNavigate={onIndex}
               label={decisions === 0 ? "No decisions" : `${decisions} recorded`}
             />
           </Region>
@@ -296,6 +306,7 @@ export function MeetingMargin({
             <Index
               icon={TriangleAlert}
               anchor={risks > 0 ? INSIGHTS_ANCHOR : undefined}
+              onNavigate={onIndex}
               label={risks === 0 ? "No risks" : `${risks} noted`}
             />
           </Region>
@@ -404,10 +415,18 @@ function Index({
   icon: Icon,
   label,
   anchor,
+  onNavigate,
 }: {
   icon: typeof ListChecks;
   label: string;
   anchor?: string;
+  /**
+   * Take the reader to that part of the document.
+   *
+   * <p>Required alongside `anchor`, and the reason the link cannot just be a
+   * link: see the note above.
+   */
+  onNavigate?: (anchor: string) => void;
 }) {
   const body = (
     <>
@@ -421,6 +440,28 @@ function Index({
   return (
     <a
       href={`#${anchor}`}
+      /*
+       * A LINK THAT DOES NOT NAVIGATE ITSELF, and it had to become one.
+       *
+       * <p>It was a bare `href="#meeting-insights"`, which worked from the
+       * summary and did nothing at all from the transcript -- the two are
+       * `TabsContent` panels and Radix unmounts the inactive one, so the
+       * element the hash names is not in the document to be scrolled to. A
+       * dead link, and dead in the one direction somebody would use it: you
+       * read the transcript, notice the margin says three decisions, press it,
+       * and the page sits still.
+       *
+       * <p>So the page is asked to switch tabs and then scroll, and this
+       * suppresses the browser's own attempt. The `href` stays because it is
+       * still true and still useful: pasted or opened cold,
+       * `/meetings/x#meeting-insights` lands on the summary -- the default tab
+       * -- and the browser scrolls to it with no help from us.
+       */
+      onClick={(e) => {
+        if (!onNavigate) return;
+        e.preventDefault();
+        onNavigate(anchor);
+      }}
       className={cn(
         "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1 text-ink-2",
         "transition-colors duration-press ease-soft hover:bg-white/[0.035] hover:text-ink",

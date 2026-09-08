@@ -105,8 +105,9 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
         <Places pathname={pathname} className="ml-1 hidden md:flex" />
         </div>
 
-        {/* The centre column. Empty on a phone, where 232px of search box would
-            leave no room for the controls that have to be reachable. */}
+        {/* The centre column. Empty on a phone, where a search field wide
+            enough to look like one would leave no room for the controls that
+            have to be reachable. */}
         <div className="hidden justify-center sm:flex">
           <FindButton />
         </div>
@@ -121,86 +122,96 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
           <p>Naming the column fixes them to it whatever drops out.
         */}
         <div className="col-start-3 flex items-center justify-end gap-1">
-        {create && (
-          /*
-            THE TWO WAYS TO MAKE A MEETING, GROUPED AND OFF THE EDGE.
-            <p>They were loose children of the row at its `gap-1`, so Record
-            sat four pixels from the plus and the plus four from the divider:
-            three controls in a row with nothing to say which two belonged
-            together. `gap-2` separates the pair, and `mr-3` pushes the pair
-            clear of the account controls -- recording and importing are about
-            the work, and the bell and the avatar are about you.
-          */
-          <div className="mr-3 flex items-center gap-2">
-            {/*
-              QUIET, NOT BRAND-FILLED.
-              <p>This was a filled iris pill, which made the loudest thing in
-              the whole application a button that starts a recording nobody had
-              asked for yet — and spent the one accent on a control that is
-              present on every page. The palette's own rule is that the accent
-              means "Reverie noticed this", not "this is the primary button".
-              An outlined control in ink is what the reference draws and it
-              still reads as the most substantial thing on the right.
-              <p>Behaviour is untouched: same handler, same refusal title, same
-              hiding below `md` where it is the fourth bottom tab.
-            */}
-            <button
-              type="button"
-              onClick={record.start}
-              // Not disabled: a dead button explains nothing, and the reason is
-              // the whole of what somebody needs here. It stays pressable and
-              // answers.
-              title={record.refusal ?? undefined}
-              className={cn(
-                // 36px, level with the import control beside it. At 32 the
-                // two were a pill and a slightly shorter square, which reads
-                // as a misalignment rather than as a pair.
-                "hidden h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-foot font-headline text-ink md:flex",
-                "shadow-[inset_0_0_0_1px_rgb(var(--edge))]",
-                "transition-colors duration-press ease-soft hover:bg-surface-hover",
-              )}
-            >
-              <Mic className="h-3.5 w-3.5" />
-              Record
-            </button>
+          {/*
+            ONE RUN OF GLYPHS, then a rule, then the account.
 
-            {/* A plus, which is what the reference draws, and it opens the
-                Import dialog that already exists. Not a create menu: there is
-                exactly one thing this makes, and a menu with one item in it is
-                a click somebody pays for nothing.
+            <p>Record, Import and the bell are three 36px glyphs at one gap.
+            They were two outlined boxes and then, past a rule, a bare bell
+            beside the avatar: four controls in three treatments.
 
-                A dialog rather than a route: a file arrives more often than
-                anything else creates a meeting, and it should not cost leaving
-                whatever is on screen. /upload still exists for the fuller form
-                — filing straight into a folder — and for direct links. */}
-            <BandIcon label="Import a recording" onClick={onImport}>
-              <Plus className="h-[18px] w-[18px]" />
-            </BandIcon>
+            <p>Record has been three things. A filled iris pill, which made the
+            loudest thing in the whole application a button that starts a
+            recording nobody asked for. Then an outlined pill reading `Record`.
+            Now a bare mic -- and the word came off with the stroke, because
+            they were propping each other up: an outlined square beside an
+            outlined pill is a pair of boxes, and once the boxes are gone a
+            word beside a glyph is a pair of unlike things.
+
+            <p>What is left is the band own idiom, which the bell and the
+            search field were already using: an operable thing is a glyph that
+            takes a fill on hover. `title` and `aria-label` carry the names, so
+            nothing is lost but the outline.
+
+            <p>The bell moved to this side of the rule. It was grouped with the
+            avatar, on the reading that the rule separates what is about the
+            work from what is about you, and a notification is addressed to
+            you. It reads better here, and the reason is the avatar rather than
+            the bell: the avatar is the only filled circle in the band and the
+            only thing in it that opens a menu about the account, so left alone
+            after the rule it terminates the row -- which is where an account
+            control is looked for. The bell becomes a third glyph in a run of
+            one size rather than the first half of a pair that never quite read
+            as a pair.
+          */}
+          <div className="mr-1 flex items-center gap-2">
+            {create && (
+              <>
+                <BandIcon
+                  label="Record a conversation"
+                  onClick={record.start}
+                  // Not disabled: a dead button explains nothing, and the
+                  // reason is the whole of what somebody needs here. It stays
+                  // pressable and answers, and the refusal replaces the name
+                  // in the tooltip when there is one.
+                  title={record.refusal ?? undefined}
+                  // Hidden below `md`, where it is the fourth bottom tab.
+                  className="hidden md:flex"
+                >
+                  <Mic className="h-[18px] w-[18px]" />
+                </BandIcon>
+
+                {/* A plus, which is what the reference draws, and it opens the
+                    Import dialog that already exists. Not a create menu: there
+                    is exactly one thing this makes, and a menu with one item in
+                    it is a click somebody pays for nothing.
+
+                    A dialog rather than a route: a file arrives more often than
+                    anything else creates a meeting, and it should not cost
+                    leaving whatever is on screen. /upload still exists for the
+                    fuller form -- filing straight into a folder -- and for
+                    direct links. */}
+                <BandIcon label="Import a recording" onClick={onImport}>
+                  <Plus className="h-[18px] w-[18px]" />
+                </BandIcon>
+              </>
+            )}
+
+            {/* Always drawn. Unlike Record and Import it is not about making
+                anything, so no page has a reason to withhold it. */}
+            <NotificationBell />
           </div>
-        )}
 
-        {/* Drawn only when there is something on both sides of it. Without the
-            create controls the two remaining icons are the same kind of thing —
-            things that are about you rather than about the work — and a stroke
-            with nothing to separate is a stroke floating in a row.
+          {/*
+            THE RULE, and it is drawn everywhere now.
 
-            `bg-edge`, not `bg-line`. `--line` is a 6% white hairline meant for
-            the boundary between rows of a list, where a whole page of them
+            <p>It was conditional on `create`, because without Record and
+            Import the two things left -- the bell and the avatar -- were the
+            same kind of thing, and a stroke with nothing to separate is a
+            stroke floating in a row. The bell is on the other side of it now,
+            so there is always something on both sides and the band keeps one
+            shape on every page.
+
+            <p>`bg-edge`, not `bg-line`. `--line` is a 6% white hairline meant
+            for the boundary between rows of a list, where a whole page of them
             reads as a grid; one 16px stroke of it in a dark band is 1.14:1 and
             simply is not there. `--edge` is the token for a stroke that is
-            supposed to be seen — it is what outlines the Record button eight
-            pixels to the left, so the two now read as the same material. */}
-        {create && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-edge" />}
+            supposed to be seen.
+          */}
+          <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-edge" />
 
-        {/* THE TWO THAT ARE ABOUT YOU, with their own gap.
-            <p>At the row's `gap-1` the bell sat four pixels from the avatar,
-            which reads as one control with a badge on it rather than two
-            things — and the avatar is the one control in the band that is a
-            filled circle, so it needs the most room around it, not the least. */}
-        <div className="flex items-center gap-2.5">
-          <NotificationBell />
+          {/* THE ONE THING THAT IS ABOUT YOU, and it ends the row. The avatar
+              is the band only filled circle, so it keeps the room around it. */}
           <AccountMenu />
-        </div>
         </div>
       </div>
     </header>
@@ -228,45 +239,82 @@ function FindButton() {
       onClick={() => openSearch()}
       aria-label="Search"
       className={cn(
-        /* 232px and 30px, from the reference. It was a bordered pill sized to
-           its contents, which read as another action in the right-hand group
-           rather than as a field. A field has a width. */
-        "flex h-[30px] w-full max-w-[232px] items-center gap-2 rounded-md bg-white/[0.05] pl-2.5 pr-1.5",
+        /*
+          30px tall, and an explicit length.
+
+          <p>It was `w-full max-w-[232px]`, which did nothing at all: the band
+          is `grid-cols-[1fr_auto_1fr]` and this sits in the `auto` track, so
+          the track is content-width, `w-full` resolves to the content, and the
+          `max-w` was never reached. Measured at 1440: 86px, a pill sized to
+          the word `Search`, which is what made it read as another action in
+          the right-hand group rather than as a field. A field has a width, and
+          this is the first version that actually has one.
+
+          <p>Two of them, because the middle track takes its width out of the
+          two groups either side: 340 is right on a laptop and would squeeze
+          the account controls at 640, where the band first draws this at all.
+
+          <p>The height is untouched. A taller box in a 48px band leaves it
+          almost no air, and length is the dimension that makes a field look
+          like somewhere a sentence can go.
+        */
+        "flex h-[30px] w-[260px] items-center gap-2 rounded-md bg-white/[0.05] px-2.5 lg:w-[340px]",
         "text-callout text-ink-4 shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.08)]",
         "transition-colors duration-press ease-soft hover:bg-white/[0.08] hover:text-ink-3",
       )}
     >
       <Search className="h-3.5 w-3.5 shrink-0" />
       <span className="flex-1 text-left">Search</span>
-      {/* The shortcut, shown rather than taught. Mono because it is a key, and
-          hidden where it cannot be pressed. */}
-      <kbd className="hidden rounded-xs border border-line px-1 font-mono text-[10px] leading-4 text-ink-4 lg:inline">
-        ⌘K
-      </kbd>
+      {/*
+        NO SHORTCUT BADGE. There was a `⌘K` keycap at the far end, on the
+        reasoning that a shortcut is better shown than taught.
+
+        <p>What it actually did was put a second bordered thing inside a field
+        whose whole job is to look like one open space, at the end where the
+        eye lands after reading the placeholder — and it was wrong on Windows
+        and Linux, where the binding is Ctrl. The shortcut still works
+        everywhere; it is bound on the shell, not on this button.
+
+        <p>Its `pr-1.5` went with it: the field is evenly padded now, which is
+        what it should have been the moment there was nothing to inset.
+      */}
     </button>
   );
 }
 
 /**
- * The import control.
+ * A glyph in the band, at 36px.
  *
- * <p>36px and outlined, where it was a 32px bare glyph. It is one of the two
- * things in this band that makes a meeting, and beside an outlined Record
- * button a plus with no edge at all read as a decoration rather than a
- * control — so it now carries the same `--edge` stroke, which is the token for
- * the visible boundary of anything operable.
+ * <p>Every operable thing on the right-hand side is one of these — Record,
+ * Import, and the bell, which `NotificationBell` draws to the same
+ * measurements. It has been outlined and is not any more; see the note at the
+ * call site for why the strokes and Record's word came off together. What says
+ * it is a control is the fill it takes on hover, which is what the search field
+ * does too.
  *
- * <p>Still square rather than a labelled pill: Record earns its word because
- * it starts something irreversible, and a second word here would make the pair
- * the loudest thing in a band that is on every page.
+ * <p>Square rather than a labelled pill: a word in here would make the run the
+ * loudest thing in a band that is on every page, and the names sit on
+ * `aria-label` and `title`, where they cost no width.
  */
 function BandIcon({
   label,
   onClick,
+  title,
+  className,
   children,
 }: {
   label: string;
   onClick: () => void;
+  /**
+   * The tooltip, where it should say something other than the name.
+   *
+   * <p>Record uses it for a refusal — "you have four minutes left this month"
+   * is the whole of what somebody needs, and it belongs on the control rather
+   * than in a toast after the press. `aria-label` stays the name either way,
+   * so the button is always findable by what it does.
+   */
+  title?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -274,12 +322,12 @@ function BandIcon({
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
-      className={
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-3 " +
-        "shadow-[inset_0_0_0_1px_rgb(var(--edge))] " +
-        "transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
-      }
+      title={title ?? label}
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-3",
+        "transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink",
+        className,
+      )}
     >
       {children}
     </button>

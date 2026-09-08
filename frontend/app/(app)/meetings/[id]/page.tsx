@@ -303,6 +303,75 @@ export default function MeetingDetailPage() {
   }
 
   /**
+   * A part of the summary the margin has asked to be shown.
+   *
+   * <p>Held rather than acted on immediately, because the answer takes two
+   * steps: the summary has to be the mounted tab before there is anything to
+   * scroll to. Cleared once it has been.
+   */
+  const [pendingIndex, setPendingIndex] = React.useState<string | null>(null);
+
+  /**
+   * Go to an indexed section, from wherever the reader is.
+   *
+   * <p>Through `changeTab`, not `setTab`, so a half-finished transcript
+   * correction is still asked about rather than discarded by a click in the
+   * margin -- and if that question is declined the tab does not change, which
+   * is why the anchor is only remembered and not scrolled to here.
+   */
+  const goToIndex = React.useCallback((anchor: string) => {
+    changeTab("summary");
+    setPendingIndex(anchor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /*
+   * The scroll, once the summary is on screen.
+   *
+   * <h2>Why it waits for a frame instead of just doing it</h2>
+   *
+   * <p>The element does not exist when the click happens, and -- measured --
+   * not in the commit after it either. `TabsContent` renders through Radix's
+   * `Presence`, which promotes a newly selected panel in a layout effect, so
+   * the children mount in a *second* commit. That commit is a re-render of the
+   * tab panel's own subtree: this component is not part of it, so keying this
+   * effect on anything, or leaving it with no dependency array at all, gives
+   * it no second chance to look. Both were tried; both left the page sitting
+   * still, which is the bug this is fixing.
+   *
+   * <p>So it watches the document rather than React. One `getElementById` per
+   * frame until the anchor turns up, with a deadline so a mistyped id cannot
+   * leave a loop running behind a page somebody is reading. In practice it
+   * resolves on the first or second frame.
+   *
+   * <p>Both anchors render unconditionally inside that panel, so the only way
+   * to reach the deadline is a bug here rather than a state of the meeting.
+   */
+  const INDEX_SCROLL_DEADLINE_MS = 1000;
+  React.useEffect(() => {
+    if (!pendingIndex || tab !== "summary") return;
+    let frame = 0;
+    const giveUpAt = Date.now() + INDEX_SCROLL_DEADLINE_MS;
+    function look() {
+      const target = document.getElementById(pendingIndex as string);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth" });
+        setPendingIndex(null);
+        return;
+      }
+      if (Date.now() >= giveUpAt) {
+        setPendingIndex(null);
+        return;
+      }
+      frame = requestAnimationFrame(look);
+    }
+    look();
+    // Cancelled on the way out, so leaving the meeting mid-wait does not leave
+    // a callback holding an id for a page that has gone.
+    return () => cancelAnimationFrame(frame);
+  }, [pendingIndex, tab]);
+
+  /**
    * Text pushed into the chat from elsewhere on the page.
    *
    * Carries a nonce because the same passage can be asked about twice, and a
@@ -1819,6 +1888,10 @@ export default function MeetingDetailPage() {
                with every heading already playable -- see the note on the
                component. */
             showOutline={tab === "transcript"}
+            /* Action items, decisions and risks are all in the summary panel,
+               which is not mounted while the transcript is showing -- so the
+               margin cannot reach them with a `#hash` on its own. */
+            onIndex={goToIndex}
             /* The page's own element, so there is one control writing to the
                tags rather than two. Not while the meeting is still working:
                tagging a meeting you cannot read yet is filing a document you
@@ -2972,9 +3045,41 @@ function TranscriptPanel({
    * answers — which is why the toast reads it back off the response rather than
    * guessing "Speaker 5" from what the client can see.
    */
-  async function confirmReassignToNew() {
-    const speaker = await applyReassign({ newSpeaker: true }, null);
-    if (speaker) toast.success(`Assigned to ${speaker}.`);
+  /**
+   * Move the words to somebody this meeting does not have yet, by name.
+   *
+   * <h2>Two requests, and why</h2>
+   *
+   * <p>`PATCH /meetings/{id}/segments/{segmentId}/speaker` names a new speaker
+   * `Speaker N` and has no field for anything else. So a transcript with one
+   * real participant gained a `Speaker 2` -- a person who was never in the
+   * room, created by the one correction whose entire purpose is accuracy.
+   *
+   * <p>The fix is the rename that already exists: create, read back the name
+   * the server allocated, and `PATCH /meetings/{id}/speakers` it to the one
+   * the reader typed. Both endpoints are unchanged.
+   *
+   * <p>If the rename fails the words have still moved, and they are on a
+   * speaker called `Speaker N` -- which is the state this exists to avoid, so
+   * it says so rather than reporting success. The speaker editor renames them
+   * by hand from there.
+   */
+  async function confirmReassignToNew(name: string) {
+    const allocated = await applyReassign({ newSpeaker: true }, null);
+    if (!allocated) return;
+    const wanted = name.trim();
+    if (!wanted || wanted === allocated) {
+      toast.success(`Assigned to ${allocated}.`);
+      return;
+    }
+    try {
+      await renameSpeakers({ id: meetingId, mapping: { [allocated]: wanted } }).unwrap();
+      toast.success(`Assigned to ${wanted}.`);
+    } catch {
+      toast.error(
+        `The words moved, but they are on ${allocated} -- the rename to ${wanted} failed.`,
+      );
+    }
   }
 
   async function applyReassign(
@@ -3026,9 +3131,25 @@ function TranscriptPanel({
     const p = picked.capture;
 
     switch (action) {
-      case "highlight":
-        await saveMoment("HIGHLIGHT", p);
+      case "highlight": {
+        /*
+         * THE SAME ITEM BOTH WAYS. A highlight had no undo: selecting
+         * highlighted words offered `Highlight` again, which stacked a second
+         * mark over the first and looked like nothing had happened.
+         *
+         * <p>One item rather than two, because "highlight" and "remove
+         * highlight" are never both available -- the selection either lands on
+         * one or it does not, and a menu that offers the impossible one greyed
+         * out is a row of chrome on every selection to serve one case.
+         */
+        const already = highlightOver(p.ranges);
+        if (already) {
+          await removeMoment(already.id, "Could not remove that highlight.");
+        } else {
+          await saveMoment("HIGHLIGHT", p);
+        }
         break;
+      }
       case "copy":
         // With the speaker and the timecode, because a transcript line pasted
         // bare into a ticket loses the two things that make it evidence.
@@ -3090,6 +3211,42 @@ function TranscriptPanel({
       }
     }
     clearSelection();
+  }
+
+  /**
+   * A highlight the selection lands on, if there is one.
+   *
+   * <p>Overlap rather than equality, and that is the point: somebody removing
+   * a highlight re-selects the words by hand, and a hand-made selection almost
+   * never has the same offsets as the one that made the mark -- a character
+   * either side is enough. Any shared character in the same segment counts.
+   *
+   * <p>Only `HIGHLIGHT`. A note and an action item are anchored to the same
+   * words and are not what this item is about; they are removed where they are
+   * drawn, in the margin beside the turn.
+   */
+  function highlightOver(ranges: Passage["ranges"]): TranscriptMoment | undefined {
+    return marks.find(
+      (m) =>
+        m.kind === "HIGHLIGHT" &&
+        m.ranges.some((r) =>
+          ranges.some(
+            (sel) =>
+              sel.segmentId === r.segmentId &&
+              sel.startOffset < r.endOffset &&
+              r.startOffset < sel.endOffset,
+          ),
+        ),
+    );
+  }
+
+  /** Take a mark away, saying so if the server refuses. */
+  async function removeMoment(id: string, failure: string) {
+    try {
+      await deleteMoment({ id, meetingId }).unwrap();
+    } catch {
+      toast.error(failure);
+    }
   }
 
   /** The bookmark on a turn, if there is one. */
@@ -3768,7 +3925,14 @@ function TranscriptPanel({
           <p className="v2-read whitespace-pre-wrap">{fallbackText}</p>
         )}
 
-      <SelectionMenu anchor={picked?.anchor ?? null} onAction={onSelectionAction} busy={marking} />
+      <SelectionMenu
+        anchor={picked?.anchor ?? null}
+        onAction={onSelectionAction}
+        busy={marking}
+        /* So the first item can be the way out of a highlight rather than a
+           second one. Computed here because the marks are here. */
+        highlighted={picked ? highlightOver(picked.capture.ranges) !== undefined : false}
+      />
       <ReassignSpeakerDialog
         target={reassignFor}
         speakers={speakerStats ?? []}
@@ -3779,7 +3943,7 @@ function TranscriptPanel({
           setReassignError(null);
         }}
         onConfirm={confirmReassign}
-        onConfirmNew={() => void confirmReassignToNew()}
+        onConfirmNew={(name) => void confirmReassignToNew(name)}
       />
       <NoteDialog meetingId={meetingId} passage={noteFor} onClose={() => setNoteFor(null)} />
       <ActionItemDialog

@@ -89,7 +89,13 @@ export function FolderMargin() {
         aside={
           <Link
             href={FOLDERS}
-            className="text-foot text-ink-3 transition-colors duration-press ease-soft hover:text-ink-2"
+            /* Iris, the same as `Add` in Home's margin.
+               <p>They are the same kind of thing in the same place: the one
+               affordance in a column that is otherwise a list of facts. It was
+               `text-ink-3`, which is the colour of the facts around it, so the
+               one link in the margin read as another label. `--brand-text` is
+               what the palette keeps for a word that can be pressed. */
+            className="text-foot text-brand-text transition-opacity duration-press ease-soft hover:opacity-80"
           >
             Manage
           </Link>

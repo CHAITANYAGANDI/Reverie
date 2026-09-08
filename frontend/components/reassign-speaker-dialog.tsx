@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SpeakerAvatar } from "@/components/speaker-avatar";
 import { cn } from "@/lib/utils";
 import type { SpeakerStats } from "@/lib/types";
@@ -72,8 +73,16 @@ export function ReassignSpeakerDialog({
   error?: string | null;
   onClose: () => void;
   onConfirm: (speakerKey: string) => void;
-  /** The words belong to somebody not in this meeting yet. */
-  onConfirmNew: () => void;
+  /**
+   * The words belong to somebody not in this meeting yet, and this is who.
+   *
+   * <p>The name is asked for rather than allocated. The endpoint names a new
+   * speaker `Speaker N` and has no field for anything else, so a transcript
+   * with one real participant gained a `Speaker 2` -- a second person who was
+   * never in the room, created by a correction whose whole purpose was
+   * accuracy. The caller creates and then renames; see `confirmReassignToNew`.
+   */
+  onConfirmNew: (name: string) => void;
 }) {
   // The second step of the new-speaker path. Local, and reset whenever the
   // dialog opens on a different selection: a confirm left standing from the
@@ -83,8 +92,11 @@ export function ReassignSpeakerDialog({
   // which one, so the spinner appears on the row the user actually pressed
   // rather than on all of them or on the dialog as a whole.
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
+  /** Who these words belong to, in the reader's own words. */
+  const [newName, setNewName] = React.useState("");
   React.useEffect(() => {
     setConfirmingNew(false);
+    setNewName("");
   }, [target?.segmentId, target?.fromWord, target?.toWord]);
   React.useEffect(() => {
     // Cleared when the request ends. On success the dialog closes anyway; on
@@ -145,6 +157,37 @@ export function ReassignSpeakerDialog({
                 This line belongs to someone who isn&apos;t listed yet.
               </p>
             </div>
+
+            {/*
+              THE NAME, ASKED FOR RATHER THAN ALLOCATED.
+
+              <p>This step used to be a bare confirm, and the speaker it made
+              was called `Speaker 2` -- which on a transcript with one real
+              participant is a second person who was never in the room,
+              invented by a correction whose whole purpose is accuracy.
+
+              <p>Required, not optional. An empty field would fall back to the
+              allocated name, which is the behaviour being replaced; if the
+              reader does not know who said it, the honest answer is to leave
+              the line alone rather than to file it under a number.
+            */}
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Their name</span>
+              <Input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim() && !busy) {
+                    e.preventDefault();
+                    onConfirmNew(newName.trim());
+                  }
+                }}
+                placeholder="Who said this?"
+                disabled={busy}
+              />
+            </label>
+
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -163,7 +206,7 @@ export function ReassignSpeakerDialog({
                   label does not change with it: this is the button they were
                   told to press, and renaming it mid-press reads as a different
                   button. The spinner carries the state instead. */}
-              <Button onClick={onConfirmNew} disabled={busy}>
+              <Button onClick={() => onConfirmNew(newName.trim())} disabled={busy || !newName.trim()}>
                 {busy ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                 ) : null}
@@ -176,7 +219,8 @@ export function ReassignSpeakerDialog({
             {options.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nobody else in this meeting can take these words — but they may
-                belong to someone who isn&apos;t listed yet.
+                belong to someone diarization never separated out. Name them
+                below and the words move to them.
               </p>
             ) : (
               <div className="flex flex-col gap-1">

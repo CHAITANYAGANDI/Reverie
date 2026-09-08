@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ActionItemResponse,
@@ -1336,6 +1336,115 @@ describe("the pane's one header row", () => {
     expect(screen.queryByRole("tab", { name: "Outline" })).not.toBeInTheDocument();
     // And still on the page, in the margin.
     expect(screen.getByRole("heading", { name: "Transcript outline" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE MARGIN'S INDEX, from either tab.
+ *
+ * <p>Action items, decisions and risks each say how many there are and go to
+ * them. They are rows in the margin, which is beside both tabs; the sections
+ * they point at are inside the summary panel, which is one of two
+ * `TabsContent` and unmounted while the transcript is showing.
+ *
+ * <p>So `href="#meeting-insights"` worked from the summary and did nothing at
+ * all from the transcript -- a dead link, and dead in the one direction
+ * somebody would actually use it: you read the transcript, notice the margin
+ * says a decision was recorded, press it, and the page sits still.
+ */
+describe("the margin's index", () => {
+  /** One open action item, so the margin's index row is a link. */
+  function withIndexedSections() {
+    actionItems = [anActionItem({ id: "ai_1", title: "Write the announcement" })];
+  }
+
+  /**
+   * The element the last scroll was asked of.
+   *
+   * <p>`mock.instances` is typed from the spied signature, which returns
+   * `void`, so the cast is unavoidable — the instance is the receiver rather
+   * than the return.
+   */
+  function scrolled(spy: ReturnType<typeof vi.spyOn>): HTMLElement | undefined {
+    return spy.mock.instances[0] as unknown as HTMLElement | undefined;
+  }
+
+  it("switches to the summary and scrolls to the section", async () => {
+    withIndexedSections();
+    const scrollTo = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await userEvent.click(screen.getByRole("link", { name: /1 of 1 open/ }));
+
+    // The tab first, because the element does not exist until it is mounted.
+    expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    /*
+     * `waitFor`, because the scroll genuinely is not synchronous with the
+     * click: the panel mounts a commit later, so the page waits a frame for
+     * the anchor to appear. See the effect in the page.
+     */
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    // And the thing scrolled to is the section, not the page.
+    expect(scrolled(scrollTo)?.id).toBe("meeting-action-items");
+    scrollTo.mockRestore();
+  });
+
+  it("still goes to the section when the summary is already showing", async () => {
+    // The case that always worked, kept so the fix cannot break it.
+    withIndexedSections();
+    const scrollTo = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(<MeetingDetailPage />);
+
+    await userEvent.click(screen.getByRole("link", { name: /1 of 1 open/ }));
+
+    expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    expect(scrolled(scrollTo)?.id).toBe("meeting-action-items");
+    scrollTo.mockRestore();
+  });
+
+  it("keeps the href, so the link is still true when it is pasted", async () => {
+    /*
+     * Suppressed on click and kept on the element. Opened cold,
+     * `/meetings/x#meeting-action-items` lands on the summary -- the default
+     * tab -- and the browser scrolls to it with no help from us.
+     */
+    withIndexedSections();
+    render(<MeetingDetailPage />);
+
+    expect(screen.getByRole("link", { name: /1 of 1 open/ })).toHaveAttribute(
+      "href",
+      "#meeting-action-items",
+    );
+  });
+
+  it("does not scroll the page later, having been left pending", async () => {
+    /*
+     * The anchor is remembered until the summary is mounted, so it has to be
+     * cleared once used -- otherwise it scrolls the page the next time the
+     * reader opens the summary, minutes later, for their own reasons.
+     */
+    withIndexedSections();
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByRole("link", { name: /1 of 1 open/ }));
+
+    const scrollTo = vi.spyOn(Element.prototype, "scrollIntoView");
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Summary" }));
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
   });
 });
 

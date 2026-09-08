@@ -203,6 +203,25 @@ describe("what it says when a view is empty", () => {
 });
 
 describe("changing the list", () => {
+  it("draws a finished one ticked and struck through", async () => {
+    /*
+     * The two things a reader looks for to believe the tick registered. Struck
+     * through rather than removed: a finished item is still the answer to "did
+     * we ever do that", and a list that empties itself as you work makes the
+     * work look like it never happened.
+     *
+     * <p>Asserted because it is the half of "completed" that is visible.
+     * Whether the status ever reaches the server is `usePatchActionItemMutation`
+     * and the endpoint behind it; what this pins is that a `DONE` item is drawn
+     * as one.
+     */
+    margin({ open: [], done: [anItem({ id: "c", title: "Send the deck", status: "DONE" })] });
+    await userEvent.click(screen.getByRole("button", { name: /Completed/ }));
+
+    expect(screen.getByRole("checkbox", { name: "Reopen Send the deck" })).toBeChecked();
+    expect(screen.getByText("Send the deck").className).toContain("line-through");
+  });
+
   it("ticks one off through the mutation it always used", async () => {
     const item = anItem({ title: "Book the room" });
     margin({ open: [item] });

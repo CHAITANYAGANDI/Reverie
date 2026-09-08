@@ -57,6 +57,38 @@ describe("SelectionMenu", () => {
     expect(onAction).toHaveBeenCalledWith("highlight");
   });
 
+  it("becomes the way out of a highlight over words that carry one", async () => {
+    /*
+     * Highlighting had no undo. Selecting highlighted words offered
+     * `Highlight` again, which stacked a second mark over the first and looked
+     * like nothing had happened -- and there was nowhere else to go, because a
+     * passage highlight is drawn as a tint on the words themselves rather than
+     * as a row in the margin with a bin beside it.
+     *
+     * <p>One item rather than two: the selection either lands on a highlight
+     * or it does not, so the other one is never available, and offering it
+     * greyed out would be a row of chrome on every selection to serve one
+     * case.
+     */
+    const onAction = vi.fn();
+    render(<SelectionMenu anchor={anchor} onAction={onAction} highlighted />);
+
+    expect(screen.queryByRole("menuitem", { name: "Highlight" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Remove highlight" }));
+
+    // The same action either way. Which of the two it means is the page's to
+    // decide, because the page is what knows the marks.
+    expect(onAction).toHaveBeenCalledWith("highlight");
+  });
+
+  it("leaves the other seven alone when it does", () => {
+    render(<SelectionMenu anchor={anchor} onAction={vi.fn()} highlighted />);
+
+    for (const label of ["Copy", "Add note", "Ask Reverie", "Wrong speaker"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
+  });
+
   it("suppresses its own mousedown", () => {
     // The whole menu is useless without this: mousedown moves focus, moving
     // focus drops the selection, and the action then has nothing to act on.

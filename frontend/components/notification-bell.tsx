@@ -168,10 +168,19 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
           title="Notifications"
           className={cn(
-            // 32px, which is what a 48px band leaves after its own padding. No
-            // `ml-auto` any more: it was placing this against the right edge of
-            // a rail row, and in the band the layout says where it goes.
-            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors",
+            /*
+              36px, matching `BandIcon`.
+
+              <p>It was 32, on the reasoning that a 48px band leaves that much
+              after its own padding -- true, and it was fine while this sat on
+              its own past a rule with only the avatar beside it. It is the
+              third glyph in a run of three now, and 32 between two 36s reads
+              as a misalignment rather than as a smaller control.
+
+              <p>No `ml-auto` either: that was placing this against the right
+              edge of a rail row, and in the band the layout says where it goes.
+            */
+            "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors",
             open || unread > 0 ? "text-ink" : "text-ink-3",
             "hover:bg-surface-hover hover:text-ink",
             open && "bg-surface-hover",

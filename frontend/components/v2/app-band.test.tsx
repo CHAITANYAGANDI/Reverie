@@ -133,6 +133,52 @@ describe("what is always there", () => {
     expect(screen.getByRole("button", { name: "Priya Raman" })).toBeInTheDocument();
   });
 
+  it("keeps the bell on a page that offers no way to make a meeting", () => {
+    /*
+     * It used to be grouped with the avatar, past the rule. Moving it in
+     * beside Record and Import put it inside the `create` guard for a moment,
+     * which would have taken notifications off every page that withholds those
+     * two -- while a recording is in hand, most obviously. It is a sibling of
+     * that group, not a member of it: no page has a reason to withhold it,
+     * because it is not about making anything.
+     */
+    band({ create: false });
+
+    expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: RECORD })).not.toBeInTheDocument();
+  });
+
+  it("puts the bell before the rule and the account after it", () => {
+    // The avatar is the band's only filled circle and the only thing in it
+    // that opens a menu about the account, so alone after the rule it
+    // terminates the row -- which is where an account control is looked for.
+    band();
+
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    const account = screen.getByRole("button", { name: "Priya Raman" });
+    // `compareDocumentPosition` rather than reading the tree, because what is
+    // being asserted is the reading order and not the nesting.
+    expect(bell.compareDocumentPosition(account)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("shows no keyboard badge in the search field", async () => {
+    /*
+     * There was a `⌘K` keycap at the far end of it. What it did was put a
+     * second bordered thing inside a field whose whole job is to look like one
+     * open space, at the end where the eye lands after reading the
+     * placeholder -- and it was wrong on Windows and Linux, where the binding
+     * is Ctrl.
+     *
+     * <p>The shortcut is unaffected: it is bound on the shell, not on this
+     * button, which is why removing the badge costs nothing.
+     */
+    band();
+
+    const search = screen.getByRole("button", { name: "Search" });
+    expect(search.querySelector("kbd")).toBeNull();
+    expect(search).not.toHaveTextContent("K");
+  });
+
   it("opens search", async () => {
     band();
     expect(screen.getByTestId("overlay")).toHaveTextContent("closed");
@@ -182,12 +228,23 @@ describe("marking where you are", () => {
   });
 });
 
+/**
+ * What Record is called now.
+ *
+ * <p>It drew the word `Record` beside a mic, inside an outlined pill. Both
+ * went: an outlined square beside an outlined pill is a pair of boxes, and
+ * once the boxes are gone a word beside a glyph is a pair of unlike things.
+ * The name moved to `aria-label`, which is where the Import glyph beside it
+ * had always kept its own, so the two are now found the same way.
+ */
+const RECORD = "Record a conversation";
+
 describe("Import and Record", () => {
   it("offers both when there is nothing in hand", () => {
     band();
 
     expect(screen.getByRole("button", { name: "Import a recording" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Record" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: RECORD })).toBeInTheDocument();
   });
 
   it("opens the import dialog rather than navigating", async () => {
@@ -209,13 +266,13 @@ describe("Import and Record", () => {
     band({ create: false, recording: true });
 
     expect(screen.queryByRole("button", { name: "Import a recording" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: RECORD })).not.toBeInTheDocument();
   });
 
   it("goes to /record carrying the page it was pressed on", async () => {
     band({ pathname: "/folder/prj_1" });
 
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await userEvent.click(screen.getByRole("button", { name: RECORD }));
 
     // The folder has to survive: by save time the pathname is /record, and
     // "which folder am I in" has no answer.
@@ -231,7 +288,7 @@ describe("Import and Record", () => {
     refusal = "You have used your 100 minutes.";
     band();
 
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await userEvent.click(screen.getByRole("button", { name: RECORD }));
 
     expect(toastError).toHaveBeenCalledWith("You have used your 100 minutes.");
     expect(push).not.toHaveBeenCalled();
@@ -244,7 +301,7 @@ describe("Import and Record", () => {
     refusal = "You have used your 100 minutes.";
     band();
 
-    const button = screen.getByRole("button", { name: "Record" });
+    const button = screen.getByRole("button", { name: RECORD });
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute("title", "You have used your 100 minutes.");
   });
@@ -338,13 +395,19 @@ describe("where Search sits", () => {
     );
   });
 
-  it("keeps Record out of the accent colour", () => {
+  it("keeps Record out of the accent colour, and out of a box", () => {
     // The palette's own rule: the accent means "Reverie noticed this", not
     // "this is the primary button". A filled iris pill on every page spends it
     // on a control nobody asked for yet.
     band();
 
-    const record = screen.getByRole("button", { name: "Record" });
+    const record = screen.getByRole("button", { name: RECORD });
     expect(record.className).not.toContain("bg-brand");
+    // And no stroke either. What says it is operable is the fill it takes on
+    // hover, which is the idiom the bell and the search field already used.
+    expect(record.className).not.toContain("shadow-[inset");
+    expect(screen.getByRole("button", { name: "Import a recording" }).className).not.toContain(
+      "shadow-[inset",
+    );
   });
 });
