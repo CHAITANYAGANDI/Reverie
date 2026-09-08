@@ -421,19 +421,44 @@ describe("creating", () => {
     expect(await screen.findByRole("heading", { name: "Create a folder" })).toBeInTheDocument();
   });
 
-  it("keeps one in the empty state, where it is being explained", async () => {
+  it("stays the only one when there are no folders at all", async () => {
+    /*
+     * INVERTED, and this closes the thing the note above has been arguing
+     * about since it was written.
+     *
+     * <p>The empty state carried a New folder button of its own, so this
+     * asserted two -- on the grounds that they were "a column apart" and
+     * somebody reading the explanation would press the one under it. That was
+     * a defence of two controls with one label on one screen, which is what
+     * the rest of this describe exists to prevent.
+     *
+     * <p>The empty state is a centred panel with no button in it now. The
+     * margin's is permanent, is on every state of this page, and is the one.
+     */
     folders = [];
     render(<FolderList />);
 
-    // Two here, and that is not what the old file argued against: the
-    // margin's and the one inside the explanation are a column apart, and
-    // somebody reading "folders help group conversations around the work they
-    // belong to" is going to press the thing directly under it.
     const buttons = screen.getAllByRole("button", { name: /New folder/ });
-    expect(buttons).toHaveLength(2);
-    await userEvent.click(buttons[1]);
+    expect(buttons).toHaveLength(1);
+    await userEvent.click(buttons[0]);
 
     expect(await screen.findByRole("heading", { name: "Create a folder" })).toBeInTheDocument();
+  });
+
+  it("centres the empty state and names what a folder is for", () => {
+    /*
+     * It was two left-aligned paragraphs where the list would be, which reads
+     * as a page that failed to load rather than one with nothing to show. The
+     * same panel a folder with nothing filed in it uses -- see
+     * components/v2/empty-panel.
+     */
+    folders = [];
+    render(<FolderList />);
+
+    const heading = screen.getByRole("heading", { name: "No folders yet" });
+    expect(heading.nextElementSibling?.textContent).toContain(
+      "Folders help group conversations around the work they belong to.",
+    );
   });
 });
 

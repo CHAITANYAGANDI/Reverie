@@ -78,6 +78,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AmbientCanvas } from "@/components/v2/ambient-canvas";
+import { EmptyPanel } from "@/components/v2/empty-panel";
 import { Masthead } from "@/components/v2/masthead";
 import { Group, Dot } from "@/components/v2/group";
 import { NowConversationRow } from "@/components/v2/now/conversation-row";
@@ -322,41 +323,32 @@ function Detail({
  */
 function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
   return (
-    <div className="flex flex-col items-center pt-16 text-center">
-      {/* A ring, not a filled disc. The one ornament on this screen, and it is
-          the folder's own glyph at the size a page with nothing on it can
-          afford to give it. */}
-      <div
-        aria-hidden
-        className="flex h-28 w-28 items-center justify-center rounded-full border border-line"
-      >
-        <FolderIcon className="h-10 w-10 text-ink-4" strokeWidth={1.25} />
-      </div>
-
-      <h2 className="v2-page-greet mt-7 font-headline text-ink">Nothing here yet</h2>
-      <p className="v2-page-lede mt-2.5 max-w-[46ch] text-ink-3">
-        Conversations you add to {name} will appear here. Record, import, or
-        organize a conversation into this folder.
-      </p>
-
-      {/* Labelled for anything that cannot see them: two glyphs on their own
-          would be a pair of unnamed buttons at the end of an empty page. */}
-      <div className="mt-7 flex items-center gap-3">
-        <Button variant="outline" size="icon" asChild title="Record a conversation">
-          {/* Back to this folder afterwards, which is the only thing
-              `recordHref` carries -- see the note above for why it cannot
-              carry the folder itself. */}
-          <Link href={recordHref(folderHref(folderId))} aria-label="Record a conversation">
-            <Mic className="h-4 w-4" />
-          </Link>
-        </Button>
-        <Button variant="outline" size="icon" asChild title="Import a recording">
-          <Link href="/upload" aria-label="Import a recording">
-            <Plus className="h-4 w-4" />
-          </Link>
-        </Button>
-      </div>
-    </div>
+    <EmptyPanel
+      icon={FolderIcon}
+      heading="Nothing here yet"
+      /* Labelled for anything that cannot see them: two glyphs on their own
+         would be a pair of unnamed buttons at the end of an empty page. */
+      actions={
+        <>
+          <Button variant="outline" size="icon" asChild title="Record a conversation">
+            {/* Back to this folder afterwards, which is the only thing
+                `recordHref` carries -- see the note above for why it cannot
+                carry the folder itself. */}
+            <Link href={recordHref(folderHref(folderId))} aria-label="Record a conversation">
+              <Mic className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button variant="outline" size="icon" asChild title="Import a recording">
+            <Link href="/upload" aria-label="Import a recording">
+              <Plus className="h-4 w-4" />
+            </Link>
+          </Button>
+        </>
+      }
+    >
+      Conversations you add to {name} will appear here. Record, import, or
+      organize a conversation into this folder.
+    </EmptyPanel>
   );
 }
 

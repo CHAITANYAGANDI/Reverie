@@ -70,6 +70,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FolderDialog } from "@/components/folder-dialog";
 import { Masthead } from "@/components/v2/masthead";
 import { AmbientCanvas } from "@/components/v2/ambient-canvas";
+import { EmptyPanel } from "@/components/v2/empty-panel";
 import { Group, Dot } from "@/components/v2/group";
 import {
   DropdownMenu,
@@ -188,30 +189,29 @@ export function FolderList() {
               </Button>
             </div>
           ) : state === "empty" ? (
-            <div>
-              {/*
-                THE HEADLINE MOVED DOWN HERE WITH THE COUNT.
-                <p>"No folders yet" was the page's `h1` -- ``
-                headed the page "1 folder", "3 folders" or that, so the name of
-                the page changed every time somebody made or deleted one. The
-                approved design heads it "Folders" and states the count over the
-                list, which is what the number is about. The empty case still
-                needs a sentence saying which kind of empty it is, so it says
-                it here.
-              */}
-              <p className="text-body font-headline text-ink">No folders yet</p>
-              <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
-                Folders help group conversations around the work they belong to.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4 gap-1.5"
-                onClick={() => setCreating(true)}
-              >
-                <Plus className="h-4 w-4" /> New folder
-              </Button>
-            </div>
+            /*
+             * CENTRED, AND WITH NO BUTTON IN IT.
+             *
+             * <p>It was two left-aligned paragraphs and a New folder button,
+             * which put a second control with that exact label about a hundred
+             * pixels from the one in the margin -- two buttons for one action
+             * on one screen, which is what the note on `creating` in this
+             * component's suite has argued against from the beginning. The
+             * margin's is permanent and is the one.
+             *
+             * <p>And the headline moved here from the page's `h1`:
+             * `folderCountTitle` headed the page "1 folder", "3 folders" or
+             * "No folders yet", so the name of the page changed every time
+             * somebody made or deleted one. The approved design heads it
+             * "Folders"; which kind of empty this is belongs in the empty
+             * state.
+             *
+             * <p>Same panel as a folder with nothing filed in it -- see
+             * components/v2/empty-panel.
+             */
+            <EmptyPanel icon={Folder} heading="No folders yet">
+              Folders help group conversations around the work they belong to.
+            </EmptyPanel>
           ) : (
             <>
               {/* Not drawn when nothing is starred. A heading over no rows
