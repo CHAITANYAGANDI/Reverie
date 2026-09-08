@@ -558,15 +558,30 @@ describe("the way back up", () => {
 });
 
 describe("who spoke", () => {
-  it("names them, in the masthead, from real diarization", () => {
+  it("counts them in the margin, from real diarization", () => {
+    /*
+     * IT USED TO NAME THEM. First as a dotted line under the title -- "Maya
+     * Chen, Alex Morgan" -- and then, briefly, as a second line under the
+     * count in the margin.
+     *
+     * <p>A fact row is one measurement, and two or three names wrapping under
+     * a number made the tallest row in that table the least useful one. The
+     * count is what the row answers. Who spoke is on the transcript, against
+     * the words: on every turn's own line, and in full behind Edit speakers.
+     *
+     * <p>Still from `TranscriptResponse.speakers`, which is real diarization
+     * output -- so the number cannot be right for a meeting that has none.
+     */
     speakers = [
       { speaker: "Maya Chen", speakingSeconds: 900, percentage: 52, segmentCount: 40, wordCount: 900 },
       { speaker: "Alex Morgan", speakingSeconds: 700, percentage: 48, segmentCount: 30, wordCount: 700 },
     ];
     render(<MeetingDetailPage />);
 
-    // Ordered by who spoke most, which is the order the endpoint returns.
-    expect(screen.getByText("Maya Chen, Alex Morgan")).toBeInTheDocument();
+    const aside = screen.getByRole("complementary", { name: "About this meeting" });
+    expect(aside).toHaveTextContent("Speakers");
+    expect(aside).toHaveTextContent("2");
+    expect(screen.queryByText("Maya Chen, Alex Morgan")).not.toBeInTheDocument();
   });
 
   it("carries no talk-time percentages", () => {
@@ -829,9 +844,15 @@ describe("the frame", () => {
  * this page that is genuinely the functional layer.
  */
 describe("the docked player", () => {
-  /** The fixed wrapper the page draws around the transport. */
+  /**
+   * The fixed wrapper the page draws around the transport.
+   *
+   * <p>It was matched on `.fixed.inset-x-0.bottom-0`. `inset-x-0` is gone: the
+   * bar is inset to the document column now rather than spanning the window,
+   * so the selector that identified it was also the bug.
+   */
   function dock(container: HTMLElement) {
-    return container.querySelector(".fixed.inset-x-0.bottom-0");
+    return container.querySelector(".fixed.bottom-0");
   }
 
   it("stays out of the way on the summary", () => {
@@ -881,21 +902,40 @@ describe("the docked player", () => {
     expect(dock(container)?.className).not.toContain("--rail-w");
   });
 
-  it("spans the document frame rather than the paragraph measure", async () => {
+  it("sits in the middle of the document column, wide enough not to wrap", async () => {
     /*
-     * THIS ASSERTED `max-w-measure`, and the change is deliberate.
-     * `19-meeting-transcript.png` runs the dock the full width of the meeting's
-     * column -- `--doc` -- rather than stopping at the 680px the words are set
-     * to. A timeline is a ruler over forty minutes of audio; squeezing it into
-     * the reading measure makes it a coarser ruler for no reason. It still
-     * stops before the chat, which is the wrapper's own inset.
+     * BACK TO `max-w-measure`, and this is the second reversal of the same
+     * decision, so it is worth being exact about what changed.
+     *
+     * <p>The argument for `--doc` was sound in itself: a timeline is a ruler
+     * over forty minutes, and a wider ruler is a finer one. What was wrong was
+     * the frame of reference. `max-w-doc` with `mx-auto` inside an
+     * `inset-x-0` wrapper centred 1120px of transport on the WINDOW -- at 1672
+     * it ran from x=260 to x=1650, under the margin and 570px past the rule at
+     * 1083. A ruler laid across the facts about the recording is not a finer
+     * ruler; it is in the wrong place.
+     *
+     * <p>The wrapper is the document column now, so `mx-auto` centres inside
+     * that, and the approved transcript puts the transport in the middle of
+     * the document rather than spanning it.
+     *
+     * <p>Not the reading measure either, though: at 680px the trailing group
+     * wrapped and the volume slider dropped to a second row, taking the bar
+     * from 60px to 80. Prose has a measure because of how far the eye travels;
+     * a transport has a minimum because of what is in it.
      */
     const { container } = render(<MeetingDetailPage />);
 
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 
-    expect(dock(container)?.querySelector(".max-w-doc")).not.toBeNull();
+    // Neither the window-centred `--doc` nor the paragraph measure.
+    expect(dock(container)?.querySelector(".max-w-doc")).toBeNull();
     expect(dock(container)?.querySelector(".max-w-measure")).toBeNull();
+    expect(dock(container)?.innerHTML).toContain("max-w-[52rem]");
+    // Inset to the column rather than spanning the window, which is the half
+    // of this that the `mx-auto` above depends on.
+    expect(dock(container)?.className).not.toContain("inset-x-0");
+    expect(dock(container)?.className).toContain("--page-margin-track");
   });
 });
 

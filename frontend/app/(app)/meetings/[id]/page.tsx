@@ -1225,7 +1225,29 @@ export default function MeetingDetailPage() {
              cover the thing it is meant to be read alongside. */
           <div className="no-print">{player}</div>
         ) : (
-          <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-20 p-3 sm:p-4 lg:right-[var(--side-pane-w,0px)]">
+          <div
+            className={cn(
+              "no-print pointer-events-none fixed bottom-0 z-20 p-3 sm:p-4",
+              /*
+                THE TRANSPORT SITS UNDER THE COLUMN IT SCRUBS.
+                <p>It was `inset-x-0` with `max-w-doc mx-auto` inside, which
+                centred 1120px of transport on the WINDOW: measured at 1672 it
+                ran from x=260 to x=1650, crossing under the margin and 570px
+                past the rule at 1083. A ruler for the recording, laid over the
+                facts about it.
+                <p>So the box is the document column, computed from the frame's
+                own tokens -- which is why they are on `:root` rather than on
+                `.v2-page`; see app/globals.css. Left is the frame's gutter.
+                Right is everything to the document's right: the margin and its
+                rule, the gap before it, the outer gutter, and the chat when it
+                is open. Below the spread point `--page-margin-track` and
+                `--page-rule-gap` are both zero, so the same expression gives
+                the full width with no breakpoint of its own.
+              */
+              "left-[var(--page-pad-l)]",
+              "right-[calc(var(--page-pad-r)+var(--page-margin-track)+var(--page-rule-gap)+var(--side-pane-w,0px))]",
+            )}
+          >
             {/* Held to the measure, so the transport sits under the column it
                 is scrubbing rather than under the window. `--rail-w` is gone
                 from this line with the rail it named — the shell has no left
@@ -1238,7 +1260,19 @@ export default function MeetingDetailPage() {
                 recording and forty minutes squeezed into 680px is a coarser
                 ruler for no reason. The `lg:right-[var(--side-pane-w)]` on the
                 wrapper above is what stops it before the chat. */}
-            <div className="pointer-events-auto mx-auto w-full max-w-doc">{player}</div>
+            {/* Centred in that column, with room either side -- the approved
+                transcript puts the transport in the middle of the document
+                rather than spanning it end to end. `mx-auto` against the
+                column now rather than against the window, which is the whole
+                difference.
+                <p>832px rather than the 680px reading measure, and that number
+                is the transport's rather than a taste: at 680 the trailing
+                group wrapped, so the volume slider dropped onto a second row
+                and the bar grew from 60px to 80. The scrubber is already at
+                its `min-w-[8rem]` by then -- see components/audio-player --
+                so there is nothing left to give. 832 in a ~960px column
+                leaves 65px each side and one row. */}
+            <div className="pointer-events-auto mx-auto w-full max-w-[52rem]">{player}</div>
           </div>
         )
       )}

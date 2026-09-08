@@ -177,20 +177,21 @@ export function MeetingMargin({
         ) : null}
 
         {/*
-          HOW MANY SPOKE, AND THEN WHO.
-          <p>The count first, because that is the question -- and the names
-          under it, because they are real diarization output and the line they
-          replaced showed them. Nothing is drawn at all where the transcript has
-          no speakers: a document has none, and one that has not been made yet
-          has none, and "1 speaker" invented for either would be a claim about a
-          recording nobody has heard.
+          HOW MANY SPOKE, AND ONLY THAT.
+          <p>The names were listed under the count, because the dotted line
+          this replaced showed them. They are gone: a fact row is one
+          measurement, and three names wrapping under a "1" made the tallest
+          row in the table the least useful one. Who spoke is on the transcript,
+          against the words -- on every turn's own line, and in full behind Edit
+          speakers.
+          <p>Nothing is drawn at all where the transcript has no speakers: a
+          document has none, and one that has not been made yet has none, and
+          "1" invented for either would be a claim about a recording nobody has
+          heard.
         */}
         {speakers.length > 0 && (
           <Fact icon={Users} label="Speakers">
             <span className="tabular">{speakers.length}</span>
-            <span className="mt-0.5 block text-foot text-ink-4">
-              {speakers.map((s) => s.speaker).filter(Boolean).join(", ")}
-            </span>
           </Fact>
         )}
 
@@ -358,8 +359,18 @@ function Fact({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline gap-2.5">
-      <Icon className="mt-px h-3.5 w-3.5 shrink-0 text-ink-5" aria-hidden />
+    /*
+     * `items-center`, NOT `items-baseline`.
+     *
+     * <p>An inline SVG's baseline is its bottom edge, so baseline-aligning a
+     * 14px glyph against a 12px line sat it about three pixels high -- the
+     * clock beside "Duration" was visibly above the word. Every row here is
+     * one line now that the speakers no longer list their names, so centring
+     * is exact rather than approximate, and the `mt-px` nudge that was
+     * compensating for the wrong alignment is gone with it.
+     */
+    <div className="flex items-center gap-2.5">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-ink-5" aria-hidden />
       <dt className="v2-page-meta w-[4.75rem] shrink-0 text-ink-4">{label}</dt>
       <dd className="v2-page-meta min-w-0 flex-1 text-ink-2">{children}</dd>
     </div>

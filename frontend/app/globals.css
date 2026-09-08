@@ -399,7 +399,23 @@
      under the launcher because the masthead spanned both tracks, which is what
      the 186px spacer before it was compensating for. It is one grid row now,
      so both regions begin on the same line by construction. */
-  .v2-page {
+  /*
+   * THE FRAME'S GEOMETRY LIVES ON `:root`, not on `.v2-page`.
+   *
+   * <p>Because one thing that has to line up with the document column is
+   * not inside it: a meeting's audio transport is `fixed`, so it cannot
+   * inherit from the frame. It was `max-w-doc` centred on the WINDOW --
+   * 1120px of transport crossing under the margin and past the rule.
+   * Measured at 1672 it ran from x=260 to x=1650 with the rule at 1083.
+   *
+   * <p>So the numbers are tokens and the frame consumes them. Anything
+   * positioned against the window can now compute the same column.
+   * `--page-margin-track` is what the margin and its rule take together,
+   * and it is zero below the spread point where there is no margin -- one
+   * expression, so the grid track and anything measuring against the
+   * window cannot disagree about it.
+   */
+  :root {
     /* Phone and tablet: one column, ordinary page padding. */
     --page-pad-l: 1rem;
     --page-pad-r: 1rem;
@@ -408,7 +424,10 @@
     --page-rule-gap: 0px;
     --page-margin-pad: 0px;
     --page-margin: 0px;
+    --page-margin-track: 0px;
+  }
 
+  .v2-page {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     column-gap: var(--page-rule-gap);
@@ -418,13 +437,13 @@
     padding: var(--page-top) var(--page-pad-r) 4rem var(--page-pad-l);
   }
   @media (min-width: 640px) {
-    .v2-page {
+    :root {
       --page-pad-l: 1.5rem;
       --page-pad-r: 1.5rem;
     }
   }
   @media (min-width: 1024px) {
-    .v2-page {
+    :root {
       --page-pad-l: 2rem;
       --page-pad-r: 2rem;
       --page-top: 1.75rem;
@@ -433,16 +452,19 @@
   /* THE SPREAD POINT. The same 1160px the rest of the product stacks at, so
      there is one fallback in the application rather than two. */
   @media (min-width: 1160px) {
-    .v2-page {
+    :root {
       --page-pad-l: 2rem;
       --page-pad-r: 1.5rem;
       --page-top: 2rem;
       --page-rule-gap: 2rem;
       --page-margin-pad: 1.5rem;
       --page-margin: 19rem; /* 304 */
-      grid-template-columns: minmax(0, 1fr) calc(
-          1px + var(--page-margin-pad) + var(--page-margin)
-        );
+      --page-margin-track: calc(
+        1px + var(--page-margin-pad) + var(--page-margin)
+      );
+    }
+    .v2-page {
+      grid-template-columns: minmax(0, 1fr) var(--page-margin-track);
 
       /* THE RULE RUNS THE HEIGHT OF THE WINDOW, not the height of the list.
          <p>It is the margin column's own left edge, and a grid row is as tall
@@ -463,7 +485,7 @@
     }
   }
   @media (min-width: 1280px) {
-    .v2-page {
+    :root {
       --page-pad-l: 2.5rem;
       --page-pad-r: 2rem;
       --page-top: 2.25rem;
@@ -473,7 +495,7 @@
     }
   }
   @media (min-width: 1440px) {
-    .v2-page {
+    :root {
       --page-pad-l: 3.5rem;
       --page-pad-r: 2.5rem;
       --page-top: 2.5rem;
@@ -488,7 +510,7 @@
      reference; on a real screen that read as a page indented from the left
      rather than laid out on it. */
   @media (min-width: 1600px) {
-    .v2-page {
+    :root {
       --page-pad-l: 4.5rem; /* 72 */
       --page-pad-r: 3.5rem; /* 56 */
       --page-top: 2.75rem; /* 44 */
