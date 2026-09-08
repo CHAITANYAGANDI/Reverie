@@ -56,7 +56,7 @@ import {
   Trash2,
   Star,
   Folder,
-  FileText,
+  FileAudio,
   Clock,
   ChevronDown,
 } from "lucide-react";
@@ -311,7 +311,10 @@ function FolderOverview({
           <Stat icon={Folder} label="Total folders">
             {overview ? <span className="tabular">{overview.folders}</span> : Unknown}
           </Stat>
-          <Stat icon={FileText} label="Conversations">
+          {/* `FileAudio`, which is what a conversation is drawn as
+              everywhere else in the product -- see the note on the folder
+              page's own Conversations row. */}
+          <Stat icon={FileAudio} label="Conversations">
             {overview ? <span className="tabular">{overview.conversations}</span> : Unknown}
           </Stat>
           <Stat icon={Clock} label="Last updated">

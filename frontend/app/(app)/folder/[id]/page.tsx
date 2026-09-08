@@ -61,9 +61,8 @@ import { toast } from "sonner";
 import {
   Star,
   MoreHorizontal,
-  FileText,
   FolderMinus,
-  Folder as FolderIcon,
+  FileAudio,
   Clock,
   Mic,
   Plus,
@@ -261,7 +260,12 @@ function FolderMargin({ folder, folderId }: { folder: Project; folderId: string 
       <section>
         <h2 className="v2-page-sub mb-3 font-headline text-ink">Folder details</h2>
         <dl className="space-y-1">
-          <Detail icon={FileText} label="Conversations">
+          {/* The same glyph as the empty state above and as every
+              conversation row. `FileText` was here, which in a row means a
+              DOCUMENT-sourced meeting specifically -- so it was doing double
+              duty as "conversations in general" four hundred pixels from a
+              panel using a different glyph for the same word. */}
+          <Detail icon={FileAudio} label="Conversations">
             <span className="tabular">{folder.meetingCount}</span>
           </Detail>
           <Detail icon={Clock} label="Last updated">
@@ -324,7 +328,18 @@ function Detail({
 function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
   return (
     <EmptyPanel
-      icon={FolderIcon}
+      /*
+        THE THING THAT IS MISSING IS CONVERSATIONS, NOT FOLDERS.
+        <p>It was the folder's own glyph, which is the right one on the folder
+        LIST -- there, what there is none of is folders. Here the folder exists;
+        it is what goes in it that does not, and the sentence under this says so.
+        <p>`FileAudio`, which is what this product draws for a conversation
+        everywhere else: the row icon on Home, Library and this page, the
+        meeting chip in the chat composer, the import dialog. Not
+        `MessageSquare` -- that already means a comment or a chat thread here,
+        so it would read as "no messages" rather than "no conversations".
+      */
+      icon={FileAudio}
       heading="Nothing here yet"
       /* Labelled for anything that cannot see them: two glyphs on their own
          would be a pair of unnamed buttons at the end of an empty page. */
@@ -384,7 +399,9 @@ function RowActions({
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem asChild>
           <Link href={`/meetings/${meeting.id}`}>
-            <FileText className="mr-2 h-4 w-4" /> Open conversation
+            {/* The same glyph as the row it belongs to, and as the word
+                "conversation" beside it. */}
+            <FileAudio className="mr-2 h-4 w-4" /> Open conversation
           </Link>
         </DropdownMenuItem>
         {/* Removing it from the folder, not deleting it. Said in the toast as
