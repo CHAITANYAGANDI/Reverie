@@ -128,7 +128,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Facts } from "@/components/v2/group";
+import {
+  MeetingMargin,
+  ACTION_ITEMS_ANCHOR,
+  INSIGHTS_ANCHOR,
+} from "@/components/v2/meeting/meeting-margin";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { MeetingMenu } from "@/components/meeting-menu";
 import { InsightsPanel } from "@/components/insights-panel";
 import { ExportDialog } from "@/components/export-dialog";
@@ -589,6 +594,7 @@ export default function MeetingDetailPage() {
   // The tab counts what is left, not what was found. "Action items 6" beside a
   // list where five are ticked off reads as six things to do.
   const openActions = (actions.data ?? []).filter((a) => a.status !== "DONE").length;
+
   // Also read inside the transcript panel; RTK Query dedupes to one request.
   // Fetched here because the player needs it for "play highlights only".
   const moments = useGetMomentsQuery(id, { skip: !ready });
@@ -637,6 +643,26 @@ export default function MeetingDetailPage() {
   // And here because minutes open with the decisions. The InsightsPanel asks
   // for the same thing, and RTK Query serves both from one request.
   const insights = useGetInsightsQuery(id, { skip: !ready });
+  /*
+   * WHAT THE MARGIN SAYS, DERIVED FROM WHAT THE PAGE ALREADY HAS.
+   *
+   * <p>Not one request between them. The summary's sections carry the topics
+   * and the outline; the insights carry the decisions and the risks; the action
+   * items are counted from the list the document renders. A margin describing
+   * what is on screen must not be the most expensive thing on it.
+   *
+   * <p>`insights.data === undefined` while the request is out, so this reads
+   * nothing into silence: `insightsReady` gates the two sentences that would
+   * otherwise be "No decisions" produced by a dropped connection.
+   */
+  const marginDecisions = React.useMemo(
+    () => (insights.data ?? []).filter((i) => i.kind === "DECISION").length,
+    [insights.data],
+  );
+  const marginRisks = React.useMemo(
+    () => (insights.data ?? []).filter((i) => i.kind === "RISK").length,
+    [insights.data],
+  );
 
   /**
    * What language the meeting is being read in.
@@ -1003,23 +1029,27 @@ export default function MeetingDetailPage() {
        the last lines of a transcript sit under the bar and can be neither read
        nor corrected. */
     /*
-     * ONE COLUMN FOR THE WHOLE PAGE, and this is what made the composition
-     * read wrong even after the chrome came off.
+     * THE DOCUMENT, AND WHAT THE MEETING IS BESIDE IT.
      *
-     * <p>The measure was applied to the two `TabsContent` panels and to nothing
-     * else, so the masthead and the mode row spanned the full page while the
-     * document under them centred. With the chat open that was merely untidy —
-     * everything sat left. With the chat closed, which is now the default, the
-     * document centred to 380px while its own title and its own tabs started at
-     * 24px: a document that does not line up with the thing naming it.
+     * <p>The frame Home and Library are on -- see `.v2-page` in
+     * app/globals.css. Before this it was `.v2-spread[data-margin="empty"]`: a
+     * single centred 680px column, which was itself a correction of a page
+     * whose masthead spanned the window while the document under it centred.
      *
-     * <p>`.v2-spread[data-margin="empty"]` centres a single 680px column, and it
-     * is what /folders and a folder already use for exactly this. Applied once,
-     * here, so the title, the facts, the mode row, the summary and the
-     * transcript are all in the same column and move together.
+     * <p>What the margin holds is everything that was in the way of the first
+     * sentence: the facts about the meeting, the topics, how many action items
+     * and decisions and risks there are, and the outline. Applied once, here,
+     * so the title, the mode row, the summary and the transcript are all in the
+     * same column and move together.
+     *
+     * <p>The chat is a third thing and still summons itself: `SidePane` takes
+     * width from the shell when Ask is pressed, and this frame stacks the
+     * margin under the document when what is left drops below its spread point.
+     * A reader who wants the chat is not reading the outline.
      */
-    <div className="px-4 pb-16 lg:px-6">
-      <div className="v2-spread" data-margin="empty">
+    <div className="relative">
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
+      <div className="v2-page relative">
         <div className={cn("min-w-0 space-y-6", docked && "pb-32")}>
       {/* Masthead. The metadata sits in a monospaced rule under the title
           rather than as a row of loose badges: these are facts about one
@@ -1098,89 +1128,35 @@ export default function MeetingDetailPage() {
             every behaviour they had and sit under them, where they cannot be
             read as another fact about the meeting.
           */}
-          <div className="mt-2.5 flex flex-wrap items-center text-foot text-ink-3">
-            <Facts>
-              {/* Date first, as the reference reads it: the question is "which
-                  meeting was this", and the day answers it. */}
-              <span key="when" className="tabular">{formatDateTime(m.createdAt)}</span>
-              {/* A document has no runtime, so a duration would be meaningless. */}
-              {isDocument ? null : (
-                <span key="dur" className="tabular">{formatDuration(m.durationSeconds)}</span>
-              )}
-              {/*
-                WHO SPOKE, NAMED — and never invented.
-                <p>`TranscriptResponse.speakers` ordered by who spoke most, which
-                is real diarization output and empty for a document or a
-                transcript that has not been made yet. Where it is empty this
-                renders nothing at all rather than a count or a placeholder:
-                the reference names four people because its fixture has four,
-                not because a masthead needs a third fact.
-                <p>Names only. Talk-time percentages are deleted from the
-                product — they appeared in three places and changed no
-                decisions. The speaker strip on the transcript still carries
-                the real stats, where they are being read against the words.
-              */}
-              {voices.length > 0 ? <span key="who">{voices.join(", ")}</span> : null}
-              {/* Only worth showing when it isn't the default — an "English"
-                  label on every meeting is noise. */}
-              {m.language && m.language.slice(0, 2).toLowerCase() !== "en" ? (
-                <span key="lang">{languageName(m.language)}</span>
-              ) : null}
-              {isDocument ? <span key="doc">Document</span> : null}
-              {m.sourceType === "YOUTUBE" && m.sourceUrl ? (
-                <a
-                  key="yt"
-                  href={m.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="inline-flex items-center gap-1.5 underline underline-offset-2 transition-colors hover:text-ink"
-                >
-                  <Youtube className="h-3.5 w-3.5" /> YouTube
-                </a>
-              ) : null}
-              {/*
-                Back among the facts, now that they are the only thing left on
-                this line. A tag IS a fact about the document — it is what
-                somebody filed it under — and it was on a second row only
-                because Copy summary and the translation state were there with
-                it. Both are gone: Copy summary was a duplicate of the menu
-                item, and the reading language now sits with the other facts
-                about what is on screen.
-                <p>Not while it is still working. Tagging a meeting you cannot
-                read yet is filing a document you have not seen. It comes back
-                with the transcript.
-              */}
-              {terminal && ((m.tags?.length ?? 0) > 0 || tagging) ? (
-                <MeetingTags
-                  key="tags"
-                  id={id}
-                  tags={m.tags ?? []}
-                  addable={tagging}
-                  openAdd={tagging}
-                />
-              ) : null}
-              {/*
-                Only ever rendered while a translation is on screen, and then it
-                is the one thing telling a reader that the words in front of them
-                are not the ones that were said.
-                <p>Gated here rather than only inside the component: `ReadingIn`
-                returns null on the original, but the *element* is still a child,
-                so `Facts` counted it and hung a separator off the end of the
-                line with nothing after it.
-              */}
-              {readingIn !== ORIGINAL || translating ? (
-                <ReadingIn
-                  key="reading"
-                  sourceLanguage={m.language}
-                  language={readingIn}
-                  translation={showing}
-                  busy={translating}
-                  onShowOriginal={() => void onReadIn(ORIGINAL)}
-                  onRetranslate={() => void onReadIn(readingIn, !!showing?.hasTranscript)}
-                />
-              ) : null}
-            </Facts>
-          </div>
+          {/*
+            THE FACTS ARE IN THE MARGIN NOW.
+            <p>They were a dotted sentence here -- date, duration, who spoke,
+            language, tags -- under the title and above the mode row, so the
+            first line of the summary began a long way down a page somebody
+            opened to read it. They are facts ABOUT the document rather than
+            part of it, which is what a margin is for: see
+            components/v2/meeting/meeting-margin.
+            <p>What stayed is the one item on that line which was never a fact.
+            `ReadingIn` is a state with controls in it -- it is the only thing
+            telling a reader that the words in front of them are not the ones
+            that were said, and it offers the way back to the original. It
+            belongs beside what it describes.
+            <p>Gated here as well as inside the component: `ReadingIn` returns
+            null on the original, and an always-rendered wrapper would leave an
+            empty row under every title.
+          */}
+          {readingIn !== ORIGINAL || translating ? (
+            <div className="mt-2.5 flex flex-wrap items-center text-foot text-ink-3">
+              <ReadingIn
+                sourceLanguage={m.language}
+                language={readingIn}
+                translation={showing}
+                busy={translating}
+                onShowOriginal={() => void onReadIn(ORIGINAL)}
+                onRetranslate={() => void onReadIn(readingIn, !!showing?.hasTranscript)}
+              />
+            </div>
+          ) : null}
 
         </div>
         {/* Up in the top bar, on the same line as search — not beside the
@@ -1430,22 +1406,29 @@ export default function MeetingDetailPage() {
           </div>
 
           {/*
-           * THE MEASURE.
+           * THE MEASURE, BACK ON THE PANELS — and this time deliberately.
            *
-           * <p>680px, which is about 74 characters at the reading size, and the
-           * measurement the whole V2 layout is built to protect. It is applied
-           * here rather than inside each panel so a summary and a transcript are
-           * set in the *same* column — moving between the two reading modes is
-           * a change of content, not of reading posture, and two panels each
-           * choosing their own width is how that stops being true.
+           * <p>680px, about 74 characters at the reading size, and the
+           * measurement the whole V2 layout is built to protect. A summary is
+           * prose set in a serif and a transcript is an hour of speech; both
+           * are READ, which is the one thing the frame's ~1010px document
+           * column is too wide for. Measured before this cap went on: the
+           * lead paragraph ran a hundred characters.
            *
-           * <p>`data-margin="empty"` centres the measure rather than sitting it
-           * left of a column with nothing in it. The margin fills with real
-           * anchored content — moments at their timestamp, action items at
-           * their source second — when the transcript is rebuilt; see
-           * docs/v2-implementation/feature-parity.md §4.
+           * <p>It was on these two panels once and moved to the page, because
+           * the masthead then spanned the window while the document centred
+           * under it. That is fixed differently now: the frame gives the whole
+           * left column its gutter, so the title, the mode row and the
+           * document all start at the same x — and only the prose stops early.
+           * `max-w-measure` and no auto margins, so it stops at the right
+           * rather than centring away from the title.
+           *
+           * <p>The same token on both, which is the other half of that
+           * correction: moving between the two reading modes is a change of
+           * content, not of reading posture, and two panels each choosing
+           * their own width is how that stops being true.
            */}
-          <TabsContent value="summary" className="pt-6">
+          <TabsContent value="summary" className="max-w-measure pt-6">
             {/* The measure is the page's now; this is only the rhythm between
                 the summary, the action items and the insights. */}
             <div className="space-y-4">
@@ -1473,7 +1456,10 @@ export default function MeetingDetailPage() {
                 meeting asks of you is part of the same document as what it
                 said, and a bordered box around it is what made it read as a
                 widget parked below the summary. */}
-            <section className="space-y-3">
+            {/* `scroll-mt-band`, because the band is fixed: without it the
+                margin's index scrolls this heading to y=0, which is behind the
+                chrome. */}
+            <section id={ACTION_ITEMS_ANCHOR} className="scroll-mt-band space-y-3">
               <h3 className="flex items-center gap-2 text-title-3 font-headline text-ink">
                 <ListChecks className="h-4 w-4 text-ink-3" /> Action items
               </h3>
@@ -1544,11 +1530,13 @@ export default function MeetingDetailPage() {
             {/* Last, and still below the summary rather than above it: these
                 rows are read out of the summary, and putting them first would
                 suggest they were the source rather than the reading. */}
-            <InsightsPanel meetingId={id} />
+            <div id={INSIGHTS_ANCHOR} className="scroll-mt-band">
+              <InsightsPanel meetingId={id} />
+            </div>
             </div>
           </TabsContent>
 
-          <TabsContent value="transcript" className="pt-6">
+          <TabsContent value="transcript" className="max-w-measure pt-6">
             <div>
             {showing ? (
               showing.hasTranscript ? (
@@ -1711,6 +1699,61 @@ export default function MeetingDetailPage() {
         available={availableTranslations.data}
         busy={translating}
       />
+        </div>
+
+        {/*
+         * THE MARGIN. What the meeting is, beside what it said.
+         *
+         * <p>One 1px rule down its left edge and no fill -- see
+         * `[data-page-margin]` in app/globals.css. It holds what used to sit
+         * between the title and the first sentence: the facts, the topics, and
+         * an index of how many action items, decisions and risks there are.
+         *
+         * <p>Drawn on both tabs. The facts are equally true of either, the
+         * outline is MORE useful over a transcript than over a summary that
+         * already contains it, and a second column that appears when somebody
+         * changes tab is a page that changes shape under them.
+         *
+         * <p>Only once the meeting has loaded. Before that there is nothing to
+         * describe, and every value here would be a placeholder.
+         */}
+        <div data-page-margin>
+          <MeetingMargin
+            meeting={m}
+            /* Real diarization output, and empty for a document or a
+               transcript that has not been made yet. */
+            speakers={transcript.data?.speakers ?? []}
+            /* The translated sections when a translation is showing, so the
+               topics and the outline are in the language on screen. */
+            sections={showing?.sections ?? summary.data?.sections ?? []}
+            actions={{
+              ready: actionsState === "ready",
+              open: openActions,
+              total: actions.data?.length ?? 0,
+            }}
+            decisions={marginDecisions}
+            risks={marginRisks}
+            insightsReady={insights.data !== undefined}
+            /* Over the transcript only. A summary contains its own outline,
+               with every heading already playable -- see the note on the
+               component. */
+            showOutline={tab === "transcript"}
+            /* The page's own element, so there is one control writing to the
+               tags rather than two. Not while the meeting is still working:
+               tagging a meeting you cannot read yet is filing a document you
+               have not seen. */
+            tags={
+              terminal && ((m.tags?.length ?? 0) > 0 || tagging) ? (
+                <MeetingTags
+                  id={id}
+                  tags={m.tags ?? []}
+                  addable={tagging}
+                  openAdd={tagging}
+                />
+              ) : undefined
+            }
+            onSeek={playFrom}
+          />
         </div>
       </div>
     </div>
@@ -2123,9 +2166,10 @@ function SummaryPanel({
   // what it used to be, and what made switching language quietly show the
   // reader less of the meeting than staying in English did.
   //
-  // Memoised because the topics below are derived from it: a fresh array
-  // identity on every render would recompute them on every render, which is
-  // cheap here and exactly the habit that stops being cheap later.
+  // Memoised because every section below is keyed off this array: a fresh
+  // identity on every render would re-render the whole document on every
+  // render, which is cheap here and exactly the habit that stops being cheap
+  // later.
   const sections = React.useMemo(
     () => translated?.sections ?? summary?.sections ?? [],
     [translated, summary?.sections],
@@ -2156,27 +2200,7 @@ function SummaryPanel({
   // a claim about the exact words spoken, so displaying it beside translated
   // prose would invite reading it as a translated quote.
   const quotes = translated ? [] : summary?.quotes ?? [];
-  /**
-   * The topics covered, taken from the outline's headings.
-   *
-   * Every template ends with an outline whose headings are the topics in the
-   * order they came up, so this is a read of something already generated rather
-   * than a second opinion about it. Empty for summaries written before
-   * templates existed, which have no outline to read.
-   */
-  const topics = React.useMemo(
-    () =>
-      sections
-        // Keyed on `outline`, not on kind: a template may use the outline
-        // *shape* for something that is not the walkthrough — Interview pairs
-        // each question with its answer that way — and those headings are
-        // questions, not topics the meeting covered.
-        .filter((s) => s.key === "outline")
-        .flatMap((s) => s.groups.map((g) => g.heading))
-        .map((h) => h.trim())
-        .filter(Boolean),
-    [sections],
-  );
+
   const current = summary?.templateSlug ?? "general";
 
   return (
@@ -2258,35 +2282,14 @@ function SummaryPanel({
                     {view.shortSummary}
                   </p>
                 )}
-                {/* What was covered, at a glance.
-                    Derived from the outline's headings rather than generated
-                    separately. Asking the model for a second list of topics
-                    would cost another section and — worse — could disagree with
-                    the outline, leaving two answers to "what was discussed".
-                    The headings already are the topics, in the order they came
-                    up; this just makes them scannable without reading the
-                    walkthrough. */}
-                {/*
-                  ONE QUIET LINE, not a row of pills.
-                  <p>`18-meeting-brief.png` sets the topics as plain text under
-                  the lead, separated by the product's own dot: `Beta rollout
-                  date · Duplicate upload events · Transcription provider`. They
-                  were bordered pills under a heading, which is a dashboard
-                  device — and a border at 3:1 on something that cannot be
-                  pressed is a promise the page does not keep. These are not
-                  operable, so they no longer look it.
-                  <p>The heading went with them: six words separated by dots
-                  under a summary do not need to be told they are topics.
-                */}
-                {topics.length > 0 && (
-                  <p className="flex flex-wrap items-center text-callout text-ink-3">
-                    <Facts>
-                      {topics.map((t, i) => (
-                        <span key={i}>{t}</span>
-                      ))}
-                    </Facts>
-                  </p>
-                )}
+                {/* THE TOPICS ARE IN THE MARGIN NOW.
+                    <p>They were a dotted line here, between the lead paragraph
+                    and the first section -- which put a list of six headings
+                    between the summary's opening sentence and the summary. They
+                    are an index of the document rather than part of it, and
+                    they are still read from the outline's own headings rather
+                    than asked for separately: see
+                    components/v2/meeting/meeting-margin. */}
                 {sections.map((s) => (
                   <SummarySectionView key={s.key} section={s} onSeek={onSeek} />
                 ))}

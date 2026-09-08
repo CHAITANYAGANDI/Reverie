@@ -44,7 +44,14 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { bandChrome } from "@/lib/chrome";
-import { ASK, HOME, LIBRARY, folderIdFrom, isFolderListPath } from "@/lib/routes";
+import {
+  ASK,
+  HOME,
+  LIBRARY,
+  folderIdFrom,
+  isFolderListPath,
+  meetingIdFrom,
+} from "@/lib/routes";
 import { SIDE_PANE_ID, useSidePane } from "@/components/side-pane";
 import { RecordingProvider, useRecording } from "@/lib/recording-context";
 import { SearchCommand } from "@/components/search-command";
@@ -101,12 +108,17 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   /*
    * The pages that lay themselves out.
    *
-   * <p>Ask draws its own full-height scroller. The rest draw the V2
-   * measure-and-margin spread, which sets its own document width and its own
-   * gutters because the margin has to be able to sit outside the reading
-   * column — and because `.v2-spread` centres on the measure alone when a page
-   * has nothing to put beside it, which the shell's own container would
-   * override. Library, the folders index and a folder are all that shape now.
+   * <p>Ask draws its own full-height scroller. The rest draw a document and a
+   * margin, which set their own width and their own gutters because a margin
+   * has to be able to sit outside the reading column — and because the shell's
+   * container would override both.
+   *
+   * <p>A meeting is on this list now. It lays out `.v2-page` like Home and
+   * Library, and while it was not on the list the shell wrapped that frame in
+   * a centred 1120px container: measured at 1672, the title started at 348px
+   * instead of 72 and the whole composition sat in the middle of the window
+   * with the margin squeezed. A page that positions itself cannot also be
+   * positioned.
    *
    * <p>Everything else still gets the shell's container; see `<main>` below.
    */
@@ -115,7 +127,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     pathname === ASK ||
     pathname === LIBRARY ||
     isFolderListPath(pathname) ||
-    folderIdFrom(pathname) !== null;
+    folderIdFrom(pathname) !== null ||
+    meetingIdFrom(pathname) !== null;
   // Filled by the page underneath, when it has one. See components/side-pane.tsx.
   const pane = useSidePane();
   const showPane = pane.occupied && pane.open;

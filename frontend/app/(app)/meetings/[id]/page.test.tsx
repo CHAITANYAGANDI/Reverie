@@ -698,11 +698,13 @@ describe("what this page must never say", () => {
   });
 });
 
-describe("the measure", () => {
-  it("sets the summary in it", () => {
+describe("the frame", () => {
+  it("sets the summary in the document column", () => {
     const { container } = render(<MeetingDetailPage />);
 
-    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
+    // `.v2-spread` was the single centred 680px measure this replaced.
+    expect(container.querySelector(".v2-spread")).toBeNull();
   });
 
   it("sets the transcript in the same one", async () => {
@@ -710,16 +712,50 @@ describe("the measure", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 
-    expect(container.querySelector(".v2-spread")).toBeInTheDocument();
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
   });
 
-  it("centres it while the margin has nothing in it", () => {
-    // Rather than sitting the text left of an empty column. The margin fills
-    // with real anchored content when the transcript is rebuilt; until then an
-    // empty 400px gutter is a layout that looks broken.
+  it("draws the margin, and keeps it across both reading modes", async () => {
+    /*
+     * INVERTED. This asserted `data-margin="empty"` -- the measure centred,
+     * with no second column -- on the grounds that an empty 400px gutter looks
+     * broken and there was nothing real to put in it.
+     *
+     * <p>There is now: the facts about the meeting, the topics, and how many
+     * action items, decisions and risks it has. All of it was already being
+     * fetched for the document, so the margin costs no request; what it used
+     * to cost was the two rows of metadata between the title and the first
+     * sentence.
+     *
+     * <p>Across both modes, because the facts are equally true of either and a
+     * second column that appears when somebody changes tab is a page that
+     * changes shape under them.
+     */
     const { container } = render(<MeetingDetailPage />);
 
-    expect(container.querySelector('.v2-spread[data-margin="empty"]')).toBeInTheDocument();
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "About this meeting" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
+  });
+
+  it("states the facts once, in the margin rather than under the title", () => {
+    /*
+     * They were a dotted sentence under the title -- date, duration, who
+     * spoke, language, tags -- so the summary's first line began a long way
+     * down a page opened to read it. Asserted as "in the margin", not merely
+     * "present": moving them and leaving a copy behind would pass a test that
+     * only looked for the words.
+     */
+    const { container } = render(<MeetingDetailPage />);
+
+    const aside = screen.getByRole("complementary", { name: "About this meeting" });
+    const duration = screen.getByText("Duration");
+    expect(aside.contains(duration)).toBe(true);
+    // One statement of it, not two.
+    expect(screen.getAllByText("Duration")).toHaveLength(1);
+    expect(container.querySelector("[data-page-margin]")?.contains(aside)).toBe(true);
   });
 
   it("sets the switch and the masthead in the same column as the document", () => {
@@ -741,19 +777,49 @@ describe("the measure", () => {
 
     const list = screen.getByRole("tablist");
     const title = screen.getByRole("heading", { level: 1 });
-    const spread = container.querySelector('.v2-spread[data-margin="empty"]');
+    const frame = container.querySelector(".v2-page");
 
-    expect(spread).toBeInTheDocument();
-    expect(list.closest('.v2-spread[data-margin="empty"]')).toBe(spread);
-    expect(title.closest('.v2-spread[data-margin="empty"]')).toBe(spread);
+    expect(frame).toBeInTheDocument();
+    expect(list.closest(".v2-page")).toBe(frame);
+    expect(title.closest(".v2-page")).toBe(frame);
+    // And in the document column rather than the margin.
+    expect(list.closest("[data-page-margin]")).toBeNull();
+    expect(title.closest("[data-page-margin]")).toBeNull();
   });
 
-  it("applies the measure exactly once", () => {
+  it("holds the prose to the reading measure, in both modes and to the same width", async () => {
+    /*
+     * The frame's document column is about 1010px at the reference width,
+     * which is right for a list of rows and too wide for prose: the lead
+     * paragraph measured a hundred characters before this cap, where the whole
+     * point of `--measure` is that the eye loses the line past eighty.
+     *
+     * <p>The same token on both panels, which is the older half of this rule.
+     * Moving between the two reading modes is a change of content, not of
+     * reading posture, and two panels each choosing their own width is how
+     * that stops being true.
+     */
+    const { container } = render(<MeetingDetailPage />);
+
+    const summaryPanel = container.querySelector('[role="tabpanel"]');
+    expect(summaryPanel?.className).toContain("max-w-measure");
+    // And the masthead is NOT held to it -- it gets the whole column, which is
+    // what lines the title up with the document rather than centring away.
+    const title = screen.getByRole("heading", { level: 1 });
+    expect(title.closest(".max-w-measure")).toBeNull();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    const transcriptPanel = container.querySelector('[role="tabpanel"]');
+    expect(transcriptPanel?.className).toContain("max-w-measure");
+  });
+
+  it("applies the frame exactly once", () => {
     // It was on both `TabsContent` panels and nowhere else. Two of them is how
     // the summary and the transcript come to disagree about their own width.
     const { container } = render(<MeetingDetailPage />);
 
-    expect(container.querySelectorAll(".v2-spread")).toHaveLength(1);
+    expect(container.querySelectorAll(".v2-page")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-page-margin]")).toHaveLength(1);
   });
 });
 
@@ -1115,7 +1181,13 @@ describe("the summary", () => {
     summary = aSummary({ sections: [aSection({ title: "Risks" })] });
     render(<MeetingDetailPage />);
 
-    expect(screen.getByRole("heading", { name: "Risks" })).toBeInTheDocument();
+    /*
+     * `level: 3`, because the margin labels its own index of the risks "Risks"
+     * as well. That is how a table of contents works rather than a defect --
+     * see the note on `MeetingMargin` -- but it does mean this has to say
+     * which of the two it means. The document's section headings are h3.
+     */
+    expect(screen.getByRole("heading", { name: "Risks", level: 3 })).toBeInTheDocument();
     expect(screen.getByText("Not discussed.")).toBeInTheDocument();
   });
 
@@ -1960,7 +2032,8 @@ describe("action items on the meeting", () => {
     actionItems = [anActionItem()];
     render(<MeetingDetailPage />);
 
-    expect(screen.getByRole("heading", { name: /Action items/ })).toBeInTheDocument();
+    // The document's, at h3; the margin's index of the same list is h2.
+    expect(screen.getByRole("heading", { name: /Action items/, level: 3 })).toBeInTheDocument();
     expect(screen.getByText("Send the contract")).toBeInTheDocument();
   });
 
@@ -2053,7 +2126,9 @@ describe("decisions and risks on the meeting", () => {
     actionItems = [anActionItem()];
     render(<MeetingDetailPage />);
 
-    const brief = screen.getByRole("heading", { name: /Action items/ });
+    // `level: 3` -- the margin's index of the action items carries the same
+    // name at h2. See the note on `MeetingMargin`.
+    const brief = screen.getByRole("heading", { name: /Action items/, level: 3 });
     const insights = screen.getByTestId("insights-panel");
     expect(brief.compareDocumentPosition(insights)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });

@@ -61,6 +61,22 @@ export const ASK = "/ask";
 export const LIBRARY = "/library";
 
 /**
+ * The meeting id in a path, or null when the path is not a meeting's.
+ *
+ * <p>Mirrors {@link folderIdFrom}, and exists for the same reason: the shell
+ * has to know whether the page under it lays out its own frame, and matching
+ * `/meetings/<something>` with a string test in three places is how one of
+ * them ends up disagreeing.
+ *
+ * <p>Deliberately strict about the shape. `/meetings` on its own is not a
+ * meeting — there is no such route — and a nested path is not one either.
+ */
+export function meetingIdFrom(pathname: string): string | null {
+  const m = /^\/meetings\/([^/]+)$/.exec(pathname);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
  * Where the folder list used to be.
  *
  * <p>It is part of Library now — a folder groups what you have, so it belongs
