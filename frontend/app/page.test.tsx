@@ -186,6 +186,126 @@ describe("the way in", () => {
  * slogan somebody wrote instead of using the approved one.
  */
 describe("the hero", () => {
+  it("carries the identity's tagline, in the specified words", () => {
+    /*
+     * `CONVERSATIONAL INTELLIGENCE`, exactly. The stacked lockup this replaces
+     * argued the line should be left out — that decision is superseded, and
+     * the wording is not interchangeable with any of the phrases below, none
+     * of which is what this product is called.
+     */
+    render(<LandingPage />);
+
+    expect(screen.getByText("CONVERSATIONAL INTELLIGENCE")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["Conversations into clarity", /conversations into clarity/i],
+    ["Conversation Intelligence, singular", /\bconversation intelligence\b/i],
+    ["Meeting Intelligence", /meeting intelligence/i],
+    ["AI Meeting Assistant", /ai meeting assistant/i],
+    ["Conversational AI", /conversational ai\b/i],
+  ])("does not say %s", (_label, forbidden) => {
+    // Near-misses for the tagline. Each is a different product's positioning
+    // and one of them was on this page until recently.
+    const { container } = render(<LandingPage />);
+
+    expect(container.textContent).not.toMatch(forbidden);
+  });
+
+  it("puts the identity first and the claim second", () => {
+    /*
+     * THE REPORTED PROBLEM, AS AN ORDER.
+     *
+     * <p>The hero was a small lockup immediately above the headline and the
+     * two were the same weight, so the page had no first thing. Scale is a
+     * `clamp()` and has no meaning in jsdom — it is measured against the
+     * rendered page — so what is held here is that the identity is the hero's
+     * opening element, complete, and that the claim follows it.
+     */
+    const { container } = render(<LandingPage />);
+
+    const hero = container.querySelector("main > section")!;
+    const mark = hero.querySelector('svg[role="img"][aria-label="Reverie"]')!;
+    const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
+    const heading = screen.getByRole("heading", { level: 1 });
+
+    expect(mark).not.toBeNull();
+    expect(mark.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(tag.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("keeps the headline exactly, on its two authored lines", () => {
+    // Not rewritten and not reflowed. The pair is the copy's own rhythm and a
+    // viewport that put "Keep" at the end of the first line would break it.
+    render(<LandingPage />);
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    const lines = Array.from(heading.querySelectorAll("span")).map((s) => s.textContent);
+    expect(lines).toEqual(["Remember the conversation.", "Keep the meaning."]);
+  });
+
+  it("keeps the two doors exactly where they were", () => {
+    // The identity got larger; nothing about the way in changed.
+    render(<LandingPage />);
+
+    const hero = screen.getByRole("heading", { level: 1 }).closest("section")!;
+    const primary = hero.querySelector('a[href="/sign-up"]')!;
+    const secondary = hero.querySelector('a[href="/sign-in"]')!;
+    expect(primary).toHaveTextContent("Create a free account");
+    expect(secondary).toHaveTextContent("Sign in");
+    // Ink, not the accent: the V2 palette's own rule for a primary button.
+    expect(primary.className).toContain("bg-ink");
+    expect(secondary.className).not.toContain("bg-brand");
+  });
+
+  it("keeps the compact lockup in the nav, with no tagline in it", () => {
+    /*
+     * Two different objects. The nav's is the thing you press to get home, in
+     * a row with Sign in and Get started; the tagline belongs under the hero
+     * wordmark and nowhere else, which is why it appears exactly once.
+     */
+    const { container } = render(<LandingPage />);
+
+    const header = container.querySelector("header")!;
+    expect(header.querySelector('[aria-label="Reverie"]')).not.toBeNull();
+    expect(header.textContent).toContain("Reverie");
+    expect(header.textContent).not.toMatch(/CONVERSATIONAL/i);
+    expect(screen.getAllByText("CONVERSATIONAL INTELLIGENCE")).toHaveLength(1);
+  });
+
+  it("labels the identity once per lockup and never twice in one", () => {
+    /*
+     * The hero mark, the nav mark and the footer mark. Each is one accessible
+     * name beside its own text — a mark labelled "Reverie" next to a second
+     * element also labelled "Reverie" is the product's name announced twice
+     * for one logo.
+     */
+    render(<LandingPage />);
+
+    const named = screen.getAllByRole("img", { name: "Reverie" });
+    expect(named).toHaveLength(3);
+    for (const el of named) {
+      expect(el.tagName.toLowerCase()).toBe("svg");
+    }
+  });
+
+  it("adds the hero's own light without replacing the page's", () => {
+    /*
+     * Three layers and they are all decoration: the page's wash, the bloom
+     * behind the mark, and one line of light where the identity gives way to
+     * the page. `AmbientCanvas` is untouched — the brief was explicit that the
+     * global system stays — and every one of them is out of the accessibility
+     * tree.
+     */
+    const { container } = render(<LandingPage />);
+
+    for (const cls of [".v2-ambient", ".v2-hero-bloom", ".v2-hero-arc"]) {
+      const el = container.querySelector(cls);
+      expect(el, cls).not.toBeNull();
+      expect(el!.getAttribute("aria-hidden"), cls).toBe("true");
+    }
+  });
+
   it("leads with the identity rather than with a kicker", () => {
     /*
      * It led with "Meeting intelligence, without the meeting-tool clutter." in

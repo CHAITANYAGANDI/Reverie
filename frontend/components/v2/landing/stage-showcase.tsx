@@ -218,10 +218,29 @@ function StageCopy({
       ref={ref}
       className="flex min-h-[42vh] flex-col justify-center py-10 lg:min-h-screen lg:py-0"
     >
+      {/*
+        REDUCED MOTION ZEROES THE CLOCK, IT DOES NOT CHANGE THE CLASS LIST.
+
+        <p>This was `animate={moving ? {...} : undefined}` with an
+        `!moving && "opacity-100"` in the className, and that is a hydration
+        failure: the server cannot know the preference, so `useMotionAllowed()`
+        is true there and the served markup has no `opacity-100`, while a client
+        that prefers reduced motion adds it. React reports
+        `Prop className did not match`, fails the hydration, and — being
+        outside a Suspense boundary — throws the whole server HTML away and
+        re-renders the page on the client. Measured on this page.
+
+        <p>So the class list and the target are unconditional and only the
+        duration moves. Which also means a reader who prefers reduced motion now
+        keeps the dimming that says which stage is active, instead of losing the
+        affordance entirely: an opacity level is a state, and arriving at it
+        instantly is not motion. Same decision as
+        components/v2/landing/reveal.
+      */}
       <m.div
-        animate={moving ? { opacity: active ? 1 : 0.32 } : undefined}
-        transition={{ duration: 0.45, ease: LANDING_EASE }}
-        className={cn("max-w-[46ch]", !moving && "opacity-100")}
+        animate={{ opacity: active ? 1 : 0.32 }}
+        transition={moving ? { duration: 0.45, ease: LANDING_EASE } : { duration: 0 }}
+        className="max-w-[46ch]"
       >
         <p className="v2-label flex items-center gap-2 text-brand-text">
           <span className="tabular font-mono">{String(index + 1).padStart(2, "0")}</span>

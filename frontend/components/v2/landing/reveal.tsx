@@ -45,6 +45,28 @@ import { m, useReducedMotion, type Variants } from "framer-motion";
 /** The one curve. Decelerate: fast away, settling rather than stopping. */
 const EASE = [0.32, 0.72, 0, 1] as const;
 
+/*
+ * REDUCED MOTION CHANGES THE CLOCK, NOT THE TREE.
+ *
+ * <p>It used to return a plain tag instead of an `m` one. That reads correctly
+ * and hydrates wrongly: the server cannot know the preference, so
+ * `useReducedMotion()` is false there and the served HTML carries framer's
+ * `initial` — `style="opacity:0"`. A client that prefers reduced motion then
+ * renders the plain branch with no style at all, React reports
+ * "Hydration failed because the initial UI does not match", and because the
+ * error is outside a Suspense boundary the entire root switches to client
+ * rendering. Measured on the public page with
+ * `prefers-reduced-motion: reduce`: nine errors and a full re-render.
+ *
+ * <p>So the element and its `initial` are now unconditional, and `still` only
+ * zeroes the duration and the delay. That keeps the promise this file makes —
+ * "reduced motion is absence, not slowness" — because a zero-duration
+ * transition is not a fast fade, it is no fade: the content is simply there on
+ * the first frame after hydration. What it gives up is nothing, and what it
+ * buys is that the server and the client render the same thing for every
+ * reader.
+ */
+
 /**
  * One thing arriving.
  *
@@ -69,11 +91,6 @@ export function Reveal({
   const still = useReducedMotion();
   const Tag = m[as];
 
-  if (still) {
-    const Plain = as;
-    return <Plain className={className}>{children}</Plain>;
-  }
-
   return (
     <Tag
       data-reveal
@@ -81,7 +98,7 @@ export function Reveal({
       initial={{ opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "0px 0px -12% 0px" }}
-      transition={{ duration: 0.62, ease: EASE, delay }}
+      transition={still ? { duration: 0 } : { duration: 0.62, ease: EASE, delay }}
     >
       {children}
     </Tag>
@@ -96,6 +113,19 @@ const GROUP: Variants = {
 const ITEM: Variants = {
   hidden: { opacity: 0, y: 10 },
   shown: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
+};
+
+/* The same two variants with the clock at zero. Written out rather than
+   computed, because a variant object built per render is a new object per
+   render and framer would restart the animation on every one of them. */
+const STILL_GROUP: Variants = {
+  hidden: {},
+  shown: { transition: { staggerChildren: 0, delayChildren: 0 } },
+};
+
+const STILL_ITEM: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  shown: { opacity: 1, y: 0, transition: { duration: 0 } },
 };
 
 /**
@@ -120,23 +150,21 @@ export function Stagger({
   as?: "div" | "ul";
 }) {
   const still = useReducedMotion();
-
-  if (still) {
-    const Plain = as;
-    return <Plain className={className}>{children}</Plain>;
-  }
-
   const Tag = m[as];
+
   return (
     <Tag
       className={className}
-      variants={GROUP}
+      /* Same rule as `Reveal`: the tree is identical either way and reduced
+         motion only zeroes the clock. Here that is the group's own stagger as
+         well as each item's duration -- see `GROUP` and `ITEM`. */
+      variants={still ? STILL_GROUP : GROUP}
       initial="hidden"
       whileInView="shown"
       viewport={{ once: true, margin: "0px 0px -10% 0px" }}
     >
       {React.Children.map(children, (child, i) => (
-        <m.div key={i} data-reveal variants={ITEM}>
+        <m.div key={i} data-reveal variants={still ? STILL_ITEM : ITEM}>
           {child}
         </m.div>
       ))}

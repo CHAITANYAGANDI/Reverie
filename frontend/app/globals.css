@@ -185,7 +185,12 @@
        A serif outside a reading column is a bug. The one sanctioned exception
        is a summary fragment in a list row, and it is sanctioned because that
        fragment IS reading. */
-    --t-display: 2.5rem;      /* 40 — the landing hero, once per product */
+    /* 56 — the landing headline, once per product. It was 40, set against a
+     * hero whose identity was a 19px nav lockup; the identity is now a 230px
+     * mark over a 70px wordmark, and 40px under that read as a subheading
+     * rather than as the page's claim. 56 is the second focal point to the
+     * brand's first: clearly below the wordmark, clearly above the body. */
+    --t-display: 3.5rem;
     --t-title-l: 1.875rem;    /* 30 — a page, a meeting */
     --t-title-1: 1.375rem;    /* 22 — a region that owns part of a page */
     --t-title-2: 1.0625rem;   /* 17 — a group inside a region */
@@ -343,6 +348,92 @@
      Here rather than in an arbitrary Tailwind value because the declaration
      is 180 characters long and was written out in full twice. See
      components/v2/ambient-canvas.tsx for where it is allowed. */
+  /* ==========================================================================
+     THE HERO'S OWN LIGHT — two layers, both decoration, both nearly invisible
+     ==========================================================================
+     `.v2-ambient` is the page's wash and is unchanged; these are the hero's,
+     and they exist because the identity artwork has depth the flat canvas
+     cannot give it. The mark floats on the canvas — no card, no badge, no
+     container — so what puts it in a space is light behind it.
+
+     Held here rather than in an arbitrary Tailwind value for the same reason
+     the ambient wash is: each declaration is long, and one place to change it
+     is what stops two of them drifting.
+
+     BOTH ARE DELIBERATELY AT THE EDGE OF VISIBLE. If either reads as an effect
+     rather than as atmosphere it is wrong, and the way to check is to look at
+     the page for ten seconds and not notice them. */
+
+  /* A bloom directly behind the mark. `--brand` at 13% over 55% of the box,
+     falling to nothing — an ellipse rather than a circle, because the mark is
+     twice as wide as it is tall and a round glow around it reads as a halo
+     somebody drew. */
+  .v2-hero-bloom {
+    background-image: radial-gradient(
+      closest-side,
+      hsl(var(--brand) / 0.18),
+      hsl(var(--brand) / 0.07) 48%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * A horizon: one soft arc of light low in the hero.
+   *
+   * <p>The reference artwork has a lit curve beneath the logo. Taken literally
+   * that is a planet, which is not what this product is about — so it is a very
+   * wide, very shallow ellipse whose top edge is the only lit part, sitting
+   * where the identity gives way to the page. Read as a light source below the
+   * fold rather than as an object.
+   *
+   * <p>Drawn as a hairline gradient ring: `--brand-hover` at 22% at the crest,
+   * gone by 52%. The mask fades it out toward both ends so it has no visible
+   * start or finish.
+   */
+  .v2-hero-arc {
+    background-image: radial-gradient(
+      closest-side,
+      transparent 0%,
+      transparent 48%,
+      hsl(var(--brand-hover) / 0.22) 50%,
+      transparent 52%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 22%,
+      #000 78%,
+      transparent
+    );
+    mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+  }
+
+  /*
+   * The bloom breathes, very slowly.
+   *
+   * <p>10 seconds, 3% of scale and 3% of opacity. The brief for this was that
+   * if it reads as an animation while somebody is reading the page it is too
+   * strong; at these numbers it is below the threshold at which the eye reports
+   * movement and above the one at which the light feels dead.
+   *
+   * <p>Under `prefers-reduced-motion` the whole `@media` block at the foot of
+   * this file zeroes every animation, so this stops rather than slows.
+   */
+  @keyframes hero-bloom-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.03);
+      opacity: 0.97;
+    }
+  }
+  .v2-hero-bloom[data-breathe] {
+    animation: hero-bloom-breathe 10s var(--ease-soft) infinite;
+  }
+
   .v2-ambient {
     background-image:
       radial-gradient(

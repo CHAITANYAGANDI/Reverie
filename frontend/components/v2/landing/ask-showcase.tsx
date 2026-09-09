@@ -101,7 +101,7 @@ export function AskShowcase() {
               <span className="text-cap text-ink-4">or a folder, or everything</span>
             </div>
             <p className="min-h-[3.25rem] px-3.5 py-3 text-body text-ink">
-              {moving ? typed : QUESTION}
+              {typed}
               {beat === "typing" && (
                 <span className="ml-px inline-block h-[1.05em] w-[1.5px] translate-y-[0.15em] animate-recpulse bg-brand-text align-baseline" />
               )}
@@ -118,7 +118,7 @@ export function AskShowcase() {
 
             {(beat === "citing" || beat === "settled") && (
               <m.div
-                initial={moving ? { opacity: 0, y: 8 } : false}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, ease: LANDING_EASE }}
                 className="v2-note mt-5"
@@ -230,7 +230,11 @@ function Thinking() {
  * a faster version of it.
  */
 function useSequence(start: boolean, moving: boolean): Beat {
-  const [beat, setBeat] = React.useState<Beat>(moving ? "idle" : "settled");
+  /* `"idle"` for everybody, and the effect below jumps to `settled` when
+     motion is off. Seeding this from the preference is a hydration mismatch:
+     the server always reads `moving` as true, so a reader who prefers reduced
+     motion would render `settled` against a server that rendered `idle`. */
+  const [beat, setBeat] = React.useState<Beat>("idle");
 
   React.useEffect(() => {
     if (!moving) {
@@ -272,7 +276,11 @@ function useTyped(text: string, running: boolean, moving: boolean, stepMs = 34):
   const [n, setN] = React.useState(0);
 
   React.useEffect(() => {
-    if (!moving || !running) return;
+    if (!moving) {
+      setN(text.length);
+      return;
+    }
+    if (!running) return;
     setN(0);
     const id = setInterval(() => {
       setN((v) => {
@@ -286,7 +294,10 @@ function useTyped(text: string, running: boolean, moving: boolean, stepMs = 34):
     return () => clearInterval(id);
   }, [text, running, moving, stepMs]);
 
-  if (!moving) return text;
+  /* No branch on `moving` here either. When motion is off the effect above has
+     already set `n` to the whole length, so this returns the finished string by
+     the same route it would have typed it -- and the first render, before any
+     effect has run, is `""` for everybody. */
   if (!running) return n === 0 ? "" : text;
   return text.slice(0, n);
 }

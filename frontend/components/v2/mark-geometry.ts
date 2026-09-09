@@ -5,10 +5,12 @@
  *
  * <p>Because that file is `"use client"` — it needs `useId` for its gradients —
  * and every export of a client module is a client *reference* rather than a
- * value. `Lockup` is a server component and calls `markFill` to work out its
- * own spacing; importing it from the client module gave a 500 with
- * `markFill is not a function`, which is the framework telling the truth about
- * a boundary rather than a bug in either file.
+ * value. A server component that imports one and calls it gets a 500: this
+ * module exists because `Lockup` did exactly that with `markFill` and the page
+ * died with `markFill is not a function`, which is the framework telling the
+ * truth about a boundary rather than a bug in either file. The landing hero hit
+ * the same wall a second time with its own timings — see
+ * components/v2/landing/hero-beats.
  *
  * <p>So the drawing lives here, in a module with no React in it, and both
  * sides import it. It is also the half worth testing: a path string and a
@@ -68,10 +70,22 @@ export function cutFor(size: number): Cut {
 /**
  * How much of the mark's square box the lens actually reaches, top to bottom.
  *
- * <p>Published because the box is square and the lens is not: at the large cut
- * the drawing stops about 26% of the way up from the bottom edge. Anything
- * stacking type under the mark has to subtract that, or the gap in the rendered
- * page is twice what the number in the file says. See `LockupStacked`.
+ * <p>The box is square and the lens is not: at the large cut the drawing stops
+ * about 26% of the way up from the bottom edge. Anything stacking type under
+ * the mark has to subtract that, or the gap in the rendered page is twice what
+ * the number in the file says.
+ *
+ * <p><b>Nothing calls this at the moment.</b> `LockupStacked` did, and it was
+ * withdrawn when the landing hero took over the stacked identity — and the hero
+ * solves the same problem the other way, by cropping its viewBox to the lens's
+ * own bounding box so its element is exactly the size of what it draws, which
+ * is the better answer where the drawing is the only thing in the element.
+ *
+ * <p>Kept rather than deleted because it is the honest way to ask the question
+ * "how much of this square is drawing?", it is two lines, and it is covered by
+ * this module's own suite. Anything that has to lay out *around* the square box
+ * rather than inside it will want it. Said out loud so the next reader does not
+ * have to search for a caller that is not there.
  */
 export function markFill(size: number): number {
   return (32 - cutFor(size).outerApex * 2) / 32;

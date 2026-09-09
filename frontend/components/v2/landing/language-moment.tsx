@@ -80,16 +80,29 @@ export function LanguageMoment() {
       <div aria-hidden className="mt-12">
         <div className="flex min-h-[6.5rem] items-start border-l border-brand-text/34 pl-5 sm:min-h-[5.5rem]">
           <AnimatePresence mode="wait" initial={false}>
+      {/*
+        THE PREFERENCE CORRECTS THIS AFTER MOUNT, IT DOES NOT SEED IT.
+
+        <p>The server cannot know whether a reader prefers reduced motion, so
+        anything rendered *differently* because of it is a hydration mismatch —
+        and a mismatch outside a Suspense boundary makes React throw the whole
+        server HTML away and re-render the page on the client. Measured on this
+        page: nine errors and a full re-render under
+        `prefers-reduced-motion: reduce`.
+
+        <p>So the first render is the same for everybody and the effect settles
+        it. Same decision as components/v2/landing/reveal.
+      */}
             <m.p
-              key={moving ? line.code : "static"}
-              dir={moving && line.rtl ? "rtl" : undefined}
-              initial={moving ? { opacity: 0, y: 8 } : false}
+              key={line.code}
+              dir={line.rtl ? "rtl" : undefined}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={moving ? { opacity: 0, y: -8 } : undefined}
-              transition={{ duration: 0.45, ease: LANDING_EASE }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={moving ? { duration: 0.45, ease: LANDING_EASE } : { duration: 0 }}
               className="v2-read text-[1.1875rem] leading-[1.55] text-ink"
             >
-              {moving ? line.text : LINES[0].text}
+              {line.text}
             </m.p>
           </AnimatePresence>
         </div>
@@ -98,8 +111,14 @@ export function LanguageMoment() {
           {LINES.map((l, n) => (
             <span
               key={l.code}
+              /* `n === i` and not `moving && n === i`: `i` is state that starts
+                 at 0 on both sides and only advances when the interval runs, so
+                 with motion off it never leaves the first language and this
+                 highlights exactly the line being shown. Branching on the
+                 preference instead put a different class list on the server
+                 than on the client. */
               className={
-                moving && n === i
+                n === i
                   ? "text-callout text-ink transition-colors duration-500"
                   : "text-callout text-ink-4 transition-colors duration-500"
               }

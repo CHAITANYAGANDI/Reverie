@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { Lockup, LockupStacked } from "@/components/v2/lockup";
+import { Lockup } from "@/components/v2/lockup";
+import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand";
+import { HeroBeat } from "@/components/v2/landing/hero-beat";
+import { HERO_BEATS } from "@/components/v2/landing/hero-beats";
 import { Reveal, Stagger } from "@/components/v2/landing/reveal";
 import { StageShowcase } from "@/components/v2/landing/stage-showcase";
 import { AskShowcase } from "@/components/v2/landing/ask-showcase";
@@ -195,55 +198,114 @@ function Header() {
 }
 
 /**
- * One claim, centred, and the two ways in under it.
+ * TWO MOMENTS: who this is, and what it promises.
  *
- * <p>The measures are the artifact's: roughly 20 characters on the headline so
- * it breaks where it is written to break, and 62 on the body. The display step
- * is `--t-display`, which the type scale annotates as "the landing hero, once
- * per product" — this is the once.
+ * <h2>What changed, and why</h2>
+ *
+ * <p>This was one moment — a 128px lockup, then immediately a 40px headline —
+ * and the two were the same visual weight, so the page had no first thing. The
+ * identity read as a logo pasted above a heading.
+ *
+ * <p>Now the identity is the first beat at the scale the artwork is drawn at,
+ * there is real air under it, and the claim is the second beat at 56px. The
+ * brand is larger; the headline is still the largest *sentence* on the page.
+ * They are not competing, which is the whole point of the change.
+ *
+ * <h2>Height</h2>
+ *
+ * <p>`min-h-[calc(100svh-var(--band-nav))]` and centred in it, rather than a
+ * stack of margins that happens to fill a 900px window. `svh` and not `vh`
+ * because on a phone `vh` is the *largest* viewport — the one you get with the
+ * browser chrome retracted — so a `100vh` hero is taller than the screen it is
+ * on until you scroll.
+ *
+ * <p>It is allowed to push the first product section below the fold, and that
+ * is the correction: cramming the identity, the claim, the body and two buttons
+ * into 782px is what made the identity small in the first place.
+ *
+ * <p>`justify-center` with generous padding rather than a fixed hero height:
+ * at a short laptop height the padding is what gives, the identity keeps its
+ * scale, and the page scrolls. The alternative — scaling the brand down to fit
+ * — is the thing being fixed.
  */
 function Hero() {
   return (
-    <section className="px-6 pt-[68px] text-center lg:px-8">
+    <section
+      className="relative isolate flex min-h-[calc(100svh-68px)] flex-col items-center justify-center overflow-hidden px-6 pb-[clamp(3rem,7vh,6rem)] pt-[clamp(4.5rem,11vh,8.5rem)] text-center lg:px-8"
+    >
+      {/* The hero's own light, under everything in it. `AmbientCanvas` is
+          still the page's wash and is untouched — see the note on it in
+          `LandingPage`. This is the second, smaller relationship to the
+          artwork: one line of light where the identity gives way to the page. */}
+      <HeroHorizon />
+
+      <HeroBrandLockup />
+
       {/*
-        THE IDENTITY, ONCE, ABOVE THE CLAIM.
+        THE CLAIM, as its own moment.
 
-        <p>What was here was a kicker — "Meeting intelligence, without the
-        meeting-tool clutter." — in azure `.v2-label`. It is gone, and the logo
-        is in its place: the mark at a size where the waveform inside it is
-        actually legible, with the word under it.
+        <p>`clamp(4rem, 7vh, 5.5rem)` between the identity and this — the brief
+        asked for 56 to 72 and this is 64 to 88 at the heights the page is read
+        at, measured rather than taken from the number, because the tagline's
+        letterspaced caps sit optically higher than their box.
 
-        <p>Yes, the nav above already carries a lockup. That one is 19px and
-        functional: it is the thing you press to get home, in a row with Sign
-        in and Get started. This is the identity, and a front door is allowed
-        to say whose it is before it says what is behind it.
+        <p>Two lines, and the break is written rather than left to the viewport:
+        "Remember the conversation." and "Keep the meaning." are a pair, and a
+        reflow that puts "Keep" at the end of the first line breaks the rhythm
+        the copy is built on. They animate separately, a tenth of a second
+        apart, which is the same pair read aloud.
       */}
-      <LockupStacked />
-
-      {/* Two lines, and the break is written rather than left to the viewport:
-          "Remember the conversation." and "Keep the meaning." are a pair, and a
-          reflow that puts "Keep" at the end of the first line breaks the
-          rhythm the copy is built on. */}
-      <h1 className="mx-auto mt-9 max-w-[20ch] text-[clamp(1.875rem,7vw,var(--t-display))] font-headline leading-[1.06] tracking-[-0.022em] text-ink">
-        <span className="block">Remember the conversation.</span>
-        <span className="block">Keep the meaning.</span>
+      {/* The floor is 1.625rem, not 1.875. At 390 the wordmark's own clamp
+          bottoms out at 30px, and a 30px headline under a 30px wordmark is a
+          tie -- which is exactly the "nothing is first" problem this change
+          exists to fix, reappearing at the one width where there is least room
+          to establish a hierarchy. 26px still carries the claim. */}
+      <h1 className="mt-[clamp(2.75rem,6vh,4.5rem)] max-w-[20ch] text-[clamp(1.625rem,4.6vw,var(--t-display))] font-headline leading-[1.06] tracking-[-0.022em] text-ink">
+        <HeroBeat as="span" className="block" delay={HERO_BEATS.headlineFirst}>
+          Remember the conversation.
+        </HeroBeat>
+        <HeroBeat as="span" className="block" delay={HERO_BEATS.headlineSecond}>
+          Keep the meaning.
+        </HeroBeat>
       </h1>
 
-      <p className="mx-auto mt-5 max-w-[62ch] text-[1.0625rem] leading-[1.6] text-ink-2">
+      <HeroBeat
+        as="p"
+        delay={HERO_BEATS.body}
+        className="mx-auto mt-[clamp(1.125rem,1.6vh,1.5rem)] max-w-[62ch] text-[1.0625rem] leading-[1.6] text-ink-2"
+      >
         Reverie turns recordings into a clear record: speakers, transcript,
         brief, action items, search, and answers grounded in the exact words
         that were said.
-      </p>
+      </HeroBeat>
 
       {/* Stacks below `sm`, where two side-by-side buttons are each too narrow
           to read and neither is a comfortable target. */}
-      <div className="mt-[30px] flex flex-col items-center justify-center gap-2.5 sm:flex-row">
+      <HeroBeat
+        delay={HERO_BEATS.cta}
+        className="mt-[clamp(1.75rem,2.6vh,2.25rem)] flex w-full flex-col items-center justify-center gap-2.5 sm:w-auto sm:flex-row"
+      >
+        {/*
+          INK, not the accent, and that is the V2 palette's own rule: the
+          primary button in this product is ink, because an accent spent on
+          every button is an accent that means nothing.
+
+          <p>`group` so the arrow can move without a second hover rule. One
+          pixel of lift and three of arrow: at two and six it reads as a
+          bouncing button, and the brief is right that a large shadow on a
+          landing CTA is the tell of a template.
+        */}
         <Link
           href="/sign-up"
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90 sm:w-auto"
+          className="group flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-body font-headline text-surface transition-[transform,opacity] duration-press ease-soft hover:-translate-y-px hover:opacity-95 sm:w-auto"
         >
           Create a free account
-          <span aria-hidden>&rarr;</span>
+          <span
+            aria-hidden
+            className="transition-transform duration-press ease-soft group-hover:translate-x-[3px]"
+          >
+            &rarr;
+          </span>
         </Link>
         <Link
           href="/sign-in"
@@ -251,7 +313,7 @@ function Hero() {
         >
           Sign in
         </Link>
-      </div>
+      </HeroBeat>
 
       {/*
         NO PRICE LINE UNDER THE BUTTONS.
@@ -262,9 +324,7 @@ function Hero() {
 
         <p>Withdrawn, and the allowance is not: `Keeping` states it in full
         further down the page, next to what happens to the recording, which is
-        where somebody weighing the product up is actually reading. A grey
-        footnote under a call to action is read by nobody who has not already
-        decided, and it was the last thing between the buttons and the fold.
+        where somebody weighing the product up is actually reading.
       */}
     </section>
   );

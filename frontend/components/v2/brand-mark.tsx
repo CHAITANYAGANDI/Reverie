@@ -31,6 +31,73 @@ import * as React from "react";
 
 import { barsOf, crescent, cutFor } from "@/components/v2/mark-geometry";
 
+/**
+ * THE MARK'S COLOUR RAMP, published so there is exactly one of it.
+ *
+ * <p>Three gradients: the top ribbon, the bottom ribbon run the other way, and
+ * the waveform. Every stop is a `--brand-*` or `--ink` token, so retuning the
+ * accent retunes the mark and nothing here holds a hex value.
+ *
+ * <p>Exported because the landing hero draws the same mark with its parts
+ * animated separately — see components/v2/landing/hero-brand. That needs `m`
+ * elements for the paths and the bars, which this component cannot give it, so
+ * it composes the geometry itself from `mark-geometry` and the colour from
+ * here. Geometry in one file, colour in one file, and two renderers.
+ *
+ * <p>`id` prefixes all three, because two marks on one page must not share a
+ * gradient id. The caller supplies it from `useId`.
+ */
+export function MarkGradients({ id }: { id: string }) {
+  return (
+    <defs>
+      {/* Deep at the tail, brand through the body, near-white at the head. The
+          bottom ribbon is the same ramp run the other way, which is what gives
+          the pair its rotational symmetry in colour as well as in shape. */}
+      <linearGradient id={`${id}a`} x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" style={{ stopColor: "hsl(var(--brand-fill))" }} />
+        <stop offset="0.42" style={{ stopColor: "hsl(var(--brand))" }} />
+        <stop offset="0.68" style={{ stopColor: "hsl(var(--brand-hover))" }} />
+        {/* 0.88 rather than 1. The gradient runs corner to corner of the
+            viewBox and the ribbon only occupies part of it, so a highlight at
+            offset 1 is a highlight the drawing never reaches — the bright end
+            stopped at mid-blue where the artwork goes to near-white. Measured
+            against it at 230px. */}
+        <stop offset="0.88" style={{ stopColor: "hsl(var(--ink))" }} />
+        <stop offset="1" style={{ stopColor: "hsl(var(--ink))" }} />
+      </linearGradient>
+      <linearGradient id={`${id}b`} x1="1" y1="0" x2="0" y2="1">
+        <stop offset="0" style={{ stopColor: "hsl(var(--brand-fill))" }} />
+        <stop offset="0.42" style={{ stopColor: "hsl(var(--brand))" }} />
+        <stop offset="0.68" style={{ stopColor: "hsl(var(--brand-hover))" }} />
+        <stop offset="0.88" style={{ stopColor: "hsl(var(--ink))" }} />
+        <stop offset="1" style={{ stopColor: "hsl(var(--ink))" }} />
+      </linearGradient>
+      {/* The bars fall from white to brand, top to bottom, so the waveform
+          reads as lit from above and does not compete with the ribbon
+          highlights on either side of it. */}
+      <linearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" style={{ stopColor: "hsl(var(--ink))" }} />
+        <stop offset="0.55" style={{ stopColor: "hsl(var(--brand-text))" }} />
+        <stop offset="1" style={{ stopColor: "hsl(var(--brand))" }} />
+      </linearGradient>
+    </defs>
+  );
+}
+
+/**
+ * Which gradient each part of the mark is filled with, given an id prefix.
+ *
+ * <p>`mono` collapses all three to `currentColor` — for a line of type that is
+ * already a colour, where a blue mark would be the loudest thing on the page.
+ */
+export function markFills(id: string, mono?: boolean) {
+  return {
+    top: mono ? "currentColor" : `url(#${id}a)`,
+    bottom: mono ? "currentColor" : `url(#${id}b)`,
+    bar: mono ? "currentColor" : `url(#${id}c)`,
+  };
+}
+
 export interface BrandMarkProps {
   /** Rendered px. Drives the optical size, not just the scale. */
   size?: number;
@@ -58,9 +125,7 @@ export function BrandMark({ size = 18, className, title, mono }: BrandMarkProps)
    * component may render it as a child either way.
    */
   const id = React.useId().replace(/:/g, "");
-  const top = mono ? "currentColor" : `url(#${id}a)`;
-  const bottom = mono ? "currentColor" : `url(#${id}b)`;
-  const bar = mono ? "currentColor" : `url(#${id}c)`;
+  const { top, bottom, bar } = markFills(id, mono);
 
   return (
     <svg
@@ -73,34 +138,7 @@ export function BrandMark({ size = 18, className, title, mono }: BrandMarkProps)
       aria-label={title}
       aria-hidden={title ? undefined : true}
     >
-      {!mono && (
-        <defs>
-          {/* Deep at the tail, brand through the body, near-white at the head.
-              The bottom crescent is the same ramp run the other way, which is
-              what gives the pair its rotational symmetry in colour as well as
-              in shape. */}
-          <linearGradient id={`${id}a`} x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0" style={{ stopColor: "hsl(var(--brand-fill))" }} />
-            <stop offset="0.42" style={{ stopColor: "hsl(var(--brand))" }} />
-            <stop offset="0.72" style={{ stopColor: "hsl(var(--brand-hover))" }} />
-            <stop offset="1" style={{ stopColor: "hsl(var(--ink))" }} />
-          </linearGradient>
-          <linearGradient id={`${id}b`} x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0" style={{ stopColor: "hsl(var(--brand-fill))" }} />
-            <stop offset="0.42" style={{ stopColor: "hsl(var(--brand))" }} />
-            <stop offset="0.72" style={{ stopColor: "hsl(var(--brand-hover))" }} />
-            <stop offset="1" style={{ stopColor: "hsl(var(--ink))" }} />
-          </linearGradient>
-          {/* The bars fall from white to brand, top to bottom, so the waveform
-              reads as lit from above and does not compete with the ribbon
-              highlights on either side of it. */}
-          <linearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" style={{ stopColor: "hsl(var(--ink))" }} />
-            <stop offset="0.55" style={{ stopColor: "hsl(var(--brand-text))" }} />
-            <stop offset="1" style={{ stopColor: "hsl(var(--brand))" }} />
-          </linearGradient>
-        </defs>
-      )}
+      {!mono && <MarkGradients id={id} />}
 
       <path d={d} fill={top} />
       <path d={d} fill={bottom} transform="rotate(180 16 16)" />
