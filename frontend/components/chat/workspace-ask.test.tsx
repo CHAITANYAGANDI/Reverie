@@ -178,19 +178,32 @@ describe("the same chat as a route", () => {
     expect(useWorkspaceChat).toHaveBeenCalledWith("ask");
   });
 
-  it("draws the maximise control and refuses it", () => {
+  it("offers no maximise control at all", () => {
     render(<WorkspaceAsk surface="ask" variant="page" />);
 
     /*
-     * Already as big as this chat gets. Ordinarily a control that cannot act
-     * is worse than no control, but the three surfaces share a header and a
-     * maximise button simply missing from one of them reads as a panel that
-     * has lost a feature. See `expandDisabled` in components/chat-history.
+     * It used to be drawn and refused here -- a greyed button on the argument
+     * that the three surfaces share a header, and one of them quietly missing
+     * a button reads as a panel that has lost a feature.
+     *
+     * <p>Withdrawn. A permanently grey arrow-in glyph in the corner of the
+     * page reads as a broken control, and its only message is about a state
+     * the page can never leave. `/ask` is reached from the band, where it is
+     * plainly a page rather than a panel; there is nothing to explain.
+     *
+     * <p>The pane's own control is untouched: it is wired to
+     * `toggleSidePaneExpanded` for `variant="pane"` only, and what it draws in
+     * each state is covered in components/chat-history's own suite.
      */
-    // Named for what it would do, which on this surface is nothing — see the
-    // `aria-label` in components/chat-history.
-    expect(screen.getByRole("button", { name: "This is already the full chat" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Expand the chat" })).not.toBeInTheDocument();
+    for (const name of [
+      /already the full chat/i,
+      /^expand the chat$/i,
+      /^shrink the chat back to the panel$/i,
+    ]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    // New chat is the only thing left in that corner, and it still works.
+    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
   });
 
   it("keeps its own thread identity separate from Home's", () => {

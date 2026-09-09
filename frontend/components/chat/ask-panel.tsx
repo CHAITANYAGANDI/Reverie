@@ -87,6 +87,40 @@ export const TWO_COLUMN_AT = 1024;
  */
 const COLUMN = "mx-auto w-full max-w-[70rem]";
 
+/**
+ * The composer's width: the answer's track, not the answer plus its footnotes.
+ *
+ * <p>It was `COLUMN` — 1120px — on the reasoning that a box narrower than the
+ * thread above it shows a visible step. That reasoning had the wrong thread in
+ * mind. What is above the composer is not 1120px of anything: it is 680px of
+ * answer and, 40px further right, a 400px column of quotes. So the box was
+ * lining up with the right-hand edge of the footnotes and overhanging the
+ * prose by 440 — the widest element on the page, holding one line of
+ * placeholder, at nearly twice the measure everything else here is set to.
+ *
+ * <p>680 puts it under the answer, which is the thing it continues. Left
+ * aligned inside `COLUMN` rather than centred in it, for the same reason: the
+ * question you are typing belongs in the column the answer will appear in.
+ */
+const DOCK_COLUMN = "max-w-[42.5rem]";
+
+/**
+ * The same width, centred, while there is no answer column to align to.
+ *
+ * <p>Left-aligning 680px inside 1120 is right the moment there is a turn above
+ * it: the box begins where the prose begins, and the 400px to its right is the
+ * evidence column, occupied. On an empty thread that column is empty too, so
+ * the whole page hangs off its left-hand side — the composer's centre lands
+ * 220px left of the window's.
+ *
+ * <p>So it centres until there is something to line up with. That is a
+ * horizontal shift on the first question, and it costs nothing legible: it
+ * happens in the same frame as the composer travelling from the middle of the
+ * panel to its foot, which is a much larger movement and the one that reads as
+ * "the conversation has started".
+ */
+const DOCK_COLUMN_EMPTY = "mx-auto max-w-[42.5rem]";
+
 const WideContext = React.createContext(false);
 
 /** Whether the panel around this is wide enough for two columns. */
@@ -101,6 +135,7 @@ export function AskPanel({
   dock,
   scrollRef,
   headerRule = true,
+  empty = false,
   className,
 }: {
   variant: AskVariant;
@@ -120,6 +155,29 @@ export function AskPanel({
    * two headers rather than one.
    */
   headerRule?: boolean;
+  /**
+   * There is nothing in the thread — no turns, nothing loading, nothing in
+   * flight — so the composer is the only thing on the panel.
+   *
+   * <h3>Why it changes the layout</h3>
+   *
+   * <p>Because the three fixed regions put it at the bottom, and at the bottom
+   * of an empty panel it is a bar across the foot of a blank page. On `/ask`
+   * that is seven hundred pixels of nothing between the band and the one thing
+   * you came here to use, and the page reads as failed to load rather than as
+   * ready for a question.
+   *
+   * <p>So when there is nothing to scroll, the dock takes the space instead of
+   * the thread and centres itself in it. Nothing is invented to fill the gap —
+   * there is no greeting, no card and no sample question — the composer and its
+   * starter chips simply move to where the eye already is. The moment a
+   * question is asked the thread has content, this goes false, and the
+   * composer returns to the foot of the panel where a conversation needs it.
+   *
+   * <p>Defaults to false, so a caller that does not know about it keeps the
+   * arrangement it had.
+   */
+  empty?: boolean;
   /**
    * The scrolling region, handed back so the caller can follow the newest turn.
    *
@@ -157,12 +215,22 @@ export function AskPanel({
             variant === "pane" ? "px-4 py-2.5" : "px-4 py-3 lg:px-6",
           )}
         >
-          {/* Aligned with the document rather than with the window's corners.
-              The archive and New chat used to sit at the far edges of the
-              screen, which was right when the thread underneath was 680px and
-              they had nothing to line up with; the answer and its evidence are
-              1120px now, so the controls belong over the end of that. */}
-          <div className={cn(wide && COLUMN)}>{header}</div>
+          {/*
+            THE HEADER'S CORNERS ARE THE PANEL'S CORNERS.
+
+            <p>Not the document column. This was inside `COLUMN` on the
+            reasoning that the controls belong over the end of the thread — and
+            in a 1600px window that left the conversation picker 240px in from
+            the left edge and New chat 240px short of the right, under a band
+            that runs from edge to edge. The row read as floating in the middle
+            of the page rather than as the panel's own top.
+
+            <p>A header is chrome, and chrome is anchored to the surface it
+            belongs to. The thread and the composer are still held to the
+            document column below, which is where a reading measure matters and
+            where it does not.
+          */}
+          {header}
         </div>
 
         {/* `min-h-0` is what makes this scroll instead of growing: a flex child
@@ -172,7 +240,11 @@ export function AskPanel({
           ref={scrollRef}
           data-ask-region="thread"
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto",
+            "overflow-y-auto",
+            /* An empty thread claims no space, so the dock below can have it
+               and centre in it. `flex-1` here would hold the height open and
+               keep the composer pinned to the foot of a blank panel. */
+            empty ? "shrink-0" : "min-h-0 flex-1",
             variant === "pane" ? "px-4 py-5" : "px-4 py-7 lg:px-6",
           )}
         >
@@ -182,15 +254,24 @@ export function AskPanel({
         <div
           data-ask-region="dock"
           className={cn(
-            "shrink-0",
+            /* Takes the panel and centres in it while there is nothing to
+               scroll -- see `empty`. `min-h-0` alongside `flex-1` because the
+               composer grows to eight rows and must be allowed to shrink
+               rather than push its own region past the panel. */
+            empty ? "flex min-h-0 flex-1 flex-col justify-center" : "shrink-0",
             variant === "pane" ? "px-4 pb-3.5 pt-2.5" : "px-4 pb-5 pt-3 lg:px-6",
           )}
         >
-          {/* The same column as the thread, always. They have drifted apart
-              before, and a composer a few pixels wider than the answer above
-              it gives the box a visible step that reads as a rendering
-              fault. */}
-          <div className={cn(wide && COLUMN)}>{dock}</div>
+          {/* The same column as the thread, and then the answer's own track
+              inside it. The pair matters: `COLUMN` puts the composer's box in
+              the same 1120px the turns occupy, and `DOCK_COLUMN` sets it to
+              the 680 the answer is read at, left aligned -- so the box begins
+              where the prose begins and ends where the prose ends. */}
+          <div className={cn(wide && COLUMN)}>
+            <div className={cn(wide && (empty ? DOCK_COLUMN_EMPTY : DOCK_COLUMN))}>
+              {dock}
+            </div>
+          </div>
         </div>
       </div>
     </WideContext.Provider>
@@ -229,6 +310,25 @@ export function AskTurn({
     <article
       className={cn(
         "grid gap-x-10 gap-y-5",
+        /*
+         * ONE BLOCK PER EXCHANGE, RULED OFF FROM THE ONE ABOVE.
+         *
+         * <p>The thread was `space-y-9` and nothing else, which is enough
+         * separation for two turns and not for six: a question landed seventy
+         * pixels under the previous answer's last line and read as its next
+         * paragraph. And the evidence column had nothing tying it to the
+         * answer it belongs to -- two independent stacks of text down the
+         * page, agreeing about their tops by arithmetic.
+         *
+         * <p>A hairline across the full 1120px does both jobs at once. It is
+         * the same `--line` the conversation lists and the transcript use
+         * between rows, and it is drawn only between exchanges: `:not(:first-
+         * child)` rather than a bottom rule, so the thread does not end on a
+         * line with nothing under it. The padding is on the same side, so the
+         * gap the rule sits in is the gap that was already there.
+         */
+        "[&:not(:first-child)]:border-t [&:not(:first-child)]:border-line",
+        "[&:not(:first-child)]:pt-9",
         wide && "grid-cols-[minmax(0,42.5rem)_minmax(15rem,25rem)]",
       )}
     >

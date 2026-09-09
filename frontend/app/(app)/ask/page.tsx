@@ -28,13 +28,33 @@
  * <p>The height is the viewport minus the band, because the panel scrolls its
  * own thread and docks its own composer. A page that grew with the
  * conversation would put the composer below the fold.
+ *
+ * <h2>The ground it is read on</h2>
+ *
+ * <p>The same wash as Home, Library, a folder and a meeting — and it was the
+ * one page in the shell without it, which is how it came to look like a
+ * different application: near-black from the band to the composer, with the
+ * whole of the middle empty on a thread nobody has started yet.
+ *
+ * <p>Pulled up by exactly the band height, as everywhere else, so the field is
+ * continuous through the glass and the band's hairline is the only line there.
+ * `relative` is what the wash is positioned against, and it renders before the
+ * panel so ordinary paint order puts it underneath — see
+ * components/v2/ambient-canvas.
+ *
+ * <p>34rem, Home's number rather than the landing's 60vmax. The thread scrolls
+ * inside the panel rather than the page scrolling, so the wash stays where it
+ * is put: it lifts the top of the conversation and is gone by the time the
+ * reading measure begins.
  */
 
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { WorkspaceAsk } from "@/components/chat/workspace-ask";
 
 export default function AskPage() {
   return (
-    <div className="h-[calc(100vh-var(--band))]">
+    <div className="relative h-[calc(100vh-var(--band))]">
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
       <WorkspaceAsk surface="ask" variant="page" />
     </div>
   );

@@ -217,11 +217,24 @@ export function ChatComposer({
      * as slightly broken without it being obvious why. They are all `px-3.5`
      * now and everything in the box lines up.
      *
-     * The ring is not decoration. The textarea sets `outline-none`, and until
-     * now put nothing in its place: tabbing into the chat gave no indication of
-     * having arrived anywhere.
+     * <h2>ONE FOCUS RING, ON THE BOX</h2>
+     *
+     * <p>There were two, and they were nested. This box lights up on
+     * `focus-within`, and the textarea inside it also picked up the global
+     * `:focus-visible` treatment from app/globals.css — a 4px brand-text ring
+     * at `--radius`, drawn around a bare textarea sitting inside an already
+     * highlighted box. The composer read as three stacked rounded rectangles
+     * the moment anybody clicked into it.
+     *
+     * <p>So the indicator lives here and the inner one is turned off, which is
+     * the same arrangement the auth fields use -- see `BOX` in
+     * components/auth/auth-form. It has to be a real indicator to be allowed
+     * to: `border-brand` is a 1px edge at about 4.3:1 against this surface,
+     * past the 3:1 WCAG 2.4.11 asks, and the 2px halo under it is what makes
+     * it visible at a glance rather than only on inspection. The `/25` ring
+     * that was here alone would not have qualified.
      */
-    <div className="relative rounded-xl border border-edge bg-surface-raised shadow-e2 transition-colors focus-within:border-brand/60 focus-within:ring-2 focus-within:ring-brand/25">
+    <div className="relative rounded-xl border border-edge bg-surface-raised shadow-e2 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
       {picking && !scope && (
         <ContextPicker
           meetings={meetings}
@@ -312,7 +325,10 @@ export function ChatComposer({
         // `scrollbar-none` scrolls without drawing the bar — see globals.css.
         // On a box this small the bar is more furniture than the two lines it
         // is measuring, and the caret already says where you are.
-        className="scrollbar-none block w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-60"
+        //
+        // `focus-visible:shadow-none` moves the focus indicator to the box,
+        // it does not remove it. See the box's own note above.
+        className="scrollbar-none block w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:shadow-none disabled:opacity-60"
       />
 
       {refusal && (
@@ -515,18 +531,40 @@ function ContextPicker({
       ref={ref}
       role="dialog"
       aria-label="Add context"
-      className="absolute bottom-full left-3.5 z-30 mb-2 w-80 overflow-hidden rounded-lg border bg-popover shadow-xl"
+      className="absolute bottom-full left-3.5 z-30 mb-2 w-80 overflow-hidden rounded-xl border border-line bg-popover shadow-e2"
     >
-      <div className="flex items-center gap-2 border-b px-3">
-        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <input
-          autoFocus
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Find a conversation or folder"
-          aria-label="Find a conversation or folder"
-          className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
+      {/*
+        A FIELD, RATHER THAN A LINE OF TEXT WITH A RING AROUND IT.
+
+        <p>This was a bare input filling a row with a bottom rule, and it is
+        `autoFocus` -- which Chrome treats as focus-visible, so the global 4px
+        brand ring was drawn the instant the popover opened. Around a
+        borderless full-width row inside a 320px popover that reads as a stray
+        rectangle floating in the menu, which is exactly how it was reported.
+
+        <p>It is the app's own field now: the same recipe as `BOX` in
+        components/auth/auth-form -- an inset hairline, a barely-there fill, and
+        `focus-within` moving the edge to brand. The ring the input carried is
+        turned off because the field around it shows focus instead; the
+        indicator moves, it does not go.
+
+        <p>Inset by 8px rather than flush, so the field reads as a control
+        inside the popover instead of a header band welded to its top edge. The
+        rule underneath stays: it separates the search from the results, which
+        is a different job.
+      */}
+      <div className="border-b border-line p-2">
+        <div className="flex h-9 items-center gap-2 rounded-md bg-white/[0.04] px-2.5 shadow-[inset_0_0_0_1px_rgb(var(--line-strong))] transition-[background-color,box-shadow] duration-press ease-soft focus-within:bg-white/[0.06] focus-within:shadow-[inset_0_0_0_1px_hsl(var(--brand)),0_0_0_3px_hsl(var(--brand)/0.18)]">
+          <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" aria-hidden />
+          <input
+            autoFocus
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Find a conversation or folder"
+            aria-label="Find a conversation or folder"
+            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-4 focus-visible:shadow-none"
+          />
+        </div>
       </div>
 
       <div className="max-h-72 overflow-y-auto py-1">

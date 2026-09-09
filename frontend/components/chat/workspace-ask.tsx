@@ -88,6 +88,12 @@ export function WorkspaceAsk({
     <AskPanel
       variant={variant}
       scrollRef={threadRef}
+      /* The one condition, used twice: nothing in the thread means the starter
+         chips are offered AND the composer sits in the middle of the panel
+         rather than across the foot of a blank one. See `empty` on the panel
+         and `showPrompts` in lib/use-workspace-chat -- both are "no turns,
+         nothing loading, nothing in flight". */
+      empty={chat.showPrompts}
       header={
         <AskHeader
           onClose={onClose}
@@ -100,14 +106,22 @@ export function WorkspaceAsk({
                 activeId={chat.conversationId}
                 atNewChat={chat.isNew}
                 busy={chat.starting}
-                /* In the pane it maximises in place. On `/ask` the control is
-                   drawn and refused: this page is already as big as the chat
-                   gets, and a maximise button simply missing from one of three
-                   surfaces reads as a panel that has lost something. See
-                   `expandDisabled` in components/chat-history. */
+                /*
+                 * In the pane it maximises in place. On `/ask` there is no
+                 * control at all.
+                 *
+                 * <p>It used to be drawn and refused there, on the reasoning
+                 * that a button missing from one of three surfaces reads as a
+                 * panel that has lost something. In practice it reads as a
+                 * broken button: a permanently greyed arrow-in glyph in the
+                 * corner of the page, whose only message is about a state the
+                 * page can never leave. `/ask` is reached from the band, where
+                 * it is plainly a page and not a panel, so there is nothing to
+                 * explain. New chat is still there and is the only thing in
+                 * that corner now.
+                 */
                 onExpand={variant === "pane" ? toggleSidePaneExpanded : undefined}
                 expanded={variant === "pane" ? pane.expanded : undefined}
-                expandDisabled={variant === "page"}
                 onSelect={chat.setConversationId}
                 onNew={() => void chat.startNew()}
                 onRename={chat.rename}

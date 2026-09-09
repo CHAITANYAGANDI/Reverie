@@ -492,7 +492,7 @@ describe("the measure", () => {
     );
   }
 
-  it("holds the header, the thread and the composer to one document column", () => {
+  it("holds the thread and the composer to one document column", () => {
     stubWidth(1440);
     const { container } = render(<AskPage />);
 
@@ -502,11 +502,98 @@ describe("the measure", () => {
       "thread",
       "dock",
     ]);
-    // One column, stated once per region rather than three numbers that agree
-    // by coincidence.
-    for (const region of regions) {
-      expect(region.querySelector(".max-w-\\[70rem\\]")).not.toBeNull();
+    // One column, stated once per region rather than two numbers that agree by
+    // coincidence.
+    for (const name of ["thread", "dock"]) {
+      const region = container.querySelector(`[data-ask-region="${name}"]`);
+      expect(region?.querySelector(".max-w-\\[70rem\\]"), name).not.toBeNull();
     }
+  });
+
+  it("anchors the header to the panel's corners rather than to the column", () => {
+    /*
+     * CHANGED DELIBERATELY. This used to assert all three regions were held to
+     * the 70rem column, header included.
+     *
+     * <p>In a 1600px window that put the conversation picker 240px in from the
+     * left edge and New chat 240px short of the right, under a band that runs
+     * from edge to edge — a row of chrome floating in the middle of the page
+     * rather than the panel's own top. A header belongs to the surface it is
+     * on. The reading measure is for reading, and it still holds the thread and
+     * the composer below.
+     */
+    stubWidth(1440);
+    const { container } = render(<AskPage />);
+
+    const header = container.querySelector('[data-ask-region="header"]');
+    expect(header?.querySelector(".max-w-\\[70rem\\]")).toBeNull();
+    // And the picker really is inside that region rather than somewhere else.
+    expect(header?.querySelector('button[aria-label="Previous chat history"]')).not.toBeNull();
+  });
+
+  it("sets the composer to the answer's measure, not the answer plus its sources", () => {
+    /*
+     * The composer was `70rem` — 1120px — while what sits above it is 680px of
+     * answer and, 40px further right, 400px of quotes. So the box lined up with
+     * the right-hand edge of the footnotes and overhung the prose by 440: the
+     * widest element on the page, holding one line of placeholder.
+     *
+     * <p>42.5rem is the answer's own track. The box now begins where the prose
+     * begins and ends where the prose ends.
+     */
+    stubWidth(1440);
+    setActiveChat("workspace:ask", "cnv_1");
+    const { container } = render(<AskPage />);
+
+    const dock = container.querySelector('[data-ask-region="dock"]');
+    expect(dock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
+  });
+
+  it("puts the composer in the middle of the panel while there is nothing to scroll", () => {
+    /*
+     * An empty thread and a composer docked at the foot of it is a bar across
+     * the bottom of a blank page — seven hundred pixels of nothing between the
+     * band and the one thing somebody came here to use, which reads as a page
+     * that failed to load.
+     *
+     * <p>Nothing is invented to fill the gap. The dock takes the space the
+     * thread is not using and centres in it, so the composer and its starter
+     * chips are where the eye already is. `justify-center` is that, and the
+     * thread giving up `flex-1` is what allows it.
+     */
+    stubWidth(1440);
+    const { container } = render(<AskPage />);
+
+    const dock = container.querySelector('[data-ask-region="dock"]');
+    const thread = container.querySelector('[data-ask-region="thread"]');
+    expect(dock?.className).toContain("justify-center");
+    expect(dock?.className).toContain("flex-1");
+    expect(thread?.className).not.toContain("flex-1");
+    // Centred across the column too, because with no turn above it there is no
+    // answer column to line up against yet.
+    expect(dock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).not.toBeNull();
+  });
+
+  it("returns the composer to the foot of the panel once there is a thread", () => {
+    // The other half: a conversation needs the composer docked and the thread
+    // scrolling above it, which is the arrangement every chat has.
+    stubWidth(1440);
+    setActiveChat("workspace:ask", "cnv_1");
+    const { container } = render(<AskPage />);
+
+    const dock = container.querySelector('[data-ask-region="dock"]');
+    const thread = container.querySelector('[data-ask-region="thread"]');
+    expect(dock?.className).toContain("shrink-0");
+    expect(dock?.className).not.toContain("justify-center");
+    expect(thread?.className).toContain("flex-1");
+  });
+
+  it("draws the same wash every other page in the shell has", () => {
+    // It was the one page without it: near-black from the band to the
+    // composer, which is how it came to look like a different application.
+    const { container } = render(<AskPage />);
+
+    expect(container.querySelector(".v2-ambient")).not.toBeNull();
   });
 
   it("sets the answer to the prose measure and the evidence beside it", () => {

@@ -118,10 +118,20 @@ export function AskThread({
   }
 
   return (
-    /* Generously spaced, because the gap between exchanges is the only thing
-       separating them: there is no rule, no card and no avatar column. At the
-       old `space-y-4` a second question read as a continuation of the answer
-       above it. */
+    /*
+     * `space-y-9` and a hairline, not `space-y-9` alone.
+     *
+     * <p>The gap used to be the only thing separating one exchange from the
+     * next -- no rule, no card, no avatar column -- and at `space-y-4` a
+     * second question read as a continuation of the answer above it. Nine is
+     * better and still not enough at six turns: seventy pixels under a
+     * paragraph is a paragraph break, not a turn break, and the evidence
+     * column beside it had nothing at all tying it to its own answer.
+     *
+     * <p>The rule is drawn by `AskTurn`, across both columns, so an exchange
+     * is one band of the document. The spacing here is the gap that rule sits
+     * in.
+     */
     <div className="space-y-9">
       {exchanges.map((x) => (
         <AskTurn
@@ -139,7 +149,13 @@ export function AskThread({
             x.answer && (
               // The answer's own top margin rather than a wrapper's gap: an
               // exchange with no question must not open with a blank line.
-              <div className={x.question ? "mt-4" : undefined}>
+              //
+              // `mt-5` rather than `mt-4`. The exchanges are ruled off from
+              // each other now -- see `AskTurn` -- so the space inside a block
+              // has to be visibly smaller than the space between blocks
+              // without being so tight that the answer looks welded to the
+              // question above it.
+              <div className={x.question ? "mt-5" : undefined}>
                 <ChatMessageBubble message={x.answer} />
               </div>
             )

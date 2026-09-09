@@ -52,6 +52,24 @@
  * <p>So the question is a raised surface with an edge: still plainly a bubble,
  * still right-aligned, still capped at 85% — and quieter than the answer, which
  * is the correct order.
+ *
+ * <h2>And it has to be visible while it is quiet</h2>
+ *
+ * <p>The edge was `--line`, which is white at 6% and documented as 1.14:1
+ * against the canvas: over `--surface-raised` — a surface only two per cent
+ * lighter than that canvas — the bubble had no perceptible boundary at all. A
+ * right-aligned block of text with no shape around it does not read as
+ * somebody's turn; it reads as a stray paragraph that has drifted right.
+ *
+ * <p>So it takes `--line-strong` instead, the same hairline the app uses for a
+ * group boundary rather than a row divider, and a little more padding to go
+ * with it. Still no fill beyond the raised surface and still no accent: the
+ * question is not the thing anybody came for.
+ *
+ * <p>The corner nearest the composer is squared off — `rounded-br-md` against
+ * `rounded-2xl` elsewhere. It is the one piece of shape in this thread that
+ * says which side a turn belongs to, and it costs nothing: an answer has no
+ * bubble to contradict it.
  */
 
 import * as React from "react";
@@ -71,7 +89,8 @@ import { cn } from "@/lib/utils";
  * it.
  */
 export const PROMPT_BUBBLE =
-  "rounded-2xl border border-line bg-surface-raised px-3.5 py-2 text-sm text-ink";
+  "rounded-2xl rounded-br-md border border-line-strong bg-surface-raised " +
+  "px-4 py-2.5 text-sm leading-6 text-ink";
 
 export function ChatMessageBubble({
   message,

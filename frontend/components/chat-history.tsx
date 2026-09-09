@@ -49,21 +49,30 @@ export interface ChatHistoryProps {
    * chat could not do it at all, having no page of its own to open.
    */
   onExpand?: () => void;
-  /** Whether it is currently maximised, so the control can offer the way back. */
-  expanded?: boolean;
   /**
-   * Draw the control, and refuse it.
+   * Whether it is currently maximised, so the control can offer the way back.
    *
-   * For the full AI Chat page, which is already as big as this chat gets.
-   * Ordinarily a control that cannot act is worse than no control — it invites
-   * somebody to try twice — but this one is answering a question the reader is
-   * about to ask. The three surfaces share a header, and a maximise button that
-   * is simply missing on one of them reads as a panel that has lost a feature
-   * rather than one that is already at its maximum. Same reasoning as New chat,
-   * which is disabled rather than hidden when the thread on screen is already
-   * a new one, and says so.
+   * <p>Defaults to false rather than being left undefined, because a control
+   * that is drawn at all is in one of exactly two states. `aria-pressed`
+   * omitted announces something that is not a toggle; the old
+   * `expandDisabled` branch had to reach for that, and there is no longer a
+   * third state for it to describe.
    */
-  expandDisabled?: boolean;
+  expanded?: boolean;
+  /*
+   * NO `expandDisabled`.
+   *
+   * <p>It drew this control and refused it, for `/ask` — a page that is
+   * already as big as the chat gets. The argument was that the same header
+   * sits on three surfaces and one of them quietly missing a button reads as a
+   * panel that has lost something.
+   *
+   * <p>What it actually produced was a permanently greyed glyph in the corner
+   * of the page whose only message was about a state the page cannot leave. It
+   * is withdrawn, and with it the branch: this control is drawn when there is
+   * a panel to maximise, which is what `onExpand` means. Nothing else changed
+   * — the pane still maximises in place and still offers the way back.
+   */
   /**
    * The thread on screen is already an empty one, so New has nothing to do.
    *
@@ -83,8 +92,7 @@ export function ChatHistory({
   onDelete,
   busy,
   onExpand,
-  expanded,
-  expandDisabled,
+  expanded = false,
   atNewChat,
 }: ChatHistoryProps) {
   const [open, setOpen] = React.useState(false);
@@ -205,38 +213,21 @@ export function ChatHistory({
             <Plus className="h-4 w-4" />
           </Button>
 
-          {(onExpand || expandDisabled) && (
+          {onExpand && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={onExpand}
-              disabled={expandDisabled}
-              aria-pressed={expandDisabled ? undefined : expanded}
+              aria-pressed={expanded}
               // Named for what it will do, not for what it is. "Expand the chat"
               // on a chat that is already expanded is a control that lies about
               // its own effect.
-              aria-label={
-                expandDisabled
-                  ? "This is already the full chat"
-                  : expanded
-                    ? "Shrink the chat back to the panel"
-                    : "Expand the chat"
-              }
-              title={
-                expandDisabled
-                  ? "This is already the full chat"
-                  : expanded
-                    ? "Shrink the chat back to the panel"
-                    : "Expand the chat"
-              }
+              aria-label={expanded ? "Shrink the chat back to the panel" : "Expand the chat"}
+              title={expanded ? "Shrink the chat back to the panel" : "Expand the chat"}
             >
-              {expanded || expandDisabled ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
+              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           )}
         </div>
