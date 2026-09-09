@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { BrandMark } from "@/components/v2/brand-mark";
-import { Lockup } from "@/components/v2/lockup";
+import { Lockup, LockupStacked } from "@/components/v2/lockup";
 import { Reveal, Stagger } from "@/components/v2/landing/reveal";
 import { StageShowcase } from "@/components/v2/landing/stage-showcase";
 import { AskShowcase } from "@/components/v2/landing/ask-showcase";
@@ -130,10 +129,13 @@ export default function LandingPage() {
            * as considered rather than as a list of sections.
            */}
           <main className="space-y-32 pb-32 sm:space-y-40 lg:space-y-48">
-            <div className="space-y-14">
-              <Hero />
-              <Preview />
-            </div>
+            {/* The hero on its own. It was paired with the preview inside a
+                tighter `space-y-14`, because a still picture of the product
+                belonged immediately under the claim rather than a screen
+                further down; with the preview gone there is nothing to pair it
+                with, and it takes the page's own rhythm like every other
+                moment. */}
+            <Hero />
 
             <StageShowcase />
             <AskShowcase />
@@ -203,15 +205,26 @@ function Header() {
 function Hero() {
   return (
     <section className="px-6 pt-[68px] text-center lg:px-8">
-      <p className="v2-label text-brand-text">
-        Meeting intelligence, without the meeting-tool clutter.
-      </p>
+      {/*
+        THE IDENTITY, ONCE, ABOVE THE CLAIM.
+
+        <p>What was here was a kicker — "Meeting intelligence, without the
+        meeting-tool clutter." — in azure `.v2-label`. It is gone, and the logo
+        is in its place: the mark at a size where the waveform inside it is
+        actually legible, with the word under it.
+
+        <p>Yes, the nav above already carries a lockup. That one is 19px and
+        functional: it is the thing you press to get home, in a row with Sign
+        in and Get started. This is the identity, and a front door is allowed
+        to say whose it is before it says what is behind it.
+      */}
+      <LockupStacked />
 
       {/* Two lines, and the break is written rather than left to the viewport:
           "Remember the conversation." and "Keep the meaning." are a pair, and a
           reflow that puts "Keep" at the end of the first line breaks the
           rhythm the copy is built on. */}
-      <h1 className="mx-auto mt-[18px] max-w-[20ch] text-[clamp(1.875rem,7vw,var(--t-display))] font-headline leading-[1.06] tracking-[-0.022em] text-ink">
+      <h1 className="mx-auto mt-9 max-w-[20ch] text-[clamp(1.875rem,7vw,var(--t-display))] font-headline leading-[1.06] tracking-[-0.022em] text-ink">
         <span className="block">Remember the conversation.</span>
         <span className="block">Keep the meaning.</span>
       </h1>
@@ -240,128 +253,42 @@ function Hero() {
         </Link>
       </div>
 
-      {/* One quiet line, from the approved hero. Not a statistics strip: this
-          is the answer to "what does it cost", read once, under the button it
-          qualifies. The numbers are `UsageLimitService.MINUTES_ALLOWANCE` and
-          `IMPORT_ALLOWANCE`. */}
-      <p className="mt-3.5 text-foot text-ink-4">
-        100 minutes and three imports, for the life of the account. No card.
-      </p>
+      {/*
+        NO PRICE LINE UNDER THE BUTTONS.
+
+        <p>It read "100 minutes and three imports, for the life of the account.
+        No card." — the answer to "what does it cost", set in `--ink-4` under
+        the button it qualified.
+
+        <p>Withdrawn, and the allowance is not: `Keeping` states it in full
+        further down the page, next to what happens to the recording, which is
+        where somebody weighing the product up is actually reading. A grey
+        footnote under a call to action is read by nobody who has not already
+        decided, and it was the last thing between the buttons and the fold.
+      */}
     </section>
   );
 }
 
-/**
- * The product, immediately, before the page explains itself.
+/*
+ * NO PRODUCT PREVIEW.
  *
- * <p>Still, and deliberately so: the moving demonstrations come later, and a
- * page whose first visual is already animating gives the reader nothing to
- * settle on. Embedded behind a mask that fades its foot rather than floating as
- * a screenshot with a shadow under it.
+ * <p>`function Preview` stood here: a still picture of the application under
+ * the hero, behind a mask that faded its foot -- the band, the three places, a
+ * conversation list, folders and an answer.
+ *
+ * <p>Every pixel of it was invented. "Good morning, Priya", "Product Weekly
+ * 42:07", "Pricing sync 18:22", "Q4 planning 6" and an answer about an annual
+ * discount are a fabricated account, and the one rule this page has held to
+ * throughout is that nothing on it may be filled in by making it up. It is a
+ * mock meeting with a fake name and a fake duration, which is the first item on
+ * the do-not-ship list.
+ *
+ * <p>What is left demonstrates instead of asserting, and does it with the real
+ * thing: `StageShowcase`, `AskShowcase` and `LanguageMoment` are the three
+ * moving moments that come after this, and they were always the stronger
+ * argument. The hero now runs straight into them.
  */
-function Preview() {
-  return (
-    <Reveal as="section" className="px-6 lg:px-8" y={20}>
-      <div
-        aria-hidden
-        className="mx-auto max-w-doc overflow-hidden rounded-xl border border-line bg-surface [mask-image:linear-gradient(to_bottom,#000_calc(100%-72px),transparent)]"
-      >
-        <div className="v2-band flex h-band items-center gap-1 px-3">
-          <span className="flex h-8 w-8 items-center justify-center text-ink">
-            <BrandMark size={18} />
-          </span>
-          <span className="ml-1 flex items-center">
-            <span className="relative flex h-band items-center px-[11px] text-body font-headline text-ink after:absolute after:inset-x-[11px] after:bottom-0 after:h-[2px] after:rounded-t-[1px] after:bg-ink after:content-['']">
-              Home
-            </span>
-            <span className="flex h-band items-center px-[11px] text-body text-ink-3">
-              Library
-            </span>
-            <span className="flex h-band items-center px-[11px] text-body text-ink-3">Ask</span>
-          </span>
-          <span className="flex-1" />
-          {/* The band carries five controls at desktop width. Inside a 342px
-              preview it cannot, and `overflow-hidden` was cropping the avatar
-              off the right edge — a picture of the product with a half-drawn
-              control in it. */}
-          <span className="hidden h-8 items-center gap-1.5 rounded-full border border-edge bg-surface-raised px-2.5 text-foot text-ink-3 sm:flex">
-            Search
-          </span>
-          <span className="flex h-8 items-center gap-1.5 rounded-full bg-brand-fill pl-2.5 pr-3.5 text-foot font-headline text-white">
-            Record
-          </span>
-          <span className="ml-1.5 hidden h-7 w-7 rounded-full bg-brand-fill/25 sm:block" />
-        </div>
-
-        <div className="grid gap-8 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0">
-            <p className="v2-label">Thursday, 28 August</p>
-            <p className="mt-1 text-title-1 font-headline text-ink">Good morning, Priya</p>
-
-            <p className="v2-label mt-6">Recent</p>
-            <div className="mt-2 space-y-1.5">
-              {PREVIEW_ROWS.map((row) => (
-                <div
-                  key={row.title}
-                  className={
-                    row.open
-                      ? "flex items-baseline gap-3 rounded-md border border-line bg-surface-raised px-3 py-2.5"
-                      : "flex items-baseline gap-3 rounded-md px-3 py-2.5"
-                  }
-                >
-                  <span className="min-w-0 flex-1 truncate text-body text-ink">{row.title}</span>
-                  <span className="tabular shrink-0 font-mono text-cap text-ink-4">
-                    {row.length}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <p className="v2-label mt-6">Folders</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {PREVIEW_FOLDERS.map((folder) => (
-                <span
-                  key={folder.name}
-                  className="rounded-full border border-line bg-surface-raised px-2.5 py-1 text-cap text-ink-2"
-                >
-                  {folder.name}{" "}
-                  <span className="tabular font-mono text-ink-4">{folder.count}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <p className="v2-label">Ask Product Weekly</p>
-            <p className="mt-2 rounded-2xl border border-line bg-surface-raised px-3.5 py-2 text-body text-ink">
-              What did we decide about pricing?
-            </p>
-            <p className="v2-read mt-4">
-              You held the price and moved the annual discount to 15%. Dev asked
-              for a note on the invoice copy.
-            </p>
-            <div className="v2-note mt-3">
-              <span className="block text-foot font-headline text-ink-2">Product Weekly</span>
-              <span className="tabular block font-mono text-cap text-ink-3">12:34</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Reveal>
-  );
-}
-
-/** Static demo content. Ordinary meeting names; nothing from any real account. */
-const PREVIEW_ROWS = [
-  { title: "Product Weekly", length: "42:07", open: true },
-  { title: "Pricing sync", length: "18:22", open: false },
-  { title: "Design review", length: "36:14", open: false },
-];
-
-const PREVIEW_FOLDERS = [
-  { name: "Q4 planning", count: 6 },
-  { name: "Hiring", count: 3 },
-];
 
 /**
  * What is in it, in two groups.

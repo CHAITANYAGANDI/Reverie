@@ -28,10 +28,28 @@ describe("what it promises", () => {
   it("quotes the allowance the server actually enforces", () => {
     render(<LandingPage />);
 
-    // UsageLimitService.MINUTES_ALLOWANCE and IMPORT_ALLOWANCE.
+    /*
+     * UsageLimitService.MINUTES_ALLOWANCE and IMPORT_ALLOWANCE.
+     *
+     * <p>Read off `Keeping` now rather than the hero. The hero carried it as a
+     * grey footnote under the buttons — "100 minutes and three imports, for the
+     * life of the account. No card." — and that line is withdrawn. The promise
+     * is not: it is stated in full further down, beside what happens to the
+     * recording, which is where somebody weighing the product up is reading.
+     *
+     * <p>Asserted loosely on the numbers rather than on the sentence, because
+     * what must not drift is 100 and three, not the wording around them.
+     */
     expect(
-      screen.getByText(/100 minutes and three imports, for the life of the account/i),
+      screen.getByText(/100 transcribed minutes and three imports for the life of the account/i),
     ).toBeInTheDocument();
+  });
+
+  it("no longer sells the price under the buttons", () => {
+    const { container } = render(<LandingPage />);
+
+    // The footnote, specifically: the hero's own copy ends at the two doors.
+    expect(container.textContent).not.toMatch(/100 minutes and three imports/i);
   });
 
   it("does not sell a meeting quota, which is not how the limit works", () => {
@@ -168,12 +186,25 @@ describe("the way in", () => {
  * slogan somebody wrote instead of using the approved one.
  */
 describe("the hero", () => {
-  it("leads with the V2 kicker", () => {
-    render(<LandingPage />);
+  it("leads with the identity rather than with a kicker", () => {
+    /*
+     * It led with "Meeting intelligence, without the meeting-tool clutter." in
+     * azure `.v2-label`. The logo is in that place now: the mark at a size
+     * where the waveform inside it is legible, with the word under it.
+     *
+     * <p>Two "Reverie"s in the first fold is deliberate and is checked below —
+     * the nav's is 19px and functional, the hero's is the identity.
+     */
+    const { container } = render(<LandingPage />);
 
+    expect(container.textContent).not.toMatch(/meeting-tool clutter/i);
+    // The mark, named, above the headline it introduces.
+    const hero = container.querySelector("main > section")!;
+    const mark = hero.querySelector('[aria-label="Reverie"]');
+    expect(mark).not.toBeNull();
     expect(
-      screen.getByText("Meeting intelligence, without the meeting-tool clutter."),
-    ).toBeInTheDocument();
+      mark!.compareDocumentPosition(screen.getByRole("heading", { level: 1 })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("carries both lines of the V2 headline, in one h1", () => {
@@ -220,10 +251,19 @@ describe("the product identity", () => {
     expect(screen.getAllByRole("img", { name: "Reverie" }).length).toBeGreaterThan(0);
   });
 
-  it("names the product beside the mark, in the header and the footer", () => {
+  it("names the product beside the mark, three times and no more", () => {
     render(<LandingPage />);
 
-    expect(screen.getAllByText("Reverie").length).toBe(2);
+    /*
+     * The nav, the hero and the footer. It was two — nav and footer — and the
+     * hero's is new: the supplied logo is a mark with the word under it, and
+     * the request was for that arrangement at the top of the page.
+     *
+     * <p>Counted rather than merely asserted present, because the word is the
+     * one thing on this page that could quietly appear a fourth time inside a
+     * showcase and turn the identity into a repetition.
+     */
+    expect(screen.getAllByText("Reverie").length).toBe(3);
   });
 });
 
@@ -286,33 +326,70 @@ describe("the invented landing page", () => {
 });
 
 /**
- * The preview is a picture, not the product.
+ * There is no product preview, and this is what it took with it.
  *
- * <p>It shows the band, the three places, a conversation list, folders and an
- * answer — all real — but nothing in it does anything. A landing page with
- * half-working chrome in it teaches people the real thing is also half-working,
- * so it is hidden from the accessibility tree and carries no controls at all.
+ * <p>A still picture of the application used to sit under the hero — the band,
+ * the three places, a conversation list, folders and an answer, behind a mask
+ * that faded its foot. It was described in this file as "all real". It was not:
+ * every string in it was invented.
+ *
+ * <p>That is the rule this page has held to everywhere else, and the sweep in
+ * "the invented landing page" above exists to enforce it. A mock meeting with a
+ * fabricated name and a fabricated duration is the first item on the
+ * do-not-ship list, and it had been sitting above the fold.
  */
 describe("the product preview", () => {
-  it("is present, and offers nothing to press", () => {
+  it.each([
+    ["a greeting to somebody who does not exist", /Good morning, Priya/i],
+    ["conversations nobody had", /Pricing sync|Design review/i],
+    ["durations nothing measured", /42:07|18:22|36:14/],
+    ["folders nobody made", /Q4 planning|Hiring \d/i],
+  ])("invents no %s", (_label, forbidden) => {
     const { container } = render(<LandingPage />);
 
-    const preview = container.querySelector('[aria-hidden="true"].rounded-xl');
-    expect(preview).not.toBeNull();
-    expect(preview!.querySelectorAll("button, a, input")).toHaveLength(0);
+    expect(container.textContent).not.toMatch(forbidden);
   });
 
-  it("shows the three places the application has, and no fourth", () => {
+  it("still shows the product, by demonstrating it rather than picturing it", () => {
+    // What replaced the screenshot was already on the page: the three moving
+    // moments, each walking through one real capability. Their own copy is
+    // asserted in the three describes below.
     const { container } = render(<LandingPage />);
 
-    const preview = container.querySelector('[aria-hidden="true"].rounded-xl')!;
-    expect(preview).toHaveTextContent("Home");
-    expect(preview).toHaveTextContent("Library");
-    expect(preview).toHaveTextContent("Ask");
-    // Memory was the fourth destination in the concept and has no schema.
-    expect(preview).not.toHaveTextContent(/Memory/i);
+    expect(container.textContent).toContain("Ask a question. Get the words it came from.");
+    expect(container.textContent).toContain("Read it in the language you think in.");
+  });
+
+  it("leaves the hero running straight into them", () => {
+    // The hero and the preview were paired inside a tighter `space-y-14`,
+    // because a picture of the product belonged immediately under the claim.
+    // With the picture gone the hero takes the page's own rhythm.
+    const { container } = render(<LandingPage />);
+
+    const main = container.querySelector("main")!;
+    expect(main.firstElementChild!.tagName).toBe("SECTION");
+    expect(main.firstElementChild!.querySelector("h1")).not.toBeNull();
   });
 });
+
+/*
+ * NOT COVERED HERE, AND IT SHOULD BE SOMEBODY'S DECISION RATHER THAN A
+ * SILENTLY WIDENED CHANGE.
+ *
+ * <p>The three showcases below — `StageShowcase`, `AskShowcase` and
+ * `LanguageMoment` — still illustrate themselves with one invented meeting:
+ * "Product Weekly", speakers called Priya and Dev, timecodes at 12:28 and
+ * 12:34, and an answer about moving an annual discount to 15%. The assertions
+ * above were first written to forbid all of it and failed, which is how it came
+ * to be written down.
+ *
+ * <p>Removing the still preview did not remove that, and was not meant to: the
+ * preview was a picture of the application's own chrome filled in with fiction,
+ * where these are labelled demonstrations of a capability. Whether that
+ * distinction is worth keeping is a product call and has not been made — so
+ * nothing here asserts either way, and it is recorded rather than left for
+ * somebody to rediscover.
+ */
 
 /**
  * The moments that were added, and the rule every one of them follows.

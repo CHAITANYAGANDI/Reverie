@@ -93,19 +93,28 @@
        ======================================================================
        ONE ACCENT, AND IT DOES NOT MEAN "PRIMARY".
 
-       Iris means: Reverie noticed this, or Reverie is doing this. The mark, an
+       Azure means: Reverie noticed this, or Reverie is doing this. The mark, an
        AI surface, a citation, the focus ring, and the one filled Ask button.
        Which is why the primary button in this product is INK — a Save button
        is not an observation, and an accent spent on every button is an accent
        that means nothing.
 
-       The hue sits at the blue edge of iris rather than in violet, where the
-       whole category already is. */
-    --brand: 236 89% 66%;         /* #5b67f5  4.32:1 — the mark, a filled affordance */
-    --brand-text: 235 100% 74%;   /* #7c86ff  6.17:1 — iris ANYWHERE it is a word */
-    --brand-fill: 234 77% 60%;    /* #4a5ae8  white on it 5.36:1 */
-    --brand-hover: 235 84% 64%;
-    --brand-deep: 236 54% 37%;
+       AZURE, NOT IRIS. It was 236° — the blue edge of iris, chosen to sit clear
+       of the violet the whole category is in. The identity moved: the mark is
+       drawn in the blue of the Reverie logo, and an accent that does not match
+       the mark it is named after is two brands. So the hue moved to ~215°, the
+       logo's own azure, and the ramp was rebuilt around it rather than rotated.
+
+       Every value below was measured against `--g-1`, not carried over. All
+       five meet or beat the ratio the iris value they replace was documented
+       at, which is the only thing that made the move safe to do at all — blue
+       has the lowest luminance of the three primaries, so a hue rotation toward
+       green at the same lightness raises contrast rather than lowering it. */
+    --brand: 215 100% 62%;        /* #3d8eff  5.98:1 — the mark, a filled affordance */
+    --brand-text: 213 100% 72%;   /* #70b0ff  8.59:1 — azure ANYWHERE it is a word */
+    --brand-fill: 216 92% 46%;    /* #0960e1  white on it 5.57:1 */
+    --brand-hover: 214 100% 66%;  /* #529dff  7.01:1 */
+    --brand-deep: 217 70% 30%;    /* #174082  white on it 10.04:1 — the mark's tail */
 
     /* Three semantic hues. Not four, not six. Each is paired with a word and a
      * glyph everywhere it appears, so the colour is confirmation and never the
@@ -115,7 +124,11 @@
     --success: 157 57% 49%;   /* #35c68a  8.82:1 — kept, resolved, done */
     --warning: 36 80% 57%;    /* #e9a13b  8.85:1 — overdue, changed, needs a human */
     --danger: 4 100% 63%;     /* #ff4e42  5.90:1 — failed, destructive, recording */
-    --info: 235 100% 74%;
+    --info: 213 100% 72%;     /* the same value as --brand-text, and it has to
+                               * stay that way: informational and "Reverie
+                               * noticed this" are one colour in this product.
+                               * Written out rather than referenced because
+                               * section 5 maps it into a shadcn name. */
 
     /* ======================================================================
        5 · SHADCN COMPATIBILITY
