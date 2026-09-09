@@ -98,13 +98,23 @@ const COLUMN = "mx-auto w-full max-w-[70rem]";
  * prose by 440 — the widest element on the page, holding one line of
  * placeholder, at nearly twice the measure everything else here is set to.
  *
- * <p>680 puts it under the answer, which is the thing it continues. Left
- * aligned inside `COLUMN` rather than centred in it, for the same reason: the
- * question you are typing belongs in the column the answer will appear in —
- * including on an empty thread, where the box would otherwise shift sideways
- * the moment the first answer arrived.
+ * <p>680, and centred in the panel rather than left-aligned in `COLUMN`.
+ *
+ * <p>Left-aligned was tried and is the arrangement that lines the box up with
+ * the answer above it — the column the question you are typing will be answered
+ * in. It reads wrong. `COLUMN` is 1120 because it is the answer *and* its
+ * evidence rail, and on the composer's row there is no evidence rail: a 680px
+ * box pinned to the left of 1120 sits 220px left of the panel's centre with
+ * nothing at all to its right, and the eye reads that as a box that has slipped
+ * rather than as one that is aligned to something.
+ *
+ * <p>So it is `mx-auto` and the two do not agree on a left edge. That is the
+ * cost and it is the smaller one: the mismatch is visible only while a turn is
+ * on screen, where the thread has content to be read and the composer is
+ * chrome, and being 220px off centre is visible every time the panel is empty —
+ * which is every time somebody opens it.
  */
-const DOCK_COLUMN = "max-w-[42.5rem]";
+const DOCK_COLUMN = "mx-auto max-w-[42.5rem]";
 
 const WideContext = React.createContext(false);
 

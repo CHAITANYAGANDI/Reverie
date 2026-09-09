@@ -585,28 +585,39 @@ describe("the measure", () => {
     );
   });
 
-  it("leaves the composer in the same column whether or not there is a thread", () => {
+  it("centres the composer in the panel, in both states", () => {
     /*
-     * The other half of the same regression. The centred version also centred
-     * the box horizontally, `mx-auto`, because with no turn above it there is
-     * no answer column to line up against — which meant the box slid sideways
-     * when the first answer arrived.
+     * Horizontally, and it is the panel's centre rather than the answer's left
+     * edge.
      *
-     * <p>It is left-aligned in the document column in both states now, so the
-     * only thing the first question changes is what appears above it.
+     * <p>Left-aligned in `COLUMN` was tried, on the reasoning that the box
+     * belongs in the column its answer will appear in. `COLUMN` is 1120 because
+     * it is the answer *and* its evidence rail -- and the composer's row has no
+     * evidence rail, so a 680px box pinned to its left sat 220px off centre
+     * with nothing to its right. It reads as slipped rather than as aligned,
+     * and it was reported that way.
+     *
+     * <p>Asserted in both states, because that is the guarantee: the box does
+     * not move when the first question is asked. `mx-auto` inside a centred
+     * `max-w-[70rem]` is the panel's centre at every width above the
+     * two-column threshold.
      */
     stubWidth(1440);
+    const centred = ".mx-auto.max-w-\\[42\\.5rem\\]";
+
     const empty = render(<AskPage />);
-    const emptyDock = empty.container.querySelector('[data-ask-region="dock"]');
-    expect(emptyDock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
-    expect(emptyDock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).toBeNull();
+    expect(
+      empty.container.querySelector('[data-ask-region="dock"]')!.querySelector(centred),
+      "an empty thread",
+    ).not.toBeNull();
     empty.unmount();
 
     setActiveChat("workspace:ask", "cnv_1");
     const full = render(<AskPage />);
-    const fullDock = full.container.querySelector('[data-ask-region="dock"]');
-    expect(fullDock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
-    expect(fullDock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).toBeNull();
+    expect(
+      full.container.querySelector('[data-ask-region="dock"]')!.querySelector(centred),
+      "a thread with turns in it",
+    ).not.toBeNull();
   });
 
   it("draws the same wash every other page in the shell has", () => {
