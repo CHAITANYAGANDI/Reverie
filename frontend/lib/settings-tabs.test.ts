@@ -19,11 +19,28 @@ import {
  * `/privacy` in particular is written into notification rows that already exist
  * — those rows are a record of something that happened and their link column
  * cannot be rewritten, so the path has to keep working for as long as they do.
+ * It now resolves to Data Retention, which is the subject it was a page about.
  */
 
 describe("the tabs themselves", () => {
-  it("are the two the page offers, in reading order", () => {
-    expect(SETTINGS_TABS.map((t) => t.id)).toEqual(["general", "plans"]);
+  it("are the four the page offers, in reading order", () => {
+    /*
+     * General first because it is where somebody lands. Then the two that send
+     * or delete things, Email before Data Retention -- one of the email
+     * switches IS the week's notice that retention is about to take something,
+     * so the other order explains the notice before the thing it is about.
+     * Plans last: the only tab about money rather than about the account's own
+     * behaviour.
+     */
+    expect(SETTINGS_TABS.map((t) => t.id)).toEqual(["general", "email", "data", "plans"]);
+  });
+
+  it("labels Data Retention in full, and keeps its URL short", () => {
+    // "Data" alone in a tab row beside General and Email says nothing about
+    // what happens there, and what happens there is deletion. The path stays
+    // `/settings/data`, which is what somebody types.
+    expect(SETTINGS_TABS.find((t) => t.id === "data")?.label).toBe("Data Retention");
+    expect(SETTINGS_TABS.find((t) => t.id === "email")?.label).toBe("Email");
   });
 
   it("offers none of the four that were removed", () => {
@@ -79,11 +96,22 @@ describe("reading a path", () => {
 describe("the paths that used to be pages", () => {
   it("still land somewhere rather than nowhere", () => {
     expect(tabFromPath("/billing")).toBe("plans");
-    // Security is gone, so this lands on General. It has to keep resolving:
-    // RETENTION_APPLIED notification rows carry /privacy in their link column,
-    // and those rows are a record of something that already happened.
-    expect(tabFromPath("/privacy")).toBe("general");
-    expect(LEGACY_PATHS["/privacy"]).toBe("general");
+    /*
+     * `/privacy` lands on Data Retention.
+     *
+     * <p>It went to General for a while, because that is where the retention
+     * dials had been moved to and General was the only place left. Now that
+     * they have a tab again this points at the thing it was always about: a
+     * `RETENTION_APPLIED` row carries `/privacy` in its link column, and
+     * somebody following it wants the schedule that took their recording, not
+     * a page about their display name.
+     *
+     * <p>It has to keep resolving either way -- those rows are a record of
+     * something that already happened and their link column cannot be
+     * rewritten.
+     */
+    expect(tabFromPath("/privacy")).toBe("data");
+    expect(LEGACY_PATHS["/privacy"]).toBe("data");
   });
 
   it("sends every removed tab's URL to General rather than to a blank pane", () => {

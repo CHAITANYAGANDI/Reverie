@@ -1,5 +1,5 @@
 /**
- * The two tabs of Account Settings, and how a URL maps onto one.
+ * The four tabs of Account Settings, and how a URL maps onto one.
  *
  * Pure, and separate from the page, for two reasons. The routing is a
  * catch-all — `/settings`, `/settings/security`, and anything anybody types
@@ -8,13 +8,23 @@
  * still land here: `/privacy` and `/billing` were pages before they were tabs,
  * and notifications written months ago still link to the first of them.
  *
- * There were six. Integrations held a calendar feed that no longer exists.
- * Meetings held sharing defaults, a chat window, and custom vocabulary and
- * known speakers; sharing and both transcription lists are gone, and the chat
- * window is now settable only through the API. Emails held seven switches and
- * Security showed sign-in facts and a privacy inventory — of which the
- * retention dials and the close-account control are now on General, because
- * they delete things and a control that deletes things should be reachable.
+ * There were six, then two, and there are four. Integrations held a calendar
+ * feed that no longer exists. Meetings held sharing defaults, a chat window,
+ * and custom vocabulary and known speakers; sharing and both transcription
+ * lists are gone, and the chat window is now settable only through the API.
+ *
+ * <p>Email and Data Retention are back as tabs of their own, having spent a
+ * while as two sections at the bottom of General. That was the right move at
+ * the time — both endpoints had worked for months with nothing in the interface
+ * able to reach them, and getting them on screen mattered more than where —
+ * but it left General as five unrelated things: who you are, what language you
+ * speak, what is done with a recording, five email switches, two deletion
+ * dials, and the button that ends the account. Two of those are subjects, not
+ * sections.
+ *
+ * <p>Close Account stays on General. It is not a retention schedule and it is
+ * not a preference: it is the way out of the account, and the account is what
+ * General is about.
  *
  * <p>None of the removed URLs is special-cased on the way out. They fall to
  * General like any other unrecognised settings path, which is the behaviour a
@@ -22,7 +32,7 @@
  * settings, not a blank pane that reads as a page which failed to load.
  */
 
-export type SettingsTab = "general" | "plans";
+export type SettingsTab = "general" | "email" | "data" | "plans";
 
 export interface TabSpec {
   id: SettingsTab;
@@ -32,10 +42,21 @@ export interface TabSpec {
 /**
  * In the order they are shown.
  *
- * General first because it is where somebody lands.
+ * <p>General first because it is where somebody lands. Then the two that send
+ * or delete things — Email before Data Retention, because one of the email
+ * switches is the week's notice that retention is about to take something, so
+ * reading them the other way round explains the notice before the thing it is
+ * about. Plans last: it is the only tab that answers a question about money
+ * rather than about the account's own behaviour.
+ *
+ * <p>`data` rather than `retention` in the URL. The tab is about how long
+ * things are kept AND therefore when they go, and `/settings/data` is what
+ * somebody types.
  */
 export const SETTINGS_TABS: TabSpec[] = [
   { id: "general", label: "General" },
+  { id: "email", label: "Email" },
+  { id: "data", label: "Data Retention" },
   { id: "plans", label: "Plans" },
 ];
 
@@ -50,10 +71,17 @@ export const DEFAULT_TAB: SettingsTab = "general";
  * has to keep working for as long as they do.
  */
 export const LEGACY_PATHS: Record<string, SettingsTab> = {
-  // Security is gone, so this lands on General rather than nowhere. The row it
-  // is written into is still a record of something that happened, and a link
-  // that 404s is a worse answer than the settings page.
-  "/privacy": "general",
+  /*
+   * `/privacy` lands on Data Retention.
+   *
+   * <p>It went to General for a while, because that is where the retention
+   * dials had been moved to and General was the only place left. Now that the
+   * dials have a tab again this can point at the thing it was always about: a
+   * `RETENTION_APPLIED` notification's link column says `/privacy`, and what
+   * somebody following it wants to see is the schedule that took their
+   * recording — not a page about their display name.
+   */
+  "/privacy": "data",
   "/billing": "plans",
 };
 

@@ -20,9 +20,14 @@ import type { PreferencesResponse, PrivacyOverview } from "@/lib/types";
  * cannot keep.
  *
  * <i>The footer says nothing rather than something useless.</i> The version
- * line and the jump link to this page's own retention section are gone, and the
- * legal line does not appear at all unless somebody has supplied real URLs —
- * Reverie ships no terms of service of its own.
+ * line and the jump link to a retention section that is not even on this tab
+ * any more are gone, and the legal line does not appear at all unless somebody
+ * has supplied real URLs — Reverie ships no terms of service of its own.
+ *
+ * <p>Email and Data Retention were sections here and are tabs now, so their
+ * cases live beside their components. What is left on this tab is the account
+ * itself: who you are, what language you speak, what is done with a recording,
+ * and the way out.
  */
 const {
   update, setRetention, closeAccount, signOut, deleteIdentity, clearOnboarding, toastError,
@@ -348,10 +353,27 @@ describe("the rest of the page", () => {
   });
 
   it("does not link to the middle of the page it is already on", () => {
-    // It pointed at `#data`, the retention section a few hundred pixels away.
+    // The footer pointed at `#data`, a retention section a few hundred pixels
+    // away, and that footer link is gone.
     render(<GeneralTab />);
 
     expect(screen.queryByText(/keeps what is yours/)).not.toBeInTheDocument();
+  });
+
+  it("sends you to the Data Retention tab rather than to an anchor on this one", () => {
+    /*
+     * The training paragraph ends by saying where the retention windows are
+     * set. It said "below" and linked to `#data`, which was the section a few
+     * hundred pixels down this tab. That section is a tab now, so the sentence
+     * has to name it and the link has to be a real one -- an anchor to an id
+     * that is no longer rendered scrolls nowhere and reads as a broken link.
+     */
+    render(<GeneralTab />);
+
+    const link = screen.getByRole("link", { name: /under Data Retention/i });
+    expect(link).toHaveAttribute("href", "/settings/data");
+    // And closing the account really is still below, on this tab.
+    expect(screen.getByRole("heading", { name: /Delete this account/i })).toBeInTheDocument();
   });
 
   it("shows no legal line when there are no documents to link to", () => {
@@ -364,81 +386,14 @@ describe("the rest of the page", () => {
   });
 });
 
-describe("how long things are kept", () => {
-  it("opens on Never, which is what an account with no policy has", () => {
-    render(<GeneralTab />);
-
-    const never = screen.getAllByRole("button", { name: "Never" });
-    expect(never).toHaveLength(2);
-    never.forEach((b) => expect(b).toHaveAttribute("aria-pressed", "true"));
-  });
-
-  it("sends both dials on every change, because null means keep and not leave alone", async () => {
-    overview = {
-      ...overview,
-      retention: { ...overview.retention, meetingDays: 30 },
-    };
-    render(<GeneralTab />);
-
-    // Changing the recording dial alone. If the meeting dial were omitted the
-    // API would read it as null and quietly clear a policy nobody touched.
-    await userEvent.click(screen.getAllByRole("button", { name: "After a week" })[0]);
-
-    await waitFor(() =>
-      expect(setRetention).toHaveBeenCalledWith({ audioDays: 7, meetingDays: 30 }),
-    );
-  });
-
-  it("refuses to offer the pair the server would reject", () => {
-    overview = {
-      ...overview,
-      retention: { ...overview.retention, audioDays: 30 },
-    };
-    render(<GeneralTab />);
-
-    // Deleting the meeting after a week while keeping its recording a month
-    // means the recording rule never runs. The server says so; the button
-    // should not be clickable in the first place.
-    expect(screen.getAllByRole("button", { name: "After a week" })[1]).toBeDisabled();
-  });
-
-  it("warns what the next pass would take of what is already there", () => {
-    overview = {
-      ...overview,
-      retention: { ...overview.retention, audioDays: 7, recordingsDueNow: 4 },
-    };
-    render(<GeneralTab />);
-
-    expect(screen.getByText(/deletes 4 recordings you already have/)).toBeInTheDocument();
-  });
-
-  it("names a window it no longer offers instead of drawing it as Never", () => {
-    overview = {
-      ...overview,
-      retention: { ...overview.retention, meetingDays: 90 },
-    };
-    render(<GeneralTab />);
-
-    // 90 days was on the list once and the API still accepts it. Showing the
-    // three buttons all unpressed would read as "nothing is deleted".
-    expect(screen.getByText(/after 90 days, which is not one of these/i)).toBeInTheDocument();
-  });
-
-  it("explains a refusal in the API's own words", async () => {
-    retentionFailure = {
-      data: { message: "Keep meetings at least as long as recordings." },
-    };
-    render(<GeneralTab />);
-
-    await userEvent.click(screen.getAllByRole("button", { name: "After a week" })[0]);
-
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "Keep meetings at least as long as recordings.",
-      ),
-    );
-  });
-});
+/*
+ * THE RETENTION DIALS ARE THEIR OWN TAB, and their tests went with them.
+ *
+ * <p>`describe("how long things are kept")` was here, seven cases including the
+ * one that matters most: both dials go on every change, because the API reads a
+ * null as "keep forever" rather than "leave this one alone". See
+ * components/settings/retention-tab.test.
+ */
 
 describe("closing the account", () => {
   it("says what goes and that it is permanent", () => {
@@ -601,70 +556,11 @@ describe("closing the account", () => {
 });
 
 
-/**
- * The email switches.
+/*
+ * THE EMAIL SWITCHES ARE THEIR OWN TAB, and their tests went with them.
  *
- * <p>V56 deleted every message Reverie sent, and its stated reason was not
- * that the messages were wrong — it was that the switches had no UI to reach
- * them, so nothing went out and nobody could have asked for it. This section is
- * the half that was missing, and these tests are what stop it going missing
- * again.
+ * <p>`describe("email")` was here, six cases over the five switches. See
+ * components/settings/email-tab.test — the assertions are unchanged; what
+ * changed is that they render `EmailTab` and no longer need this file's mock
+ * of the privacy overview, the auth profile or the close-account mutation.
  */
-describe("email", () => {
-  it("shows every message it will send, and none it will not", async () => {
-    render(<GeneralTab />);
-
-    expect(await screen.findByRole("heading", { name: /Email notifications/ })).toBeInTheDocument();
-    expect(screen.getByText(/Before retention deletes something/)).toBeInTheDocument();
-    expect(screen.getByText(/After retention deletes something/)).toBeInTheDocument();
-    expect(screen.getByText(/Action items due tomorrow/)).toBeInTheDocument();
-    expect(screen.getByText(/Notes ready for a long recording/)).toBeInTheDocument();
-    expect(screen.getByText(/transcription minutes are nearly gone/)).toBeInTheDocument();
-  });
-
-  it("starts every one of them off", async () => {
-    // Mail that arrives because a migration ran is how a sender gets filtered,
-    // and a filtered sender loses the retention warning with the rest.
-    render(<GeneralTab />);
-
-    const heading = await screen.findByRole("heading", { name: /Email notifications/ });
-    const section = heading.closest("section")!;
-    for (const box of Array.from(section.querySelectorAll("input[type=checkbox]"))) {
-      expect(box).not.toBeChecked();
-    }
-  });
-
-  it("saves one switch on its own", async () => {
-    // Six toggles behind a single Save is a section where flipping one thing
-    // and walking away loses it.
-    render(<GeneralTab />);
-    await screen.findByRole("heading", { name: /Email notifications/ });
-
-    await userEvent.click(screen.getByText(/Action items due tomorrow/));
-
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ taskReminderEmail: true }));
-  });
-
-  it("names the two messages nobody can switch off", async () => {
-    /*
-     * Said rather than hidden. A message with no switch that the page does not
-     * mention reads as a message you cannot stop -- and one of the two is sent
-     * after the row holding these settings has been deleted, so there is
-     * nowhere else it could ever be explained.
-     */
-    render(<GeneralTab />);
-    await screen.findByRole("heading", { name: /Email notifications/ });
-
-    expect(screen.getByText(/Two messages have no switch/)).toBeInTheDocument();
-    expect(screen.getByText(/running out of transcription minutes/)).toBeInTheDocument();
-    expect(screen.getByText(/account being closed/)).toBeInTheDocument();
-  });
-
-  it("says so rather than showing five switches that do nothing", async () => {
-    failure = { data: { message: "nope" } };
-    prefs = null as never;
-    render(<GeneralTab />);
-
-    expect(await screen.findByRole("heading", { name: /Email notifications/ })).toBeInTheDocument();
-  });
-});
