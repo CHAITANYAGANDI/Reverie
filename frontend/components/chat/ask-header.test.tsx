@@ -20,10 +20,35 @@ describe("AskHeader", () => {
      */
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(screen.queryByText("Ask Reverie")).not.toBeInTheDocument();
-    // One mark, and it is decorative: the panel is identified, not labelled.
-    const mark = container.querySelector("svg");
+
+    /*
+     * ONE MARK, AND IT IS THE AI ORB — named, which is the part that changed.
+     *
+     * <p>It was a 16px `BrandMark`, `aria-hidden`. Two things were wrong with
+     * that. It was the *product's* mark, which answers "which product am I
+     * using?" in a header that has to answer "whose panel is this?"; and it
+     * was hidden from a reader, in the one place in the app where this mark is
+     * the only identity there is. With the words gone, hiding it left a header
+     * that named nothing at all.
+     *
+     * <p>So it is the orb, at 26px, and it carries a title. Everywhere else
+     * this mark sits inside a labelled button and stays `aria-hidden`, or the
+     * control gets announced twice.
+     */
+    const mark = container.querySelector("[data-ai-mark]") as HTMLElement;
     expect(mark).not.toBeNull();
-    expect(mark!.getAttribute("aria-hidden")).toBe("true");
+    /* Named as the image's own alt, which is how a logotype is named — and the
+       wrapper drops its `aria-hidden` so the name reaches a reader. Everywhere
+       else this mark sits inside a labelled button and stays hidden, or the
+       control gets announced twice. */
+    expect(mark.getAttribute("aria-hidden")).toBeNull();
+    const img = mark.querySelector("img")!;
+    expect(img.getAttribute("alt")).toBe("Reverie AI");
+    expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
+    // 26px of sphere in a 31px element.
+    expect(mark.style.width).toBe("31px");
+    // Not a control. Nothing here is hoverable, so the orb does not lean in.
+    expect(mark.className).not.toMatch(/group-hover/);
   });
 
   it("offers a way out where there is one, and none where there is not", async () => {

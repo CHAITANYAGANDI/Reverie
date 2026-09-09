@@ -2,30 +2,28 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LazyMotion, domAnimation } from "framer-motion";
 import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand";
-import { barsOf, crescent, cutFor } from "@/components/v2/mark-geometry";
 
 /**
  * The hero identity.
  *
- * <h2>What this file is holding</h2>
+ * <h2>REWRITTEN, because the identity is now the approved render</h2>
  *
- * <p>The reported problem was scale: a 128px mark box over a 42px word read as
- * a logo pasted above a heading rather than as the product's identity. Scale is
- * a `clamp()` and cannot be asserted in jsdom, which has no layout — so it is
- * verified by measuring the rendered page, and what is asserted here is
- * everything else that must not drift:
+ * <p>Five of these tests asserted a drawing: that the lockup read mark, then
+ * word, then tagline as three separate elements; that the paths came from
+ * `mark-geometry` rather than a second copy of the geometry; that the bottom
+ * ribbon's rotation sat on a `<g>` and not on the path; and that
+ * `CONVERSATIONAL INTELLIGENCE` was live text.
  *
- * <ul>
- *   <li>the copy, exactly — `CONVERSATIONAL INTELLIGENCE` is specified wording
- *       and was deliberately absent from the lockup this replaces;</li>
- *   <li>the order — mark, then word, then tagline;</li>
- *   <li>that the drawing comes from the shared geometry rather than a second
- *       copy of it, which is the one thing a hand-animated mark makes easy to
- *       get wrong;</li>
- *   <li>and the no-JavaScript contract, because framer writes `initial` into
- *       the served HTML and the page's `noscript` override only reaches
- *       elements carrying `data-reveal`.</li>
- * </ul>
+ * <p>None of that survives. The hero loads `reverie-main-hero.webp` — the
+ * approved artwork, cropped, with its baked background turned into alpha — and
+ * the lens, the wordmark and the tagline are pixels in one file. The vector
+ * reconstruction was faithful to the geometry and was visibly not the artwork.
+ *
+ * <p>Which costs something real, and the cost is asserted rather than glossed:
+ * the words are inside a picture, so they are put back beside it as live
+ * `sr-only` text and the picture is marked decorative. What is held here now is
+ * that contract — and that it is not doubled — the no-JavaScript contract, and
+ * the rule that nothing is done to the artwork's colour.
  *
  * <p>Wrapped in `LazyMotion` with `domAnimation`, which is what the page does.
  * Not `domMax`: the provider on the real page runs `strict`, and a test that
@@ -41,110 +39,101 @@ function lockup() {
 }
 
 describe("the hero identity", () => {
-  it("says exactly CONVERSATIONAL INTELLIGENCE", () => {
-    /*
-     * The wording is specified and the alternatives are not interchangeable:
-     * "Conversation Intelligence", "Meeting Intelligence" and "Conversational
-     * AI" are all things this is not called.
-     *
-     * <p>Written in capitals in the markup rather than lower-cased and
-     * transformed, so the DOM says what the brief asked for rather than
-     * relying on a `text-transform` to make it look that way.
-     */
-    lockup();
-
-    expect(screen.getByText("CONVERSATIONAL INTELLIGENCE")).toBeInTheDocument();
-  });
-
-  it("reads mark, then word, then tagline", () => {
-    // The identity's own order, and the reason it is a stacked component rather
-    // than the nav lockup at a bigger size.
+  it("is the approved artwork rather than a drawing of it", () => {
     const { container } = lockup();
 
-    const mark = container.querySelector('svg[role="img"]')!;
-    const word = screen.getByText("Reverie");
-    const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
-
-    expect(mark.compareDocumentPosition(word)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(word.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const img = container.querySelector("img")!;
+    expect(img).not.toBeNull();
+    expect(img.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
+    // No vector identity left in the hero at all — that is the change.
+    expect(container.querySelector("svg")).toBeNull();
   });
 
-  it("names the mark Reverie, once", () => {
+  it("names the identity in live text, and says it exactly once", () => {
     /*
-     * One accessible name for the identity. The wordmark beside it is text and
-     * must not be labelled as well — two elements both announcing "Reverie" is
-     * a screen reader saying the product's name twice for one logo.
-     */
-    lockup();
-
-    expect(screen.getByRole("img", { name: "Reverie" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: "Reverie" })).toHaveLength(1);
-  });
-
-  it("draws the shared geometry rather than a second copy of it", () => {
-    /*
-     * THE ONE THING A HAND-ANIMATED MARK MAKES EASY TO GET WRONG.
+     * The words were rendered type, then the image's `alt`, and are now
+     * `sr-only` text beside a decorative image. The last move is the right one:
+     * an `alt` is a *substitute* for a picture, and the product's name is not a
+     * description of a picture.
      *
-     * <p>This component composes the mark itself, because animating the ribbons
-     * and the bars separately needs `m.path` and `m.rect` that `BrandMark`
-     * cannot hand out. The risk in that is a second drawing that drifts from
-     * the first, so the paths are compared against what `mark-geometry`
-     * produces — the same functions `BrandMark` calls.
-     */
-    const { container } = lockup();
-    const cut = cutFor(264);
-
-    const paths = Array.from(container.querySelectorAll("path"));
-    expect(paths).toHaveLength(2);
-    for (const p of paths) {
-      expect(p.getAttribute("d")).toBe(crescent(cut));
-    }
-
-    // Nine bars: the artwork's own cut, which is what the hero always draws.
-    expect(container.querySelectorAll("rect")).toHaveLength(barsOf(cut).length);
-    expect(barsOf(cut)).toHaveLength(9);
-  });
-
-  it("rotates the second ribbon on a group, not on the path", () => {
-    /*
-     * Two reasons, and both are real failures that were hit.
-     *
-     * <p>Framer writes a CSS `transform` for the ribbon's settle, and a CSS
-     * transform replaces an SVG `transform` attribute outright — so a rotation
-     * on the path would vanish on the first animated frame.
-     *
-     * <p>And the page's `noscript` override forces `transform:none` on every
-     * `[data-reveal]`, which would take an attribute rotation with it. Half the
-     * mark would be upside down for anybody with JavaScript disabled.
+     * <p>The doubling is what this guards. A descriptive `alt` *and* identical
+     * `sr-only` text announces the identity twice — "Reverie, conversational
+     * intelligence, image. Reverie, Conversational Intelligence." — which is
+     * worse than either alone. So the image contributes no accessible name at
+     * all, and there is exactly one string.
      */
     const { container } = lockup();
 
-    const group = container.querySelector("g[transform]");
-    expect(group?.getAttribute("transform")).toBe("rotate(180 16 16)");
-    expect(group?.querySelector("path")).not.toBeNull();
-    for (const p of Array.from(container.querySelectorAll("path"))) {
-      expect(p.getAttribute("transform")).toBeNull();
-    }
+    expect(screen.getAllByText("Reverie — Conversational Intelligence")).toHaveLength(1);
+
+    const img = container.querySelector("img")!;
+    expect(img.getAttribute("alt")).toBe("");
+    expect(img.getAttribute("aria-hidden")).toBe("true");
+    // Out of the accessibility tree entirely, so nothing can be said twice.
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
+  });
+
+  it("keeps the identity text readable before and without the entrance", () => {
+    /*
+     * Inside the animated wrapper on purpose. Opacity and transform do not take
+     * an element out of the accessibility tree, so the words are there on the
+     * first frame — which matters because the wrapper starts at `opacity: 0`
+     * and, with JavaScript off, never animates at all.
+     */
+    const { container } = lockup();
+
+    const text = screen.getByText("Reverie — Conversational Intelligence");
+    expect(text.className).toContain("sr-only");
+    expect(text.closest("[data-reveal]")).not.toBeNull();
+    // Not `hidden`, not `display:none` — either would take it out of the tree.
+    expect(container.querySelector("[hidden]")).toBeNull();
+  });
+
+  it("does nothing whatever to the artwork's colour", () => {
+    /*
+     * The identity *is* the colour. No opacity, no filter, no blend, no tint —
+     * on the image or on the element that animates it. The entrance animates
+     * opacity, which is the one exception the brief allows and is on the
+     * wrapper: it ends at 1 and is what makes the arrival an arrival.
+     */
+    const { container } = lockup();
+    const img = container.querySelector("img")!;
+
+    expect(img.className).not.toMatch(/\bopacity-\d/);
+    expect(img.className).not.toMatch(
+      /(grayscale|saturate|mix-blend|hue-rotate|\bfilter\b|brightness|contrast)/,
+    );
+    expect(img.getAttribute("style")).toBeNull();
+  });
+
+  it("reserves its box so the headline under it cannot jump", () => {
+    // The intrinsic pixels as attributes, with the CSS width overriding them
+    // for layout. Without the pair the browser has no aspect ratio until the
+    // file arrives, and everything below the hero shifts when it lands.
+    const { container } = lockup();
+    const img = container.querySelector("img")!;
+
+    expect(img.getAttribute("width")).toBe("820");
+    expect(img.getAttribute("height")).toBe("576");
+    expect(img.className).toContain("h-auto");
+    // Not lazy: this is the first paint of the front door.
+    expect(img.getAttribute("loading")).not.toBe("lazy");
+    expect(img.getAttribute("fetchpriority")).toBe("high");
   });
 
   it("carries data-reveal on everything that starts hidden", () => {
     /*
-     * The no-JavaScript contract. Framer renders `initial` into the served
-     * HTML's style attribute, so without it the identity would be a hole where
-     * a logo should be — and the page's `noscript` block only reaches elements
-     * with this attribute.
+     * Framer writes `initial` into the served HTML's style attribute, so
+     * without JavaScript this would be a 555px hole where an identity should
+     * be. The page's `<noscript>` block forces every `[data-reveal]` to
+     * `opacity:1;transform:none`, and it only reaches elements carrying the
+     * attribute.
      */
     const { container } = lockup();
 
-    for (const selector of ["svg", "path", "rect", "span"]) {
-      const all = Array.from(container.querySelectorAll(selector));
-      expect(all.length, selector).toBeGreaterThan(0);
-      for (const el of all) {
-        expect(el.hasAttribute("data-reveal"), `${selector}: ${el.outerHTML.slice(0, 60)}`).toBe(
-          true,
-        );
-      }
-    }
+    const animated = container.querySelector("[style*='opacity']");
+    expect(animated).not.toBeNull();
+    expect(animated!.hasAttribute("data-reveal")).toBe(true);
   });
 
   it("hides the bloom from the accessibility tree and lets CSS stop it", () => {
@@ -160,6 +149,9 @@ describe("the hero identity", () => {
     const bloom = container.querySelector(".v2-hero-bloom")!;
     expect(bloom.getAttribute("aria-hidden")).toBe("true");
     expect(bloom.hasAttribute("data-breathe")).toBe(true);
+    // Behind the artwork, never over it.
+    expect(bloom.className).toContain("-z-10");
+    expect(bloom.className).toContain("pointer-events-none");
   });
 });
 

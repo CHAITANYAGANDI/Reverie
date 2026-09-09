@@ -25,8 +25,8 @@ describe("the optical cuts", () => {
      * bar and 0.4px of gap, which renders as a grey smear rather than as a
      * waveform. The count drops with the size and the bars get wider.
      */
-    expect(barsOf(cutFor(64))).toHaveLength(9);
-    expect(barsOf(cutFor(32))).toHaveLength(5);
+    expect(barsOf(cutFor(240))).toHaveLength(9);
+    expect(barsOf(cutFor(42))).toHaveLength(5);
     expect(barsOf(cutFor(18))).toHaveLength(3);
 
     expect(cutFor(18).width).toBeGreaterThan(cutFor(64).width);
@@ -44,9 +44,11 @@ describe("the optical cuts", () => {
      * uses under half of its square box — right beside a 42px word, and far
      * too timid beside a 13px one. The small cuts are squarer.
      */
-    expect(markFill(64)).toBeCloseTo(0.4875, 3);
-    expect(markFill(32)).toBeGreaterThan(markFill(64));
-    expect(markFill(18)).toBeGreaterThan(markFill(32));
+    // 128 rather than 64: the display cut's boundary moved to 96. See the
+    // note in the test below for what showed that it had to.
+    expect(markFill(128)).toBeCloseTo(0.4875, 3);
+    expect(markFill(42)).toBeGreaterThan(markFill(128));
+    expect(markFill(18)).toBeGreaterThan(markFill(42));
     // And never taller than its box, whatever the cut.
     for (const size of [18, 32, 64, 128]) {
       expect(markFill(size)).toBeLessThan(1);
@@ -54,10 +56,24 @@ describe("the optical cuts", () => {
   });
 
   it("chooses a cut by rendered size and not by scale", () => {
-    // The boundaries are the documented ones. A mark asked for at 40 is the
+    /*
+     * The boundaries are the documented ones — and the first one MOVED, from 40
+     * to 96, which is worth stating rather than quietly editing.
+     *
+     * <p>It was never exercised at 40. The only caller of the nine-bar cut was
+     * the landing hero at 264px, where it is the artwork exactly. When the band
+     * and the lockup grew to a 42px lens they crossed the old line and took a
+     * cut meant for a display size: 3px bars on a 5px pitch against a 1.9px
+     * ribbon, which reads as a cluster of vertical bars rather than as a lens.
+     * Seen by magnifying the running band, not by reading the table.
+     */
+    // A mark asked for at 96 is the
     // artwork's own drawing; at 39 it is the five-bar cut.
-    expect(barsOf(cutFor(40))).toHaveLength(9);
-    expect(barsOf(cutFor(39))).toHaveLength(5);
+    expect(barsOf(cutFor(96))).toHaveLength(9);
+    expect(barsOf(cutFor(95))).toHaveLength(5);
+    // The two sizes the product actually draws either side of it.
+    expect(barsOf(cutFor(264))).toHaveLength(9);
+    expect(barsOf(cutFor(42))).toHaveLength(5);
     expect(barsOf(cutFor(24))).toHaveLength(5);
     expect(barsOf(cutFor(23))).toHaveLength(3);
   });
@@ -122,7 +138,7 @@ describe("the crescent path", () => {
   });
 
   it("draws a different path for every cut", () => {
-    const paths = new Set([18, 32, 64].map((s) => crescent(cutFor(s))));
+    const paths = new Set([18, 42, 128].map((s) => crescent(cutFor(s))));
     expect(paths.size).toBe(3);
   });
 });

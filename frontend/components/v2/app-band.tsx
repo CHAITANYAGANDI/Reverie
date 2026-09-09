@@ -93,9 +93,34 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
         <Link
           href={HOME}
           aria-label="Reverie — home"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink opacity-90 transition-opacity duration-press ease-soft hover:opacity-100"
+          /* `px-2` and no fixed width: the mark is wider than it is tall, so a
+             square hit area either crops the lens or wastes half its height.
+             36px of height keeps the target comfortable inside a 48px band. */
+          className="flex h-9 shrink-0 items-center justify-center rounded-md px-2 text-ink opacity-90 transition-opacity duration-press ease-soft hover:opacity-100"
         >
-          <BrandMark size={18} />
+          {/*
+            44px OF LENS, WHERE THERE WERE 18 OF BOX.
+
+            <p>`size` is the visible width now, because of `crop` — and that is
+            the whole reason this could grow. At 18px square the drawing was
+            15px wide and 11px tall in a 48px band: a favicon in the corner of
+            a premium interface, and the reported problem. The box was the
+            ceiling, not the band.
+
+            <p>42 wide is 27 tall, measured. It takes the middle optical cut
+            — five bars and a 1.9-unit ribbon — and NOT the artwork's nine-bar
+            one, which was the first thing this change got wrong: at 44px that
+            cut is 3px bars on a 5px pitch against a 1.9px ribbon, so the
+            waveform swamps the lens and the mark reads as a cluster of
+            vertical bars. See the boundary note in mark-geometry; the nine-bar
+            cut is a display cut and the hero is the only thing large enough
+            for it.
+
+            <p>Still the product's mark and not the AI orb. This corner answers
+            "which product am I using?"; the orb answers "where is Reverie's
+            assistant?", and the two are never interchanged.
+          */}
+          <BrandMark size={42} crop />
         </Link>
 
         {/* Below `md` these are the bottom tabs instead. Three words plus five

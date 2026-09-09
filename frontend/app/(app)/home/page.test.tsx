@@ -948,17 +948,25 @@ describe("the shape of Now", () => {
   /**
    * What the control that opens Ask is called.
    *
-   * <p>Longer than what is drawn. The visible label is `AI` — the same word
-   * the meeting page's button carries, so one name opens one panel — and a
-   * hidden continuation makes the accessible name
-   * "AI — ask about your conversations", because "AI" alone is a poor thing to
-   * hear announced. The visible text is contained in the spoken name, so a
-   * person reading and a person listening are told the same thing.
+   * <p>Longer than what is drawn. The visible label is `Ask Reverie` — the
+   * same words the meeting page's button carries, so one name opens one panel
+   * — and a hidden continuation makes the accessible name "Ask Reverie about
+   * your conversations". The visible text is contained in the spoken name, so
+   * a person reading and a person listening are told the same thing.
    *
-   * <p>It read "Ask Reverie about your meetings…" when it was a full-width
-   * field, which was the placeholder of a box that could not be typed into.
+   * <p>CHANGED TWICE, and this is the second time. It read "Ask Reverie about
+   * your meetings…" when it was a full-width field, which was the placeholder
+   * of a box that could not be typed into. Then `AI`, because the band's third
+   * place was itself called `Ask Reverie` and two controls with one name — one
+   * of which navigates away and one of which does not — is a distinction
+   * nobody should have to learn by pressing.
+   *
+   * <p>That place is `Reverie AI` now: a noun naming a destination beside a
+   * verb naming an action, which states the distinction instead of avoiding
+   * it. Which leaves nothing holding `AI` up — a label that names a technology
+   * where every other control in this product names what it does.
    */
-  const LAUNCHER = /^AI — ask about your conversations$/;
+  const LAUNCHER = /^Ask Reverie about your conversations$/;
 
   it("keeps the margin from becoming a second application", async () => {
     render(<HomePage />);
@@ -1016,19 +1024,82 @@ describe("the shape of Now", () => {
 
   it("draws one glyph in the launcher and no keyboard badge", async () => {
     /*
-     * One mark, and it is the Reverie mark rather than the `Waypoints` glyph
-     * the bar carried or the `Sparkles` every product in the category spends
-     * on the same claim. The reference put a mark at each end of this control
-     * and a `⌘ J` keycap inside it: two marks read as a logo pasted twice,
-     * and a keycap promises a shortcut that does not exist.
+     * One mark. It was a `Waypoints`, then the `Sparkles` every product in the
+     * category spends on the same claim, then the Reverie mark — and it is now
+     * the Reverie **AI** mark, which is the distinction the test below is
+     * about. The reference put a mark at each end of this control and a `⌘ J`
+     * keycap inside it: two marks read as a logo pasted twice, and a keycap
+     * promises a shortcut that does not exist.
      */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
     const launcher = screen.getByRole("button", { name: LAUNCHER });
-    expect(launcher.querySelectorAll("svg")).toHaveLength(1);
+    /* One mark, and it is an image rather than an `svg` now: the orb is the
+       approved render, not a drawing of it. See the note in
+       components/v2/ai-mark-asset for how that was decided. */
+    expect(launcher.querySelectorAll("img")).toHaveLength(1);
+    expect(launcher.querySelectorAll("svg")).toHaveLength(0);
     expect(launcher.querySelector("kbd")).toBeNull();
     expect(container.querySelector("kbd")).toBeNull();
+  });
+
+  it("opens Ask under the AI identity, not the product's", async () => {
+    /*
+     * THE RULE THIS WHOLE SURFACE TURNS ON.
+     *
+     *     the Reverie mark    which product am I using
+     *     the Reverie AI orb  where is Reverie's assistant
+     *
+     * <p>This control is the second question, so it carries the orb. It was
+     * an 18px `BrandMark` — the same mark as the corner of the window, at a
+     * size where the waveform inside it was three grey pixels.
+     *
+     * <p>Both halves are asserted, because the failure mode is reaching for
+     * the nearest mark: the orb is present *and* the corner of the window
+     * still is not wearing it. Only the AI mark answers to `[data-ai-mark]`.
+     */
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    const orb = launcher.querySelector("[data-ai-mark]") as HTMLElement;
+    expect(orb).not.toBeNull();
+
+    // The approved artwork, not a reconstruction of it.
+    expect(orb.querySelector("img")!.getAttribute("src")).toBe(
+      "/brand/reverie-ai-orb-mark.webp",
+    );
+    /* 30px of painted sphere, in a 36px element — an inline style, because
+       `Button`'s own `[&_svg]:size-4` and its relatives are exactly what took
+       this mark down to 13px once already. Not 18: the reported problem was
+       that this mark was a favicon beside a 26px greeting. */
+    expect(orb.style.width).toBe("36px");
+    // Decorative inside a labelled button, or a reader hears the control twice.
+    expect(orb.getAttribute("aria-hidden")).toBe("true");
+    // And it responds to the pointer, which the header's and the resting one
+    // deliberately do not.
+    expect(launcher.className).toContain("group");
+    expect(orb.className).toContain("group-hover:scale-[1.055]");
+  });
+
+  it("marks the orb while the panel it opens is on screen", async () => {
+    // The same fact `aria-expanded` reports, said in the mark: a wider glow
+    // and a full-brightness waveform. A state, not a loop — nothing here
+    // animates for ever in the corner of a page.
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    /* The halo, which is a span behind the image — never the image. Tinting
+       the artwork is the one thing the identity rules forbid, so the open
+       state is carried by the only thing that may change. */
+    const halo = () => launcher.querySelector(".v2-ai-halo")!.getAttribute("class");
+
+    expect(halo()).toContain("opacity-0");
+    await userEvent.click(launcher);
+    expect(halo()).toContain("opacity-50");
+    expect(launcher.innerHTML).not.toMatch(/animate-/);
   });
 
   it("keeps your own list on the page rather than behind a tab", async () => {

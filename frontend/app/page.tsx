@@ -170,7 +170,11 @@ function Header() {
   return (
     <header className="relative z-10">
       <div className="mx-auto flex h-[68px] max-w-doc items-center gap-8 px-6 lg:px-8">
-        <Lockup size={19} />
+        {/* 21px of wordmark, up from 19, and the mark that goes with it is
+            43px of visible lens rather than 17px of square box — see `MARK` in
+            components/v2/lockup. The nav's identity was legible and weightless
+            beside a hero that is now the page's whole opening statement. */}
+        <Lockup size={21} />
         <nav aria-label="Reverie" className="ml-auto flex items-center gap-6">
           {/* A 36px target, not a 20px line of text. It sits beside a filled
               button of the same height, and a link half its neighbour's height
@@ -280,19 +284,22 @@ function Hero() {
       </HeroBeat>
 
       {/*
-        NO BUTTONS IN THE HERO.
+        NO BUTTONS IN THE HERO — settled, after being unsettled twice.
 
-        <p>`Create a free account` and `Sign in` stood here, and both are
-        withdrawn. The nav above carries the same pair — `Get started` and
-        `Sign in`, at the top of every screen and pinned nowhere else — so the
-        hero was offering the same two doors a second time within one viewport.
+        <p>`Create a free account` and `Sign in` stood here, were withdrawn,
+        came back when a later composition drew them, and are withdrawn again.
+        The reasoning that holds is the original one: the header above carries
+        the same pair — `Get started` and `Sign in`, at the top of every screen
+        — so the hero was offering the same two doors a second time within one
+        viewport.
 
-        <p>Which also lets the hero be what this pass made it: an identity, a
-        claim, and what it costs. The reader is not asked to decide before the
-        page has shown them anything; the product does that further down, and
-        the closing section has its own way in.
+        <p>Which also lets the hero be what it is: an identity, a claim, and
+        what it costs. The reader is not asked to decide before the page has
+        shown them anything; the product does that further down, and the closing
+        section has its own way in. The hero ends on the cost line and the page
+        moves on.
 
-        <p>`Sign in` is still reachable three ways — the nav, the footer, and
+        <p>`Sign in` is still reachable three ways — the header, the footer, and
         the header of every authenticated route. Nothing was closed.
       */}
 

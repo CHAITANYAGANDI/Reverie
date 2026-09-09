@@ -19,12 +19,12 @@ import {
   Eraser,
   Highlighter,
   Copy,
-  Sparkles,
   ListPlus,
   Link2,
   UserRoundCog,
   FileText,
 } from "lucide-react";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { cn } from "@/lib/utils";
 
 export type SelectionAction =
@@ -40,6 +40,31 @@ interface Item {
   action: SelectionAction;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+}
+
+/**
+ * THE ORB, AT A MENU ROW'S SIZE.
+ *
+ * <p>`Ask Reverie` here is the same invocation as the launcher on Home and the
+ * control on a meeting's mode row, reached from a passage instead of from the
+ * page — so it carries the same identity. It was a `Sparkles`.
+ *
+ * <p>A component rather than an entry in the table because the orb takes a
+ * size and the table holds glyphs that take a class. It deliberately drops the
+ * `className` the row passes it: that class is `h-4 w-4` and a muted grey,
+ * neither of which applies to a mark that carries its own dimensions and its
+ * own colour, and a CSS height on an `svg` would silently override the size and
+ * collapse the sphere.
+ *
+ * <p>20px, which is the smallest the approved artwork is drawn at anywhere.
+ * Rasterised at true device pixels it still carries the sphere, the rim light
+ * and a bright waveform core at 20; by 16 the waveform has gone and only the
+ * orb is left. 20 in a row of 16px glyphs is a 24px element, so `-my-1`
+ * absorbs the four pixels that would otherwise make this one row taller than
+ * the six around it.
+ */
+function AskGlyph() {
+  return <ReverieAiMark size={20} className="-my-1" />;
 }
 
 /**
@@ -60,7 +85,7 @@ const ITEMS: Item[] = [
    * they are about and still carry their own delete control; withdrawing the
    * way in is not a reason to make somebody's own words unreachable.
    */
-  { action: "ask", label: "Ask Reverie", icon: Sparkles },
+  { action: "ask", label: "Ask Reverie", icon: AskGlyph },
   { action: "summarize", label: "Summarize", icon: FileText },
   { action: "action-item", label: "Create action item", icon: ListPlus },
   { action: "share", label: "Copy link to moment", icon: Link2 },

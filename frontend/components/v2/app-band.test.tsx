@@ -99,7 +99,10 @@ describe("what is always there", () => {
      * collided with the control that opens the chat *in place* on Home and on
      * a meeting: two things on one screen with that name, one of which
      * navigates away and one of which does not. "Reverie AI" names the
-     * destination, and the panels are opened by a button labelled `AI`.
+     * destination; the panels are opened by a button labelled `Ask Reverie`,
+     * which is a verb phrase beside this noun phrase rather than a repeat of
+     * it. (That button read `AI` for a while, as the cheaper way out of the
+     * same collision.)
      */
     expect(names).toEqual(["Home", "Library", "Reverie AI"]);
   });
@@ -110,6 +113,45 @@ describe("what is always there", () => {
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
     expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute("href", "/ask");
+  });
+
+  it("wears the product's identity in the corner, never the AI orb", () => {
+    /*
+     * THE ABSENCE THAT MATTERS.
+     *
+     * <p>Reverie has two marks and this corner is the first one: it answers
+     * "which product am I using?", which is what a logo in a corner has meant
+     * for as long as there have been corners. The orb answers "where is
+     * Reverie's assistant?" and belongs on the controls that open it.
+     *
+     * <p>Asserted as an absence because the failure is a plausible one — the
+     * orb is the newer and better-looking mark, and putting it here would make
+     * the whole application look like an AI feature.
+     */
+    band();
+
+    const home = screen.getByRole("link", { name: "Reverie — home" });
+    const mark = home.querySelector("svg")!;
+
+    expect(home.querySelector("[data-ai-mark]")).toBeNull();
+    /*
+     * And it is drawn at the size the band has room for. 44px of *visible
+     * lens*, where it was an 18px square box painting a 15px-wide, 11px-tall
+     * drawing — a favicon in the corner of a premium interface, which is how
+     * it was reported. The box was the ceiling, not the band: the lens is
+     * 1.75 times as wide as it is tall, so a square element is a quarter empty
+     * above and below the drawing. `crop` makes the element the drawing, which
+     * is what let this grow at all — see `lensBox` in mark-geometry.
+     */
+    expect(mark.getAttribute("width")).toBe("42");
+    expect(mark.getAttribute("viewBox")).not.toBe("0 0 32 32");
+    expect(Number(mark.getAttribute("height"))).toBeLessThan(28);
+    /* Five bars, not the artwork's nine. The nine-bar cut is a *display* cut —
+       at 42px it is 3px bars on a 5px pitch against a 1.9px ribbon, so the
+       waveform swamps the lens and the mark reads as a cluster of vertical
+       bars. Only the hero, at 264px, is large enough for it. See the boundary
+       note in mark-geometry. */
+    expect(mark.querySelectorAll("rect")).toHaveLength(5);
   });
 
   it("takes the mark home", () => {

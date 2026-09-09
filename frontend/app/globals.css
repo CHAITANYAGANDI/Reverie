@@ -364,6 +364,30 @@
      rather than as atmosphere it is wrong, and the way to check is to look at
      the page for ten seconds and not notice them. */
 
+  /*
+   * THE AI ORB'S HALO — behind the artwork, never on it.
+   *
+   * <p>The orb's colour is the identity, so nothing may reduce its opacity,
+   * filter it, blend it or recolour it. That rules out every obvious way to
+   * make it respond to a pointer, which is why this exists: a span under the
+   * image whose own opacity carries hover and the open state.
+   *
+   * <p>Zero at rest. The artwork has its own bloom baked in and a second one
+   * under it at all times would be the same light twice — see the note in
+   * components/v2/reverie-ai-mark.
+   *
+   * <p>`closest-side` and a circle, unlike the hero's ellipse: the orb is round
+   * and a round mark takes a round halo.
+   */
+  .v2-ai-halo {
+    background-image: radial-gradient(
+      closest-side,
+      hsl(var(--brand) / 0.5),
+      hsl(var(--brand) / 0.16) 58%,
+      transparent 100%
+    );
+  }
+
   /* A bloom directly behind the mark. `--brand` at 13% over 55% of the box,
      falling to nothing — an ellipse rather than a circle, because the mark is
      twice as wide as it is tall and a round glow around it reads as a halo
@@ -386,16 +410,22 @@
    * where the identity gives way to the page. Read as a light source below the
    * fold rather than as an object.
    *
-   * <p>Drawn as a hairline gradient ring: `--brand-hover` at 22% at the crest,
+   * <p>Drawn as a hairline gradient ring: `--brand-hover` at 12% at the crest,
    * gone by 52%. The mask fades it out toward both ends so it has no visible
    * start or finish.
+   *
+   * <p>12%, DOWN FROM 22%. The approved hero artwork has a lit curve of its
+   * own beneath the wordmark, and this was drawn when the hero's identity was
+   * vector geometry with no light in it. With the artwork in place the two
+   * curves read as one neon semicircle drawn twice — atmosphere is what this is
+   * for, and at 22% it had become an interface element.
    */
   .v2-hero-arc {
     background-image: radial-gradient(
       closest-side,
       transparent 0%,
       transparent 48%,
-      hsl(var(--brand-hover) / 0.22) 50%,
+      hsl(var(--brand-hover) / 0.12) 50%,
       transparent 52%
     );
     -webkit-mask-image: linear-gradient(

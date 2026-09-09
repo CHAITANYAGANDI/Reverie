@@ -44,6 +44,7 @@ import { ChatHistory } from "@/components/chat-history";
 import { ChatDock } from "@/components/chat/chat-shell";
 import { AskPanel, type AskVariant } from "@/components/chat/ask-panel";
 import { AskHeader } from "@/components/chat/ask-header";
+import { AskResting } from "@/components/chat/ask-resting";
 import { AskThread } from "@/components/chat/ask-thread";
 import { AskEvidence } from "@/components/chat/ask-evidence";
 import { useThreadScroll } from "@/lib/use-thread-scroll";
@@ -162,6 +163,11 @@ export function WorkspaceAsk({
         evidence={(answer) => (
           <AskEvidence citations={answer.citations} meetingDates={meetingDates} />
         )}
+        /* The identity, while there is nothing to read. `/ask` is a whole
+           window and the pane is 26rem; both opened as an empty field from
+           the header to the composer, and neither said what it was. Gone the
+           moment there is an answer — see components/chat/ask-resting. */
+        resting={<AskResting label="Ask about your conversations" />}
       />
     </AskPanel>
   );

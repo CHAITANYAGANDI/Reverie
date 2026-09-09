@@ -30,9 +30,22 @@
  * 18px. The drawing changes so the impression does not, the way a typeface has
  * a caption cut.
  *
- *     >= 40px   nine bars, 1.8:1, the thinnest ribbon — the artwork's own cut
- *     24-39px   five bars, 1.6:1
- *     <  24px   three bars, 1.3:1, the thickest ribbon — the band, a row, a chip
+ *     >= 96px   nine bars, 1.8:1, the thinnest ribbon — the artwork's own cut
+ *     24-95px   five bars, 1.6:1 — the band, the nav, the auth shell
+ *     <  24px   three bars, 1.3:1, the thickest ribbon — a row, a chip
+ *
+ * <p>THE FIRST BOUNDARY WAS 40 AND IT WAS NEVER TESTED THERE. Only the landing
+ * hero took that cut, at 264px, where nine bars at a 1.95-unit pitch is a 15px
+ * rhythm and the 1.2-unit ribbon is a confident 11px stroke — the artwork
+ * exactly. The band and the lockup then grew from an 18px box to a 42px lens
+ * and crossed the same line, at which point the cut is 3px bars on a 5px pitch
+ * against a 1.9px ribbon: the waveform swamps the lens, the two ribbons all but
+ * disappear, and the mark reads as a cluster of vertical bars rather than as a
+ * lens with a level in it. Magnified from the running band to confirm it.
+ *
+ * <p>So the boundary is 96 — nothing in the product is drawn between 42 and the
+ * hero's 264, so any line in that gap is arbitrary, and 96 is where the ribbon
+ * first clears 4px. It is a display cut, and now it says so.
  */
 
 const TIP_L = 4;
@@ -52,7 +65,7 @@ export interface Cut {
 }
 
 export function cutFor(size: number): Cut {
-  if (size >= 40) {
+  if (size >= 96) {
     return {
       outerApex: 8.2,
       innerApex: 11.2,
@@ -75,20 +88,41 @@ export function cutFor(size: number): Cut {
  * the mark has to subtract that, or the gap in the rendered page is twice what
  * the number in the file says.
  *
- * <p><b>Nothing calls this at the moment.</b> `LockupStacked` did, and it was
- * withdrawn when the landing hero took over the stacked identity — and the hero
- * solves the same problem the other way, by cropping its viewBox to the lens's
- * own bounding box so its element is exactly the size of what it draws, which
- * is the better answer where the drawing is the only thing in the element.
- *
- * <p>Kept rather than deleted because it is the honest way to ask the question
- * "how much of this square is drawing?", it is two lines, and it is covered by
- * this module's own suite. Anything that has to lay out *around* the square box
- * rather than inside it will want it. Said out loud so the next reader does not
- * have to search for a caller that is not there.
+ * <p>For anything laying out *around* the square box. Anything laying out
+ * *inside* it should use `lensBox` below and stop having a square box at all,
+ * which is the better answer where the drawing is the only thing in the
+ * element — see the note there.
  */
 export function markFill(size: number): number {
   return (32 - cutFor(size).outerApex * 2) / 32;
+}
+
+/**
+ * The lens's own bounding box, for an element that is exactly its drawing.
+ *
+ * <p>`BrandMark`'s box is square and the lens is not: it spans x 2→30 and y
+ * `outerApex`→`32 - outerApex`, so a square box leaves a quarter of its height
+ * empty above and below the drawing. In an 18px band that is invisible. At
+ * 230px it is sixty pixels of nothing between the mark and the word under it,
+ * and at 44px in a 48px band it is what stops the mark from being drawn at the
+ * size the band has room for.
+ *
+ * <p>Cropping the viewBox to the lens fixes both without a negative margin or
+ * any arithmetic in the layout: the element becomes exactly the size of what it
+ * paints, so `size` can mean the visible width and the visible height follows
+ * from `ratio`.
+ *
+ * <p>Written for the landing hero and moved here when the band and the lockup
+ * needed the same thing. One copy, because the numbers in it are the mark's and
+ * a second copy of `2` and `28` is a seam waiting to open.
+ */
+export function lensBox(cut: Cut) {
+  const height = 32 - cut.outerApex * 2;
+  return {
+    viewBox: `2 ${cut.outerApex} 28 ${height}`,
+    /** Height as a fraction of the lens's width, for the CSS box. */
+    ratio: height / 28,
+  };
 }
 
 /**

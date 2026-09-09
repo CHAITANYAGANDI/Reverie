@@ -44,7 +44,7 @@
 
 import * as React from "react";
 import { X } from "lucide-react";
-import { BrandMark } from "@/components/v2/brand-mark";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { cn } from "@/lib/utils";
 
 export function AskHeader({
@@ -77,11 +77,25 @@ export function AskHeader({
 }) {
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
-      {/* The mark, at the size it takes in the band. Not a decoration and not
-          a control: it is the whole of what says this panel is Reverie
-          answering rather than a form on the page underneath. */}
-      <span className="flex shrink-0 items-center gap-2 text-ink" aria-hidden>
-        <BrandMark size={16} />
+      {/*
+        THE ORB, AND IT IS THE PANEL'S NAME.
+
+        <p>Not a decoration and not a control: with the words gone it is the
+        whole of what says this panel is Reverie's assistant answering rather
+        than a form on the page underneath. So it carries a title — the one
+        place in the app where this mark is named out loud, because it is the
+        only identity in a header that has no heading. Everywhere else it sits
+        inside a labelled button and is `aria-hidden`, or the button would be
+        read twice.
+
+        <p>26px, up from a 16px `BrandMark`. Two things were wrong with that:
+        it was the *product's* mark, which says "Reverie" where this has to say
+        "Reverie's Ask", and at 16px a mark with a waveform in it is a smudge.
+        26 is the largest that leaves the conversation picker beside it its
+        full width in a 26rem rail — measured, not chosen.
+      */}
+      <span className="flex shrink-0 items-center">
+        <ReverieAiMark size={26} title="Reverie AI" />
       </span>
 
       {scope && <div className="min-w-0">{scope}</div>}

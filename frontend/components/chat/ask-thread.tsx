@@ -93,6 +93,7 @@ export function AskThread({
   onDelete,
   deleting,
   evidence,
+  resting,
 }: {
   messages: ChatMessage[] | undefined;
   /** Nothing to show and something coming. Not "a request is in flight". */
@@ -105,6 +106,16 @@ export function AskThread({
   deleting?: boolean;
   /** What this answer is built on, drawn by whichever chat owns it. */
   evidence?: (answer: ChatMessage) => React.ReactNode;
+  /**
+   * What to draw before there is a conversation: the identity, and what this
+   * panel answers about.
+   *
+   * <p>A node rather than a string, because the two chats are asking about
+   * different things and neither sentence belongs in here — see
+   * components/chat/ask-resting. Optional, so a surface may still choose to
+   * open on nothing at all.
+   */
+  resting?: React.ReactNode;
 }) {
   const exchanges = React.useMemo(() => exchangesOf(messages), [messages]);
 
@@ -116,6 +127,20 @@ export function AskThread({
       </div>
     );
   }
+
+  /*
+   * NOTHING SAID YET.
+   *
+   * <p>`pending` counts as content: a question in flight is the first turn of
+   * the conversation, and replacing it with a resting logo would take the
+   * question off the screen the moment it was asked.
+   *
+   * <p>This used to render nothing at all — the panel opened as an empty field
+   * from the header to the composer, which on `/ask` is most of a 1440px
+   * window. The identity goes here and nowhere else in the thread: it is gone
+   * the moment there is an answer to read.
+   */
+  if (exchanges.length === 0 && !pending && resting) return <>{resting}</>;
 
   return (
     /*

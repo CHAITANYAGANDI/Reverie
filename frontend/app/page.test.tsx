@@ -24,6 +24,19 @@ import LandingPage from "@/app/page";
  * invented headlines named explicitly so they cannot come back.
  */
 
+/**
+ * The hero identity, as the words a reader is given.
+ *
+ * <p>The wordmark and the tagline are pixels inside the approved render, so the
+ * artwork is decorative — `alt=""`, `aria-hidden` — and this is live `sr-only`
+ * text beside it. Which is a change from a descriptive `alt`: an alt is a
+ * substitute for a picture, and these words are the product's name.
+ *
+ * <p>Title case, exactly as specified. Several tests name it, which is exactly
+ * why it is one constant.
+ */
+const HERO_IDENTITY = "Reverie — Conversational Intelligence";
+
 describe("what it promises", () => {
   it("quotes the allowance the server actually enforces", () => {
     render(<LandingPage />);
@@ -154,21 +167,36 @@ describe("the way in", () => {
 
   it("keeps no call to action in the hero", () => {
     /*
-     * The hero is an identity, a claim, and what it costs. The reader is not
-     * asked to decide before the page has shown them anything — the product
-     * does that further down, and the closing section has its own way in.
+     * SETTLED, AFTER BEING UNSETTLED TWICE — and the history is the point, so
+     * that nobody re-derives the middle position from first principles again.
+     *
+     * <p>A pair of buttons stood here. They were withdrawn: the header carries
+     * `Get started` and `Sign in` at the top of every screen, so the hero was
+     * offering the same two doors a second time inside one viewport. A later
+     * composition drew them back in and this test was inverted to match. That
+     * was not the intent, and they are withdrawn again.
+     *
+     * <p>Which lets the hero be an identity, a claim, and what it costs. The
+     * reader is not asked to decide before the page has shown them anything;
+     * the product does that further down.
      */
     const { container } = render(<LandingPage />);
 
     const hero = container.querySelector("main > section")!;
     expect(hero.querySelectorAll("a")).toHaveLength(0);
     expect(hero.textContent).not.toMatch(/Create a free account/i);
+    // The header's pair is untouched and is the only way in from the fold.
+    const header = container.querySelector("header")!;
+    expect([...header.querySelectorAll("a")].map((a) => a.textContent?.trim())).toEqual([
+      "Sign in",
+      "Get started",
+    ]);
   });
 
   it("offers Sign in twice, and every one of them lands", () => {
-    // Header and footer. It was three — the hero's secondary call to action
-    // was the middle one and is withdrawn with its pair. Asserting the count
-    // rather than "at least one" is still what catches a door quietly closing.
+    // The header and the footer. It was three for as long as the hero carried
+    // its own pair, which is withdrawn. Asserting the count rather than "at
+    // least one" is what catches a door quietly closing.
     render(<LandingPage />);
 
     const signIn = screen.getAllByRole("link", { name: "Sign in" });
@@ -210,14 +238,33 @@ describe("the way in", () => {
 describe("the hero", () => {
   it("carries the identity's tagline, in the specified words", () => {
     /*
-     * `CONVERSATIONAL INTELLIGENCE`, exactly. The stacked lockup this replaces
-     * argued the line should be left out — that decision is superseded, and
-     * the wording is not interchangeable with any of the phrases below, none
-     * of which is what this product is called.
+     * `Reverie — Conversational Intelligence`, exactly, as live text.
+     *
+     * <h2>Why this assertion has moved twice</h2>
+     *
+     * <p>It was rendered text: the wordmark set in the product typeface with a
+     * tracked tagline under it. Then it was the hero image's `alt`, because the
+     * approved render carries both inside the picture — the artwork's `Reverie`
+     * is set in a face this product does not ship.
+     *
+     * <p>Now it is `sr-only` text beside a decorative image, which is the right
+     * answer and was worth the two moves to reach. An `alt` is a *substitute*
+     * for a picture; the product's name is not a description of a picture. As
+     * live text it is in the document rather than in an attribute.
+     *
+     * <p>And exactly once: a descriptive `alt` *and* identical `sr-only` text
+     * would announce the identity twice, which is worse than either alone.
      */
-    render(<LandingPage />);
+    const { container } = render(<LandingPage />);
 
-    expect(screen.getByText("CONVERSATIONAL INTELLIGENCE")).toBeInTheDocument();
+    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
+
+    const art = container.querySelector("main > section img")!;
+    expect(art.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
+    expect(art.getAttribute("alt")).toBe("");
+    expect(art.getAttribute("aria-hidden")).toBe("true");
+    // Not in the accessibility tree at all, so there is nothing to say twice.
+    expect(screen.queryByRole("img", { name: /conversational/i })).toBeNull();
   });
 
   it.each([
@@ -247,13 +294,46 @@ describe("the hero", () => {
     const { container } = render(<LandingPage />);
 
     const hero = container.querySelector("main > section")!;
-    const mark = hero.querySelector('svg[role="img"][aria-label="Reverie"]')!;
-    const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
+    /* One element where there were three. The mark, the wordmark and the
+       tagline were separate nodes in the vector lockup and could be ordered
+       against each other; they are pixels in one file now, so what is left to
+       assert is that the identity comes before the claim — which is the thing
+       the test was always about. */
+    const mark = hero.querySelector("img")!;
     const heading = screen.getByRole("heading", { level: 1 });
 
     expect(mark).not.toBeNull();
-    expect(mark.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(tag.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(mark.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("is the product's identity throughout, and never the AI orb", () => {
+    /*
+     * THE ABSENCE THAT MATTERS MOST, because this page is where a marketing
+     * instinct would put the prettier mark.
+     *
+     * <p>Reverie has two identities. The lens answers "which product is this?"
+     * and is the whole of the landing page's opening statement; the orb answers
+     * "where is Reverie's assistant?" and lives on the controls that open Ask,
+     * inside the application. An orb in this hero would say the product *is*
+     * an assistant, which is a different claim from the one the headline makes.
+     *
+     * <p>Asserted across the whole document rather than just the hero: the nav,
+     * the three showcases and the footer all carry branding, and any of them
+     * is a place the wrong mark could arrive later.
+     */
+    const { container } = render(<LandingPage />);
+
+    expect(container.querySelectorAll("[data-ai-mark]")).toHaveLength(0);
+    /* And the identity that is here is the *product's* approved render, which
+       is a different file from the orb — `reverie-main-hero.webp` against
+       `reverie-ai-orb-mark.webp`. Asserted by src, because with both identities
+       now being images the filename is the distinction. */
+    const hero = container.querySelector("main > section")!;
+    const mark = hero.querySelector("img")!;
+    expect(mark.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
+    for (const img of container.querySelectorAll("img")) {
+      expect(img.getAttribute("src")).not.toMatch(/ai-orb/);
+    }
   });
 
   it("keeps the headline exactly, on its two authored lines", () => {
@@ -275,10 +355,14 @@ describe("the hero", () => {
     const { container } = render(<LandingPage />);
 
     const header = container.querySelector("header")!;
-    expect(header.querySelector('[aria-label="Reverie"]')).not.toBeNull();
+    expect(header.querySelector('svg[aria-label="Reverie"]')).not.toBeNull();
     expect(header.textContent).toContain("Reverie");
     expect(header.textContent).not.toMatch(/CONVERSATIONAL/i);
-    expect(screen.getAllByText("CONVERSATIONAL INTELLIGENCE")).toHaveLength(1);
+    /* The tagline appears exactly once on the page, as the hero's `sr-only`
+       identity. The nav's lockup is still the vector lens with live type beside
+       it and must never carry a tagline of its own. */
+    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
+    expect(header.textContent).not.toMatch(/Conversational Intelligence/i);
   });
 
   it("labels the identity once per lockup and never twice in one", () => {
@@ -290,11 +374,17 @@ describe("the hero", () => {
      */
     render(<LandingPage />);
 
+    /* Two vector lockups — the nav's and the footer's — each one mark named
+       once beside its own word. It was three; the hero's is no longer one of
+       them, because its artwork is decorative and its name is live text. Which
+       is also why the hero contributes no `img` role at all: counted here so a
+       stray third `Reverie` label cannot appear unnoticed. */
     const named = screen.getAllByRole("img", { name: "Reverie" });
-    expect(named).toHaveLength(3);
+    expect(named).toHaveLength(2);
     for (const el of named) {
       expect(el.tagName.toLowerCase()).toBe("svg");
     }
+    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
   });
 
   it("adds the hero's own light without replacing the page's", () => {
@@ -321,17 +411,25 @@ describe("the hero", () => {
      * where the waveform inside it is legible, with the word under it.
      *
      * <p>Two "Reverie"s in the first fold is deliberate and is checked below —
-     * the nav's is 19px and functional, the hero's is the identity.
+     * the nav's is functional, the hero's is the identity.
      */
     const { container } = render(<LandingPage />);
 
     expect(container.textContent).not.toMatch(/meeting-tool clutter/i);
-    // The mark, named, above the headline it introduces.
+    /* The identity above the headline it introduces. Matched by element rather
+       than by accessible name: the artwork is decorative now — `alt=""`,
+       `aria-hidden` — and its words are the `sr-only` line beside it. */
     const hero = container.querySelector("main > section")!;
-    const mark = hero.querySelector('[aria-label="Reverie"]');
+    const mark = hero.querySelector("img");
     expect(mark).not.toBeNull();
     expect(
       mark!.compareDocumentPosition(screen.getByRole("heading", { level: 1 })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // And the words are there too, before the headline.
+    expect(
+      screen
+        .getByText(HERO_IDENTITY)
+        .compareDocumentPosition(screen.getByRole("heading", { level: 1 })),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -398,15 +496,19 @@ describe("the product identity", () => {
     render(<LandingPage />);
 
     /*
-     * The nav, the hero and the footer. It was two — nav and footer — and the
-     * hero's is new: the supplied logo is a mark with the word under it, and
-     * the request was for that arrangement at the top of the page.
+     * The nav and the footer — two, as rendered *text*.
+     *
+     * <p>It was three for a while. The hero's word was live type, set beside a
+     * vector mark; the wordmark is inside the approved render now, so the page
+     * has two bare `Reverie` strings and the hero's own identity line, which is
+     * `Reverie — Conversational Intelligence` and does not match this query.
      *
      * <p>Counted rather than merely asserted present, because the word is the
-     * one thing on this page that could quietly appear a fourth time inside a
-     * showcase and turn the identity into a repetition.
+     * one thing on this page that could quietly appear again inside a showcase
+     * and turn the identity into a repetition.
      */
-    expect(screen.getAllByText("Reverie").length).toBe(3);
+    expect(screen.getAllByText("Reverie").length).toBe(2);
+    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
   });
 });
 
@@ -641,12 +743,14 @@ describe("the languages moment", () => {
 describe("the closing section", () => {
   it("is about what happens to the recording, not a call to action", () => {
     /*
-     * It counted `Create a free account` and expected exactly one — the
-     * hero's — to prove this section had not added a second. The hero's is
-     * withdrawn, so the assertion is the stronger one it was always reaching
-     * for: this section asks for nothing at all.
+     * This section asks for nothing at all — a page that closes by asking again
+     * did not trust its own middle.
      *
-     * <p>A page that closes by asking again did not trust its own middle.
+     * <p>The count of `Create a free account` has been 1, 0, 1 and is 0 again,
+     * as the hero's own pair came and went. Which is exactly why the section's
+     * emptiness is asserted directly, on the section, rather than inferred from
+     * a page-wide count that keeps moving for reasons that have nothing to do
+     * with this section.
      */
     const { container } = render(<LandingPage />);
 

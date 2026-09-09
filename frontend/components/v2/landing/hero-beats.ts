@@ -36,12 +36,19 @@ export const HERO_BEATS = {
   headlineSecond: 1.16,
   body: 1.22,
   /*
-   * The last beat, and it used to be a pair of buttons.
+   * The last beat, and NO `cta` BESIDE IT — which is settled now, after being
+   * unsettled twice.
    *
-   * <p>They are gone from the hero — the nav carries both, and a front door
-   * does not need the same two doors twice in one screen. What lands here now
-   * is what the product costs, which is the question a stranger asks straight
-   * after reading the claim.
+   * <p>A pair of buttons stood here, was withdrawn, came back when a later
+   * composition drew them, and is withdrawn again. The reasoning that holds is
+   * the original one: the header carries `Sign in` and `Get started` at the top
+   * of every screen, so a second pair inside the same viewport is the same two
+   * doors offered twice — and it is what let the hero be an identity, a claim
+   * and what it costs, rather than a form.
+   *
+   * <p>What lands here is what the product costs, which is the question a
+   * stranger asks straight after reading the claim. The numbers are
+   * `UsageLimitService.MINUTES_ALLOWANCE` and `IMPORT_ALLOWANCE`.
    */
   note: 1.36,
 } as const;

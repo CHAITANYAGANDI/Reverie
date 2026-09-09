@@ -1160,19 +1160,23 @@ describe("Jump to", () => {
 /**
  * THE CONTROL THAT OPENS THE PANE, on the mode row.
  *
- * <p>Named `AI` and marked with the Reverie glyph. It was `Ask` behind a
- * `Sparkles`, and both changed: the star is what every product in the category
- * spends on the same claim, and the word collided with a band nav item called
- * Ask Reverie that navigates to the workspace chat instead of opening this
- * one. Home's launcher carries the same label, so one name opens one panel.
+ * <p>Named `Ask Reverie` and marked with the Reverie **AI** orb. It has been
+ * three things: `Ask` behind a `Sparkles` — the star every product in the
+ * category spends on the same claim — then `AI` behind the product's own mark,
+ * because the word collided with a band place then called Ask Reverie that
+ * navigates to the workspace chat instead of opening this one.
+ *
+ * <p>That place is `Reverie AI` now, so the collision is gone and what is left
+ * is a label naming a technology where every other control in this product
+ * names what it does. Home's launcher carries the same words, so one name
+ * still opens one panel.
  *
  * <p>Matched by its accessible name, which is longer than what is drawn: the
- * visible label is `AI` and a hidden continuation makes it
- * "AI — ask about this conversation", because "AI" alone is a poor thing to
- * hear announced. The visible text is contained in the spoken name, so the two
- * cannot disagree.
+ * visible label is `Ask Reverie` and a hidden continuation makes it "Ask
+ * Reverie about this conversation". The visible text is contained in the
+ * spoken name, so the two cannot disagree.
  */
-const AI_BUTTON = /^AI — ask about this conversation$/;
+const AI_BUTTON = /^Ask Reverie about this conversation$/;
 
 describe("Ask", () => {
   it("is on the mode row, at the far end", () => {
@@ -1241,6 +1245,31 @@ describe("Ask", () => {
     render(<MeetingDetailPage />);
 
     expect(screen.getAllByRole("button", { name: AI_BUTTON })).toHaveLength(1);
+  });
+
+  it("carries the AI identity rather than the product's", () => {
+    /*
+     * The same rule as Home's launcher, and the two are deliberately the same
+     * control drawn twice: the orb answers "where is Reverie's assistant?",
+     * and the mark in the window's corner answers "which product is this?".
+     * This was a 16px `BrandMark`, which said the second thing in a place that
+     * has to say the first.
+     */
+    render(<MeetingDetailPage />);
+
+    const ask = screen.getByRole("button", { name: AI_BUTTON });
+    const orb = ask.querySelector("[data-ai-mark]") as HTMLElement;
+
+    expect(orb).not.toBeNull();
+    // The approved render, at 28px of sphere in a 34px element, and decorative:
+    // the button is named. The box is an inline style so `Button`'s own
+    // `[&_svg]:size-4` and its relatives cannot shrink it.
+    expect(orb.querySelector("img")!.getAttribute("src")).toBe(
+      "/brand/reverie-ai-orb-mark.webp",
+    );
+    expect(orb.style.width).toBe("34px");
+    expect(orb.getAttribute("aria-hidden")).toBe("true");
+    expect(ask.className).toContain("group");
   });
 });
 

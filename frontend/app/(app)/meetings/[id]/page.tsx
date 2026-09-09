@@ -168,8 +168,9 @@ import { ChatDock } from "@/components/chat/chat-shell";
 import { AskPanel } from "@/components/chat/ask-panel";
 import { AskHeader } from "@/components/chat/ask-header";
 import { AskThread } from "@/components/chat/ask-thread";
+import { AskResting } from "@/components/chat/ask-resting";
 import { AskEvidence } from "@/components/chat/ask-evidence";
-import { BrandMark } from "@/components/v2/brand-mark";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { usePendingTurn, announceAnswer } from "@/lib/pending-turn";
 import { useThreadScroll } from "@/lib/use-thread-scroll";
 import { MEETING_PROMPTS, toPrompts } from "@/lib/chat-prompts";
@@ -1519,21 +1520,36 @@ export default function MeetingDetailPage() {
                   through. The shell's own control is the one that reports and
                   reverses the state, and it carries `aria-pressed`. */}
               {ready && (
-                <Button variant="ghost" size="sm" className="gap-1.5" onClick={openSidePane}>
+                <Button
+                  variant="ghost"
+                  /* `group` is what the orb reads for hover and press. The
+                     default size rather than `sm`: `sm` is 32px tall and a
+                     28px orb does not fit in it with its glow. */
+                  className="group gap-2 px-3"
+                  onClick={openSidePane}
+                >
                   {/*
-                    THE MARK, NOT A STAR. It was a `Sparkles`, which is the
-                    glyph every product in the category spends on the same
-                    claim and says nothing about whose assistant this is.
+                    THE ORB, NOT A STAR AND NOT THE PRODUCT'S MARK.
 
-                    <p>`AI` rather than `Ask`, and the same label Home's
-                    launcher carries -- one name for one panel. The hidden
-                    continuation is because "AI" alone is a poor thing to hear
-                    announced: the accessible name becomes "AI - ask about this
-                    conversation", which contains the visible text, so what is
-                    read and what is spoken cannot disagree.
+                    <p>It was a `Sparkles` — the glyph every product in the
+                    category spends on the same claim, which says nothing about
+                    whose assistant this is — and then a 16px `BrandMark`,
+                    which said "Reverie" where this has to say "Reverie's
+                    Ask". The orb is the approved AI identity, at 28px.
+
+                    <p>`Ask Reverie` rather than `AI`, and the same label
+                    Home's launcher carries: one name for one panel. `AI` was
+                    a workaround for a band place once called `Ask Reverie`;
+                    that place is `Reverie AI` now, so a verb here and a noun
+                    there is the distinction stated rather than avoided.
+
+                    <p>The hidden continuation makes the accessible name "Ask
+                    Reverie about this conversation" and contains the visible
+                    text, so what is read and what is spoken cannot disagree.
                   */}
-                  <BrandMark size={16} /> AI
-                  <span className="sr-only"> — ask about this conversation</span>
+                  <ReverieAiMark size={28} interactive />
+                  <span className="text-[0.9375rem]">Ask Reverie</span>
+                  <span className="sr-only"> about this conversation</span>
                 </Button>
               )}
             </div>
@@ -2779,9 +2795,11 @@ function ChatPanel({
     >
       {/*
         THE THREAD, PAIRED INTO EXCHANGES. See components/chat/ask-thread.
-        <p>An empty one renders nothing at all -- the starter prompts sit above
-        the composer instead, so the panel reads bottom-up rather than opening
-        with a wall of chips where the first answer is about to appear.
+        <p>An empty one carries the identity and one line, and nothing else --
+        the starter prompts still sit above the composer, so the panel reads
+        top-down as "what this is / what you could ask / where you ask it"
+        rather than opening with a wall of chips where the first answer is
+        about to appear.
       */}
       <AskThread
         messages={messages}
@@ -2816,6 +2834,11 @@ function ChatPanel({
          * the same fact four times.
          */
         evidence={(answer) => <AskEvidence citations={answer.citations} onSeek={onCite} />}
+        /* "this conversation", which is the wording the launcher's own
+           accessible name uses. Not "this meeting": what is being read is a
+           recording of people talking, and the panel answers from the words
+           rather than from the calendar entry. */
+        resting={<AskResting label="Ask about this conversation" />}
       />
     </AskPanel>
   );

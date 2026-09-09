@@ -29,7 +29,7 @@
 
 import * as React from "react";
 
-import { barsOf, crescent, cutFor } from "@/components/v2/mark-geometry";
+import { barsOf, crescent, cutFor, lensBox } from "@/components/v2/mark-geometry";
 
 /**
  * THE MARK'S COLOUR RAMP, published so there is exactly one of it.
@@ -111,11 +111,28 @@ export interface BrandMarkProps {
    * `--ink-3`, and a blue mark in it would be the loudest thing on the page.
    */
   mono?: boolean;
+  /**
+   * Make the element the lens rather than the square it sits in.
+   *
+   * <p>The lens is 28 units wide and about 16 tall, so a square box is a
+   * quarter empty above and below the drawing. That is invisible at 18px and it
+   * is the whole problem at 44: a mark big enough to read cannot be drawn in a
+   * 48px band, because the *box* hits the band's ceiling long before the
+   * drawing does.
+   *
+   * <p>Cropped, `size` is the lens's visible **width** and the height follows
+   * from the cut — so what a call site writes is what a reviewer measures on
+   * screen. Uncropped, it is the square box and the drawing is 87% of it. Set
+   * this wherever the mark is the only thing in its element; leave it off where
+   * something is laid out against the square, which is what `markFill` is for.
+   */
+  crop?: boolean;
 }
 
-export function BrandMark({ size = 18, className, title, mono }: BrandMarkProps) {
+export function BrandMark({ size = 18, className, title, mono, crop }: BrandMarkProps) {
   const cut = cutFor(size);
   const d = crescent(cut);
+  const lens = lensBox(cut);
   /*
    * A gradient needs an id, and two marks on one page must not share one.
    *
@@ -129,9 +146,11 @@ export function BrandMark({ size = 18, className, title, mono }: BrandMarkProps)
 
   return (
     <svg
-      viewBox="0 0 32 32"
+      viewBox={crop ? lens.viewBox : "0 0 32 32"}
       width={size}
-      height={size}
+      /* The lens's own proportion when cropped, so the element has no empty
+         band above and below the drawing to centre against. */
+      height={crop ? Math.round(size * lens.ratio) : size}
       fill="none"
       className={className}
       role={title ? "img" : undefined}

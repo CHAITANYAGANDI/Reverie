@@ -36,16 +36,25 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Library as LibraryIcon, Mic, Home, Sparkles } from "lucide-react";
+import { Library as LibraryIcon, Mic, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ASK, HOME, LIBRARY } from "@/lib/routes";
 import { placeFor, type PlaceId } from "@/lib/places";
 import { useStartRecording } from "@/components/v2/record-action";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 
-const TABS: { id: PlaceId; href: string; label: string; icon: typeof Home }[] = [
+const TABS: { id: PlaceId; href: string; label: string; icon: typeof Home | null }[] = [
   { id: "home", href: HOME, label: "Home", icon: Home },
   { id: "library", href: LIBRARY, label: "Library", icon: LibraryIcon },
-  { id: "ask", href: ASK, label: "Ask", icon: Sparkles },
+  /*
+   * NO GLYPH, BECAUSE THIS ONE IS AN IDENTITY.
+   *
+   * <p>It was a `Sparkles`, and the destination it leads to is called Reverie
+   * AI — so what belongs here is the orb, which is the approved mark for
+   * Reverie's assistant. `null` rather than a component, because the orb takes
+   * a size where lucide glyphs take a stroke width and a class.
+   */
+  { id: "ask", href: ASK, label: "Ask", icon: null },
 ];
 
 export function MobileTabs({
@@ -84,7 +93,28 @@ export function MobileTabs({
               on ? "text-ink" : "text-ink-4",
             )}
           >
-            <Icon className="h-[18px] w-[18px]" strokeWidth={on ? 2.1 : 1.7} />
+            {/*
+              24px OF ORB, AND THE LABEL CARRIES THE STATE.
+
+              <p>24 is the floor for this mark: rasterised at true device pixels
+              the approved artwork keeps its sphere, its rim light and a bright
+              waveform core down to 20, and 24 is where the waveform is still
+              legible as bars. It is larger than the 18px glyphs beside it,
+              which is the cost of a filled colour mark in a row of monochrome
+              line icons.
+
+              <p>The orb never dims, because tinting this artwork is the one
+              thing the identity rules forbid. So the tab's state is carried by
+              everything else: the label goes `--ink-4` to `--ink`, takes the
+              headline weight, and `aria-current` says so. The only thing that
+              changes behind the orb is its halo, which is a span under the
+              image rather than anything done to it.
+            */}
+            {Icon ? (
+              <Icon className="h-[18px] w-[18px]" strokeWidth={on ? 2.1 : 1.7} />
+            ) : (
+              <ReverieAiMark size={24} active={on} />
+            )}
             <span className={cn(on && !here.nested && "font-headline")}>{tab.label}</span>
           </Link>
         );
