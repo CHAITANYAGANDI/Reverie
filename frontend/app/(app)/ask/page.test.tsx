@@ -549,43 +549,64 @@ describe("the measure", () => {
     expect(dock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
   });
 
-  it("puts the composer in the middle of the panel while there is nothing to scroll", () => {
+  it("docks the composer at the bottom on an empty thread as well as a full one", () => {
     /*
-     * An empty thread and a composer docked at the foot of it is a bar across
-     * the bottom of a blank page — seven hundred pixels of nothing between the
-     * band and the one thing somebody came here to use, which reads as a page
-     * that failed to load.
+     * REGRESSION. For one turn an empty thread centred the composer in the
+     * panel, and it was reported on sight — on this page and in Home's pane.
+     * The composer is the one control here, and putting it in the middle puts
+     * it where it will never be again: the first question sends it to the foot,
+     * so it moves the first time anybody uses it, and until then it sits in the
+     * space the conversation is about to occupy.
      *
-     * <p>Nothing is invented to fill the gap. The dock takes the space the
-     * thread is not using and centres in it, so the composer and its starter
-     * chips are where the eye already is. `justify-center` is that, and the
-     * thread giving up `flex-1` is what allows it.
+     * <p>Both states, in one test, because what matters is that they are the
+     * same state. The empty thread is what this page opens on — it starts on a
+     * clean sheet by design — and naming a conversation is what fills it.
      */
     stubWidth(1440);
-    const { container } = render(<AskPage />);
+    const empty = render(<AskPage />);
+    expect(empty.container.querySelector('[data-ask-region="dock"]')?.className).toContain(
+      "shrink-0",
+    );
+    expect(
+      empty.container.querySelector('[data-ask-region="dock"]')?.className,
+    ).not.toContain("justify-center");
+    expect(empty.container.querySelector('[data-ask-region="thread"]')?.className).toContain(
+      "flex-1",
+    );
+    empty.unmount();
 
-    const dock = container.querySelector('[data-ask-region="dock"]');
-    const thread = container.querySelector('[data-ask-region="thread"]');
-    expect(dock?.className).toContain("justify-center");
-    expect(dock?.className).toContain("flex-1");
-    expect(thread?.className).not.toContain("flex-1");
-    // Centred across the column too, because with no turn above it there is no
-    // answer column to line up against yet.
-    expect(dock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).not.toBeNull();
+    setActiveChat("workspace:ask", "cnv_1");
+    const full = render(<AskPage />);
+    expect(full.container.querySelector('[data-ask-region="dock"]')?.className).toContain(
+      "shrink-0",
+    );
+    expect(full.container.querySelector('[data-ask-region="thread"]')?.className).toContain(
+      "flex-1",
+    );
   });
 
-  it("returns the composer to the foot of the panel once there is a thread", () => {
-    // The other half: a conversation needs the composer docked and the thread
-    // scrolling above it, which is the arrangement every chat has.
+  it("leaves the composer in the same column whether or not there is a thread", () => {
+    /*
+     * The other half of the same regression. The centred version also centred
+     * the box horizontally, `mx-auto`, because with no turn above it there is
+     * no answer column to line up against — which meant the box slid sideways
+     * when the first answer arrived.
+     *
+     * <p>It is left-aligned in the document column in both states now, so the
+     * only thing the first question changes is what appears above it.
+     */
     stubWidth(1440);
-    setActiveChat("workspace:ask", "cnv_1");
-    const { container } = render(<AskPage />);
+    const empty = render(<AskPage />);
+    const emptyDock = empty.container.querySelector('[data-ask-region="dock"]');
+    expect(emptyDock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
+    expect(emptyDock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).toBeNull();
+    empty.unmount();
 
-    const dock = container.querySelector('[data-ask-region="dock"]');
-    const thread = container.querySelector('[data-ask-region="thread"]');
-    expect(dock?.className).toContain("shrink-0");
-    expect(dock?.className).not.toContain("justify-center");
-    expect(thread?.className).toContain("flex-1");
+    setActiveChat("workspace:ask", "cnv_1");
+    const full = render(<AskPage />);
+    const fullDock = full.container.querySelector('[data-ask-region="dock"]');
+    expect(fullDock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
+    expect(fullDock?.querySelector(".mx-auto.max-w-\\[42\\.5rem\\]")).toBeNull();
   });
 
   it("draws the same wash every other page in the shell has", () => {

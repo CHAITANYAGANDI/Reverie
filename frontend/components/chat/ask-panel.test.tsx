@@ -49,35 +49,27 @@ describe("AskPanel", () => {
     );
   });
 
-  it("keeps the composer docked while there is a conversation above it", () => {
-    // The default, and the arrangement every chat has: the thread takes the
-    // space and scrolls, the composer holds the foot of the panel.
-    const { container } = panel();
-
-    expect(container.querySelector('[data-ask-region="thread"]')!.className).toContain("flex-1");
-    expect(container.querySelector('[data-ask-region="dock"]')!.className).toContain("shrink-0");
-  });
-
-  it("moves the composer into the middle of an empty panel", () => {
+  it("keeps the composer at the foot of the panel, in every state", () => {
     /*
-     * Nothing in the thread, so nothing to scroll — and a composer docked at
-     * the foot of a blank panel is a bar across the bottom of an empty page.
-     * On `/ask` that was seven hundred pixels of nothing between the band and
-     * the one thing somebody came here to use.
+     * THE ONE PLACE IT GOES.
      *
-     * <p>Nothing is invented to fill it. The dock takes the space the thread is
-     * not using and centres in it, which moves the composer and its starter
-     * chips to where the eye already is. The two classes are a pair: without
-     * the thread giving up `flex-1` there is no space for the dock to take.
+     * <p>There was an `empty` prop for a turn, which handed the dock the space
+     * an empty thread was not using and centred it there — a blank-sheet
+     * arrangement borrowed from other chat products. It put the one control on
+     * the page somewhere it would never be again: the first question sent it to
+     * the bottom, so the composer moved the first time anybody used it.
+     *
+     * <p>So the thread takes the space and scrolls, the composer holds the
+     * foot, and there is no state in which that is not true. Asserted with no
+     * props at all, because there is no longer a prop that could change it.
      */
-    const { container } = panel({ empty: true });
+    const { container } = panel();
 
     const thread = container.querySelector('[data-ask-region="thread"]')!;
     const dock = container.querySelector('[data-ask-region="dock"]')!;
-    expect(thread.className).toContain("shrink-0");
-    expect(thread.className).not.toContain("flex-1");
-    expect(dock.className).toContain("flex-1");
-    expect(dock.className).toContain("justify-center");
+    expect(thread.className).toContain("flex-1");
+    expect(dock.className).toContain("shrink-0");
+    expect(dock.className).not.toContain("justify-center");
   });
 
   it("leaves the rule out where the surface already drew one", () => {

@@ -100,26 +100,11 @@ const COLUMN = "mx-auto w-full max-w-[70rem]";
  *
  * <p>680 puts it under the answer, which is the thing it continues. Left
  * aligned inside `COLUMN` rather than centred in it, for the same reason: the
- * question you are typing belongs in the column the answer will appear in.
+ * question you are typing belongs in the column the answer will appear in —
+ * including on an empty thread, where the box would otherwise shift sideways
+ * the moment the first answer arrived.
  */
 const DOCK_COLUMN = "max-w-[42.5rem]";
-
-/**
- * The same width, centred, while there is no answer column to align to.
- *
- * <p>Left-aligning 680px inside 1120 is right the moment there is a turn above
- * it: the box begins where the prose begins, and the 400px to its right is the
- * evidence column, occupied. On an empty thread that column is empty too, so
- * the whole page hangs off its left-hand side — the composer's centre lands
- * 220px left of the window's.
- *
- * <p>So it centres until there is something to line up with. That is a
- * horizontal shift on the first question, and it costs nothing legible: it
- * happens in the same frame as the composer travelling from the middle of the
- * panel to its foot, which is a much larger movement and the one that reads as
- * "the conversation has started".
- */
-const DOCK_COLUMN_EMPTY = "mx-auto max-w-[42.5rem]";
 
 const WideContext = React.createContext(false);
 
@@ -135,7 +120,6 @@ export function AskPanel({
   dock,
   scrollRef,
   headerRule = true,
-  empty = false,
   className,
 }: {
   variant: AskVariant;
@@ -155,29 +139,23 @@ export function AskPanel({
    * two headers rather than one.
    */
   headerRule?: boolean;
-  /**
-   * There is nothing in the thread — no turns, nothing loading, nothing in
-   * flight — so the composer is the only thing on the panel.
+  /*
+   * NO `empty`, AND THE COMPOSER DOES NOT MOVE.
    *
-   * <h3>Why it changes the layout</h3>
+   * <p>There was one, for a turn. It reported "nothing in the thread", and on
+   * that the dock took the space the thread was not using and centred itself
+   * in it — the arrangement a lot of chat products use for a blank sheet.
    *
-   * <p>Because the three fixed regions put it at the bottom, and at the bottom
-   * of an empty panel it is a bar across the foot of a blank page. On `/ask`
-   * that is seven hundred pixels of nothing between the band and the one thing
-   * you came here to use, and the page reads as failed to load rather than as
-   * ready for a question.
+   * <p>It was withdrawn on sight. A composer in the middle of the panel is a
+   * composer somewhere it will never be again: the first question sends it to
+   * the foot, so the one control on the page moves the first time you use it,
+   * and until then it is in the place a reader has learned means "this is the
+   * thread". Where it belongs is the bottom, in every state, which is where
+   * every other chat surface in the app keeps it.
    *
-   * <p>So when there is nothing to scroll, the dock takes the space instead of
-   * the thread and centres itself in it. Nothing is invented to fill the gap —
-   * there is no greeting, no card and no sample question — the composer and its
-   * starter chips simply move to where the eye already is. The moment a
-   * question is asked the thread has content, this goes false, and the
-   * composer returns to the foot of the panel where a conversation needs it.
-   *
-   * <p>Defaults to false, so a caller that does not know about it keeps the
-   * arrangement it had.
+   * <p>What is left of that change is the width — see `DOCK_COLUMN`. That was
+   * the actual complaint and it is unrelated to this.
    */
-  empty?: boolean;
   /**
    * The scrolling region, handed back so the caller can follow the newest turn.
    *
@@ -240,11 +218,7 @@ export function AskPanel({
           ref={scrollRef}
           data-ask-region="thread"
           className={cn(
-            "overflow-y-auto",
-            /* An empty thread claims no space, so the dock below can have it
-               and centre in it. `flex-1` here would hold the height open and
-               keep the composer pinned to the foot of a blank panel. */
-            empty ? "shrink-0" : "min-h-0 flex-1",
+            "min-h-0 flex-1 overflow-y-auto",
             variant === "pane" ? "px-4 py-5" : "px-4 py-7 lg:px-6",
           )}
         >
@@ -254,11 +228,7 @@ export function AskPanel({
         <div
           data-ask-region="dock"
           className={cn(
-            /* Takes the panel and centres in it while there is nothing to
-               scroll -- see `empty`. `min-h-0` alongside `flex-1` because the
-               composer grows to eight rows and must be allowed to shrink
-               rather than push its own region past the panel. */
-            empty ? "flex min-h-0 flex-1 flex-col justify-center" : "shrink-0",
+            "shrink-0",
             variant === "pane" ? "px-4 pb-3.5 pt-2.5" : "px-4 pb-5 pt-3 lg:px-6",
           )}
         >
@@ -268,9 +238,7 @@ export function AskPanel({
               the 680 the answer is read at, left aligned -- so the box begins
               where the prose begins and ends where the prose ends. */}
           <div className={cn(wide && COLUMN)}>
-            <div className={cn(wide && (empty ? DOCK_COLUMN_EMPTY : DOCK_COLUMN))}>
-              {dock}
-            </div>
+            <div className={cn(wide && DOCK_COLUMN)}>{dock}</div>
           </div>
         </div>
       </div>

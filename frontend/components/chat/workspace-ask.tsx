@@ -88,12 +88,6 @@ export function WorkspaceAsk({
     <AskPanel
       variant={variant}
       scrollRef={threadRef}
-      /* The one condition, used twice: nothing in the thread means the starter
-         chips are offered AND the composer sits in the middle of the panel
-         rather than across the foot of a blank one. See `empty` on the panel
-         and `showPrompts` in lib/use-workspace-chat -- both are "no turns,
-         nothing loading, nothing in flight". */
-      empty={chat.showPrompts}
       header={
         <AskHeader
           onClose={onClose}
