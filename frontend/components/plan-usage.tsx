@@ -92,18 +92,35 @@ export function PlanUsage({
             like an allowance barely touched rather than one that cannot run
             out. No plan has that any more, and the branch stays because -1 is
             still what the field means and a row can still carry it. */}
-        minutes transcribed{limit < 0 ? " — no limit" : ""}
+        {/* "used", not "transcribed". The number counts minutes spent, and
+            recording spends them as well as importing -- so "transcribed"
+            named one of the two ways the allowance goes and read as though a
+            recording were free until it was processed. */}
+        minutes used{limit < 0 ? " — no limit" : ""}
       </p>
 
-      <p className="mt-0.5 text-[11px] text-muted-foreground">
-        {spent
-          ? // What it means, rather than a statistic, at the one moment it
-            // means something. There is no date to wait for — this is the
-            // account's whole allowance — and nothing already transcribed goes
-            // away now that it is spent.
-            "That is the whole allowance. Nothing already transcribed is removed."
-          : `${quotaCount(data.importsUsed, data.importsLimit)} imports used`}
-      </p>
+      {/*
+        NO IMPORT COUNT.
+
+        <p>It read "0 of 3 imports used" under the minutes, and it is
+        withdrawn. This widget is a glance inside the account menu: one bar and
+        one number about the limit somebody is actually near. Imports are the
+        second allowance and almost nobody is near it, so the line spent a row
+        of the menu restating a zero.
+
+        <p>Both allowances are still stated in full where somebody is weighing
+        them up -- Settings, Plans, "This account", where each has its own bar
+        against what has been used. Nothing was removed from there.
+
+        <p>What survives is the sentence for the one moment it means something:
+        the minutes have run out, and it says there is no date to wait for and
+        that nothing already transcribed goes away. That is not a statistic.
+      */}
+      {spent && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          That is the whole allowance. Nothing already transcribed is removed.
+        </p>
+      )}
     </Link>
   );
 }

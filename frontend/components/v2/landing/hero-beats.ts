@@ -35,5 +35,13 @@ export const HERO_BEATS = {
   headlineFirst: 1.05,
   headlineSecond: 1.16,
   body: 1.22,
-  cta: 1.36,
+  /*
+   * The last beat, and it used to be a pair of buttons.
+   *
+   * <p>They are gone from the hero — the nav carries both, and a front door
+   * does not need the same two doors twice in one screen. What lands here now
+   * is what the product costs, which is the question a stranger asks straight
+   * after reading the claim.
+   */
+  note: 1.36,
 } as const;

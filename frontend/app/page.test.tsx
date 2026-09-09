@@ -135,22 +135,44 @@ describe("what it promises", () => {
 });
 
 describe("the way in", () => {
-  it("offers the two doors, twice over", () => {
+  it("offers the two doors, and lands them", () => {
+    /*
+     * It asserted "twice over" — the nav's pair and the hero's. The hero's are
+     * withdrawn: the nav carries the same two at the top of every screen, so
+     * the hero was offering the same doors a second time inside one viewport.
+     *
+     * <p>What has to stay true is that a way in exists and goes where it says.
+     * The count is asserted below, per door, rather than as "at least two"
+     * here — a loose lower bound is what let the hero's pair sit unquestioned.
+     */
     render(<LandingPage />);
 
     const signUp = screen.getAllByRole("link", { name: /Create a free account|Get started/ });
-    expect(signUp.length).toBeGreaterThanOrEqual(2);
+    expect(signUp.length).toBeGreaterThanOrEqual(1);
     for (const link of signUp) expect(link).toHaveAttribute("href", "/sign-up");
   });
 
-  it("offers Sign in three times, and every one of them lands", () => {
-    // Header, the hero's secondary call to action, and the footer. Three is
-    // the count the approved composition produces; asserting it rather than
-    // "at least one" is what catches a door quietly closing.
+  it("keeps no call to action in the hero", () => {
+    /*
+     * The hero is an identity, a claim, and what it costs. The reader is not
+     * asked to decide before the page has shown them anything — the product
+     * does that further down, and the closing section has its own way in.
+     */
+    const { container } = render(<LandingPage />);
+
+    const hero = container.querySelector("main > section")!;
+    expect(hero.querySelectorAll("a")).toHaveLength(0);
+    expect(hero.textContent).not.toMatch(/Create a free account/i);
+  });
+
+  it("offers Sign in twice, and every one of them lands", () => {
+    // Header and footer. It was three — the hero's secondary call to action
+    // was the middle one and is withdrawn with its pair. Asserting the count
+    // rather than "at least one" is still what catches a door quietly closing.
     render(<LandingPage />);
 
     const signIn = screen.getAllByRole("link", { name: "Sign in" });
-    expect(signIn).toHaveLength(3);
+    expect(signIn).toHaveLength(2);
     for (const link of signIn) expect(link).toHaveAttribute("href", "/sign-in");
   });
 
@@ -244,20 +266,6 @@ describe("the hero", () => {
     expect(lines).toEqual(["Remember the conversation.", "Keep the meaning."]);
   });
 
-  it("keeps the two doors exactly where they were", () => {
-    // The identity got larger; nothing about the way in changed.
-    render(<LandingPage />);
-
-    const hero = screen.getByRole("heading", { level: 1 }).closest("section")!;
-    const primary = hero.querySelector('a[href="/sign-up"]')!;
-    const secondary = hero.querySelector('a[href="/sign-in"]')!;
-    expect(primary).toHaveTextContent("Create a free account");
-    expect(secondary).toHaveTextContent("Sign in");
-    // Ink, not the accent: the V2 palette's own rule for a primary button.
-    expect(primary.className).toContain("bg-ink");
-    expect(secondary.className).not.toContain("bg-brand");
-  });
-
   it("keeps the compact lockup in the nav, with no tagline in it", () => {
     /*
      * Two different objects. The nav's is the thing you press to get home, in
@@ -346,12 +354,27 @@ describe("the hero", () => {
     expect(screen.getByText(/speakers, transcript, brief, action items/i)).toBeInTheDocument();
   });
 
-  it("puts the primary call to action first, and only one of them is filled", () => {
-    render(<LandingPage />);
+  it("closes on what it costs rather than on a button", () => {
+    /*
+     * This asserted the ordering of the hero's two calls to action — the
+     * filled one first, `Sign in` after it. Both are withdrawn: the nav
+     * carries the same pair at the top of every screen, so the hero was
+     * offering the same two doors a second time inside one viewport.
+     *
+     * <p>What ends the hero now is the answer to the question a stranger asks
+     * straight after reading the claim, in the approved words. It is the last
+     * thing in the section, which is the ordering that matters here.
+     */
+    const { container } = render(<LandingPage />);
 
-    const primary = screen.getByRole("link", { name: /Create a free account/ });
-    const secondary = screen.getAllByRole("link", { name: "Sign in" })[1];
-    expect(primary.compareDocumentPosition(secondary)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const hero = container.querySelector("main > section")!;
+    const note = screen.getByText(
+      "100 transcription minutes and 3 imports included free. No card required.",
+    );
+    expect(hero).toContainElement(note);
+    expect(note.compareDocumentPosition(screen.getByRole("heading", { level: 1 }))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
   });
 });
 
@@ -616,13 +639,24 @@ describe("the languages moment", () => {
 });
 
 describe("the closing section", () => {
-  it("is about what happens to the recording, not a second call to action", () => {
-    // The hero already asked. A page that asks again at the bottom did not
-    // trust its own middle.
-    render(<LandingPage />);
+  it("is about what happens to the recording, not a call to action", () => {
+    /*
+     * It counted `Create a free account` and expected exactly one — the
+     * hero's — to prove this section had not added a second. The hero's is
+     * withdrawn, so the assertion is the stronger one it was always reaching
+     * for: this section asks for nothing at all.
+     *
+     * <p>A page that closes by asking again did not trust its own middle.
+     */
+    const { container } = render(<LandingPage />);
 
     expect(screen.getByText("Yours")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: /Create a free account/ })).toHaveLength(1);
+    expect(screen.queryAllByRole("link", { name: /Create a free account/ })).toHaveLength(0);
+
+    const closing = Array.from(container.querySelectorAll("section")).find((el) =>
+      el.textContent?.includes("No training on your meetings"),
+    )!;
+    expect(closing.querySelectorAll("a")).toHaveLength(0);
   });
 
   it("states the four things somebody weighing this up actually wants", () => {

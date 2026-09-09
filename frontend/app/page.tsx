@@ -279,53 +279,49 @@ function Hero() {
         that were said.
       </HeroBeat>
 
-      {/* Stacks below `sm`, where two side-by-side buttons are each too narrow
-          to read and neither is a comfortable target. */}
-      <HeroBeat
-        delay={HERO_BEATS.cta}
-        className="mt-[clamp(1.75rem,2.6vh,2.25rem)] flex w-full flex-col items-center justify-center gap-2.5 sm:w-auto sm:flex-row"
-      >
-        {/*
-          INK, not the accent, and that is the V2 palette's own rule: the
-          primary button in this product is ink, because an accent spent on
-          every button is an accent that means nothing.
+      {/*
+        NO BUTTONS IN THE HERO.
 
-          <p>`group` so the arrow can move without a second hover rule. One
-          pixel of lift and three of arrow: at two and six it reads as a
-          bouncing button, and the brief is right that a large shadow on a
-          landing CTA is the tell of a template.
-        */}
-        <Link
-          href="/sign-up"
-          className="group flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-body font-headline text-surface transition-[transform,opacity] duration-press ease-soft hover:-translate-y-px hover:opacity-95 sm:w-auto"
-        >
-          Create a free account
-          <span
-            aria-hidden
-            className="transition-transform duration-press ease-soft group-hover:translate-x-[3px]"
-          >
-            &rarr;
-          </span>
-        </Link>
-        <Link
-          href="/sign-in"
-          className="flex h-11 w-full items-center justify-center rounded-full border border-edge px-6 text-body text-ink-2 transition-colors duration-press ease-soft hover:border-edge-hover hover:text-ink sm:w-auto"
-        >
-          Sign in
-        </Link>
-      </HeroBeat>
+        <p>`Create a free account` and `Sign in` stood here, and both are
+        withdrawn. The nav above carries the same pair — `Get started` and
+        `Sign in`, at the top of every screen and pinned nowhere else — so the
+        hero was offering the same two doors a second time within one viewport.
+
+        <p>Which also lets the hero be what this pass made it: an identity, a
+        claim, and what it costs. The reader is not asked to decide before the
+        page has shown them anything; the product does that further down, and
+        the closing section has its own way in.
+
+        <p>`Sign in` is still reachable three ways — the nav, the footer, and
+        the header of every authenticated route. Nothing was closed.
+      */}
 
       {/*
-        NO PRICE LINE UNDER THE BUTTONS.
+        WHAT IT COSTS.
 
-        <p>It read "100 minutes and three imports, for the life of the account.
-        No card." — the answer to "what does it cost", set in `--ink-4` under
-        the button it qualified.
+        <p>The slot held "100 minutes and three imports, for the life of the
+        account. No card." in `--ink-4`, under the buttons it qualified. That
+        line was withdrawn as a grey footnote nobody read. This is the approved
+        replacement and it is a better sentence: it leads with the numbers and
+        says *free* and *no card* outright rather than leaving both to be
+        inferred.
 
-        <p>Withdrawn, and the allowance is not: `Keeping` states it in full
-        further down the page, next to what happens to the recording, which is
-        where somebody weighing the product up is actually reading.
+        <p>`--ink-3` rather than `--ink-4`: at ink-4 it was furniture, and with
+        the buttons gone this is the hero's closing line rather than a footnote
+        under something else.
+
+        <p>The numbers are `UsageLimitService.MINUTES_ALLOWANCE` and
+        `IMPORT_ALLOWANCE`. `Keeping` states the same two further down together
+        with what happens when they run out; this is the glance, that is the
+        detail.
       */}
+      <HeroBeat
+        as="p"
+        delay={HERO_BEATS.note}
+        className="mt-[clamp(1.5rem,2.4vh,2rem)] text-foot text-ink-3"
+      >
+        100 transcription minutes and 3 imports included free. No card required.
+      </HeroBeat>
     </section>
   );
 }

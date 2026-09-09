@@ -195,8 +195,12 @@ describe("AskPage conversation state", () => {
     // worse than resuming it openly.
     render(<AskPage />);
 
+    // Found by its accessible name, not by a placeholder. The composer's
+    // placeholder sentence is withdrawn -- it read "Ask anything about your
+    // conversations" and spent the line somebody types on saying that the
+    // box is a box. `aria-label="Ask a question"` is the name it always had.
     await userEvent.type(
-      screen.getByPlaceholderText(/ask/i),
+      screen.getByLabelText("Ask a question"),
       "What is still open?{Enter}",
     );
 

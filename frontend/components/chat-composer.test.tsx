@@ -333,31 +333,69 @@ describe("text handed over from elsewhere on the page", () => {
 /**
  * The box itself.
  *
- * Two defects that are invisible in a diff and obvious on screen. The rows
- * disagreed about their own left edge — chips at 12px, the text at 16px, the
- * mode picker back at 12px — so the placeholder started a quarter-inch right of
- * the chip above it. And the ceiling on the box's height lived only inside a
- * `useEffect`, so anything that stopped the effect running left a box that grew
- * until it had eaten the conversation above it, with no scrollbar because there
- * was no overflow to scroll.
+ * <p>It is one row now — the context glyph, the text, the mode picker and Send
+ * on a single line, with the chips above only when there are any. Empty, that
+ * is 48px rather than the 110 three stacked strips took.
+ *
+ * <p>What the rest of this block guards is the defect that is invisible in a
+ * diff and obvious on screen: the ceiling on the box's height lived only inside
+ * a `useEffect`, so anything that stopped the effect running left a box that
+ * grew until it had eaten the conversation above it — with no scrollbar,
+ * because there was no overflow to scroll. Both the ceiling and the floor are
+ * real CSS, and these assertions are why.
  */
 describe("the box", () => {
   function box() {
     return screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
   }
 
-  /** The `px-*` class a row is using, whatever it happens to be. */
-  function padding(el: Element): string | undefined {
-    return el.className.split(/\s+/).find((c) => c.startsWith("px-"));
-  }
+  it("puts the controls on the text's own line", () => {
+    /*
+     * THE ROWS THIS USED TO ALIGN ARE GONE.
+     *
+     * <p>It asserted that the three stacked strips — context, text, mode and
+     * Send — shared one `px-*`, because they had disagreed (12px, 16px, 12px)
+     * and the placeholder started a quarter-inch right of the chip above it.
+     *
+     * <p>There is one row now. The alignment bug it guarded cannot recur,
+     * because there is nothing left to align: the textarea's siblings are the
+     * controls, and what has to stay true is that they are siblings rather
+     * than a strip above and a strip below.
+     */
+    render(<ChatComposer onSend={vi.fn()} modes={modes} />);
 
-  it("lines its rows up on one left edge", () => {
-    render(<ChatComposer scope="This meeting" onSend={vi.fn()} />);
+    const row = box().parentElement!;
+    const kinds = Array.from(row.children).map((el) => el.tagName.toLowerCase());
+    expect(kinds).toContain("textarea");
+    // The context glyph, the box, the mode picker, Send. One line.
+    expect(row.className).toContain("flex");
+    expect(row.querySelectorAll("textarea")).toHaveLength(1);
+    expect(row.querySelector('button[aria-label="Add context"]')).not.toBeNull();
+    expect(row.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  });
 
-    const rows = Array.from(box().parentElement!.children);
-    const paddings = new Set(rows.map(padding));
-    expect(paddings.size).toBe(1);
-    expect([...paddings][0]).toBeDefined();
+  it("keeps the context chips above the line rather than on it", () => {
+    /*
+     * The one thing that is still a row of its own, and only when it has
+     * something in it. Context is a list — three named meetings and a folder
+     * would push the textarea to nothing — so it sits above, inside the same
+     * box. An empty strip there is what made the box three rows tall, so it is
+     * absent until there is a chip to draw.
+     */
+    const { container, rerender } = render(<ChatComposer onSend={vi.fn()} />);
+
+    // Nothing selected and no fixed scope: the box is the control row and
+    // nothing else, which is what makes the collapsed state one line.
+    const composer = container.querySelector("[data-composer]")!;
+    expect(composer.children).toHaveLength(1);
+    expect(composer.firstElementChild).toContainElement(box());
+
+    // A fixed scope puts a chip above the row, so the box grows to two.
+    rerender(<ChatComposer scope="This meeting" onSend={vi.fn()} />);
+    const withChip = container.querySelector("[data-composer]")!;
+    expect(withChip.children).toHaveLength(2);
+    expect(screen.getByTitle("This meeting")).toBeInTheDocument();
+    expect(withChip.firstElementChild).not.toContainElement(box());
   });
 
   it("cannot grow past its ceiling however much is typed", () => {
@@ -422,7 +460,12 @@ describe("the box", () => {
     // The textarea sets `outline-none` and put nothing in its place, so tabbing
     // into the chat gave no sign of having arrived anywhere. The ring is on the
     // box rather than the textarea because the box is what looks like the input.
-    expect(box().parentElement!.className).toContain("focus-within:ring-2");
+    //
+    // Found by `data-composer` rather than by walking up one parent: the
+    // textarea sits inside the control row now, so the ring is its grandparent
+    // and a test that counts parents breaks every time the box is rearranged.
+    const composer = box().closest("[data-composer]")!;
+    expect(composer.className).toContain("focus-within:ring-2");
 
     await userEvent.tab();
     expect(box()).toHaveFocus();

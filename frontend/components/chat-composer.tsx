@@ -19,6 +19,11 @@
  * The textarea grows to a limit and submits on Enter, because a chat box that
  * needs a mouse to send is a chat box people stop using. Shift-Enter is the
  * newline, which is the convention everywhere this pattern appears.
+ *
+ * <p><b>One row.</b> Both decisions above used to be spread over three stacked
+ * strips — context, then text, then mode and Send — which was 110px of box for
+ * one line of typing. Everything is on the text's own line now and the box is
+ * 48px until something wraps. The reasoning is on the render itself.
  */
 
 import * as React from "react";
@@ -76,7 +81,24 @@ export interface ChatContext {
 export const NO_CONTEXT: ChatContext = { meetingIds: [], projectIds: [] };
 
 export interface ChatComposerProps {
-  placeholder?: string;
+  /*
+   * NO `placeholder`.
+   *
+   * <p>It defaulted to "Ask anything about your conversations" and the meeting
+   * chat passed "Ask about this meeting". Both are withdrawn: the box is the
+   * only text field on the panel, it sits directly under the panel's own
+   * heading, and a sentence inside it telling you it is a place to ask a
+   * question is a sentence that is read once and then occupies the line
+   * somebody is typing on.
+   *
+   * <p>The accessible name stays — `aria-label="Ask a question"` on the
+   * textarea — so nothing is lost for a screen reader, which is the reader a
+   * placeholder was never serving anyway.
+   *
+   * <p>One placeholder survives and it is not decoration: when the account is
+   * out of minutes the box says "AI Chat is closed", which is the difference
+   * between a control that is shut and one that is broken.
+   */
   busy?: boolean;
   /** Null hides the picker entirely — the project chat has no mode choice. */
   modes?: ChatModeOption[];
@@ -114,7 +136,6 @@ export interface ChatComposerProps {
 }
 
 export function ChatComposer({
-  placeholder = "Ask anything about your conversations",
   busy = false,
   modes,
   mode = "express",
@@ -207,34 +228,48 @@ export function ChatComposer({
   const chosen = modes?.find((m) => m.mode === mode);
   const selectedCount = context.meetingIds.length + context.projectIds.length;
 
+  /* Whether the chips row has anything in it. The row is not drawn otherwise:
+     an empty strip above the text is what made the box three rows tall. */
+  const chips = Boolean(scope) || selectedCount > 0;
+
   return (
     /*
-     * One box, three rows, one horizontal rule.
+     * ONE ROW, LIKE A CHAT BOX SHOULD BE.
      *
-     * The rows used to disagree about their own left edge — the chips at 12px,
-     * the text at 16px, the mode picker back at 12px — so the placeholder
-     * started a quarter-inch right of the chip above it and the whole box read
-     * as slightly broken without it being obvious why. They are all `px-3.5`
-     * now and everything in the box lines up.
+     * <h2>What this replaces</h2>
      *
-     * <h2>ONE FOCUS RING, ON THE BOX</h2>
+     * <p>Three stacked rows: a strip holding `Add context`, then the textarea,
+     * then a strip holding the mode picker and Send. Empty, that was about
+     * 110px of box for one line of typing — a panel of chrome with a text field
+     * somewhere in it. It is 48px now, and it grows only when the text wraps.
      *
-     * <p>There were two, and they were nested. This box lights up on
-     * `focus-within`, and the textarea inside it also picked up the global
-     * `:focus-visible` treatment from app/globals.css — a 4px brand-text ring
-     * at `--radius`, drawn around a bare textarea sitting inside an already
-     * highlighted box. The composer read as three stacked rounded rectangles
-     * the moment anybody clicked into it.
+     * <p>The controls did not go anywhere. They are on the same line as the
+     * text: the context button at the left, the mode picker and Send at the
+     * right, `items-end` so they stay on the baseline as the box grows to its
+     * eight-row ceiling. Every behaviour is the one it had — Enter sends,
+     * Shift-Enter breaks, the picker narrows the question, the mode picker
+     * chooses how hard to look, and the box still measures itself.
      *
-     * <p>So the indicator lives here and the inner one is turned off, which is
-     * the same arrangement the auth fields use -- see `BOX` in
-     * components/auth/auth-form. It has to be a real indicator to be allowed
-     * to: `border-brand` is a 1px edge at about 4.3:1 against this surface,
-     * past the 3:1 WCAG 2.4.11 asks, and the 2px halo under it is what makes
-     * it visible at a glance rather than only on inspection. The `/25` ring
-     * that was here alone would not have qualified.
+     * <h2>Why the chips are still a row of their own</h2>
+     *
+     * <p>Because context is a list and a list does not fit on a line with the
+     * thing it qualifies. Three named meetings and a folder would push the
+     * textarea to nothing. So it is drawn above, inside the same box, and only
+     * when there is something in it — which is the arrangement every chat with
+     * attachments uses, and it keeps the collapsed state at one row.
+     *
+     * <p>`rounded-[1.5rem]` rather than `rounded-xl`: at 48px tall a 24px
+     * radius is a pill, which is what says "type here" without a placeholder
+     * having to say it.
+     *
+     * <p>The ring is not decoration. The textarea sets `outline-none`, and
+     * `data-composer` is on the box so a test can find the ring without
+     * knowing how deep the textarea sits.
      */
-    <div className="relative rounded-xl border border-edge bg-surface-raised shadow-e2 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
+    <div
+      data-composer
+      className="relative rounded-[1.5rem] border border-edge bg-surface-raised shadow-e2 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30"
+    >
       {picking && !scope && (
         <ContextPicker
           meetings={meetings}
@@ -245,112 +280,129 @@ export function ChatComposer({
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-3">
-        {scope ? (
-          // Bounded and truncated, with the full name on hover: a meeting
-          // title is whatever somebody called it, and an untruncated one wraps
-          // the chip onto three lines and pushes the box off the panel.
-          <span
-            title={scope}
-            className="flex max-w-[240px] items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-text"
-          >
-            <AtSign className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{scope}</span>
-          </span>
-        ) : (
+      {chips && (
+        /* Tight. This row exists to name things, not to be a section: `pt-2.5`
+           and no bottom padding puts the chips 10px off the box's top edge and
+           lets the control row's own `py-2` be the gap under them. It was
+           `pt-3 pb-0.5`, which cost the meeting chat -- whose chip is always
+           there -- six pixels of permanent height. */
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5">
+          {scope ? (
+            // Bounded and truncated, with the full name on hover: a meeting
+            // title is whatever somebody called it, and an untruncated one
+            // wraps the chip onto three lines and pushes the box off the panel.
+            <span
+              title={scope}
+              className="flex max-w-[240px] items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-text"
+            >
+              <AtSign className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{scope}</span>
+            </span>
+          ) : null}
+
+          {context.projectIds.map((id) => (
+            <Chip
+              key={id}
+              icon={<Folder className="h-3 w-3" />}
+              label={projects.find((p) => p.id === id)?.name ?? "Folder"}
+              onRemove={() =>
+                onContextChange?.({
+                  ...context,
+                  projectIds: context.projectIds.filter((p) => p !== id),
+                })
+              }
+            />
+          ))}
+          {context.meetingIds.map((id) => (
+            <Chip
+              key={id}
+              icon={<FileAudio className="h-3 w-3" />}
+              label={meetings.find((m) => m.id === id)?.title ?? "Conversation"}
+              onRemove={() =>
+                onContextChange?.({
+                  ...context,
+                  meetingIds: context.meetingIds.filter((m) => m !== id),
+                })
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-end gap-1 px-2 py-2">
+        {/*
+          THE CONTEXT CONTROL, AS A GLYPH.
+
+          <p>It read `@ Add context` and on a 383px rail that is a third of the
+          row. The words are on the `aria-label` and the `title`, so a screen
+          reader and a hover both get them — and what is actually selected is
+          never hidden behind this glyph: the chips above name every one of
+          them, which is more than the words ever did.
+
+          <p>Absent entirely where the scope is fixed. A meeting chat reads one
+          meeting through one endpoint and has no way to widen, so a control
+          that opens onto nothing would be worse than no control: it invites
+          somebody to try, twice.
+        */}
+        {!scope && (
           <button
             type="button"
             onClick={() => setPicking((v) => !v)}
             aria-expanded={picking}
+            aria-label="Add context"
+            title="Add context"
             className={cn(
-              "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-              // Brand, not ink: what is in the context chip is what Reverie
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-press ease-soft",
+              // Brand, not ink: what is in the context chips is what Reverie
               // will read, which is the one meaning the accent carries here.
               selectedCount > 0
-                ? "border-brand/60 bg-brand/10 text-brand-text"
-                : "border-line text-ink-3 hover:border-edge hover:text-ink-2",
+                ? "bg-brand/12 text-brand-text"
+                : "text-ink-3 hover:bg-surface-hover hover:text-ink",
             )}
           >
-            <AtSign className="h-3.5 w-3.5" />
-            Add context
+            <AtSign className="h-[18px] w-[18px]" />
           </button>
         )}
 
-        {context.projectIds.map((id) => (
-          <Chip
-            key={id}
-            icon={<Folder className="h-3 w-3" />}
-            label={projects.find((p) => p.id === id)?.name ?? "Folder"}
-            onRemove={() =>
-              onContextChange?.({
-                ...context,
-                projectIds: context.projectIds.filter((p) => p !== id),
-              })
+        <textarea
+          ref={areaRef}
+          rows={1}
+          value={text}
+          disabled={busy || shut}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
             }
-          />
-        ))}
-        {context.meetingIds.map((id) => (
-          <Chip
-            key={id}
-            icon={<FileAudio className="h-3 w-3" />}
-            label={meetings.find((m) => m.id === id)?.title ?? "Conversation"}
-            onRemove={() =>
-              onContextChange?.({
-                ...context,
-                meetingIds: context.meetingIds.filter((m) => m !== id),
-              })
-            }
-          />
-        ))}
-      </div>
+          }}
+          /* The one placeholder left, and it is a state rather than a label —
+             see the note on the withdrawn `placeholder` prop. */
+          placeholder={shut ? "AI Chat is closed" : undefined}
+          aria-label="Ask a question"
+          // `leading-6` and `py-1.5` are the two numbers MAX_HEIGHT is built
+          // from; changing either without the other moves the ceiling off a
+          // whole number of lines and leaves a clipped half-line at the bottom.
+          style={{ maxHeight: MAX_HEIGHT, minHeight: MIN_HEIGHT }}
+          // `scrollbar-none` scrolls without drawing the bar — see globals.css.
+          // On a box this small the bar is more furniture than the two lines it
+          // is measuring, and the caret already says where you are.
+          className="scrollbar-none block min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1.5 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:shadow-none disabled:opacity-60"
+        />
 
-      <textarea
-        ref={areaRef}
-        rows={1}
-        value={text}
-        disabled={busy || shut}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        placeholder={shut ? "AI Chat is closed" : placeholder}
-        aria-label="Ask a question"
-        // `leading-6` and `py-1.5` are the two numbers MAX_HEIGHT is built
-        // from; changing either without the other moves the ceiling off a
-        // whole number of lines and leaves a clipped half-line at the bottom.
-        style={{ maxHeight: MAX_HEIGHT, minHeight: MIN_HEIGHT }}
-        // `scrollbar-none` scrolls without drawing the bar — see globals.css.
-        // On a box this small the bar is more furniture than the two lines it
-        // is measuring, and the caret already says where you are.
-        //
-        // `focus-visible:shadow-none` moves the focus indicator to the box,
-        // it does not remove it. See the box's own note above.
-        className="scrollbar-none block w-full resize-none overflow-y-auto bg-transparent px-3.5 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:shadow-none disabled:opacity-60"
-      />
-
-      {refusal && (
-        <p className="px-3.5 pb-1 pt-0.5 text-xs text-muted-foreground">{refusal}</p>
-      )}
-
-      <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-0.5">
-        {modes && modes.length > 0 ? (
+        {modes && modes.length > 0 && (
           <ModePicker
             modes={modes}
             value={mode}
             label={chosen?.label ?? "Quick"}
             onChange={(next) => onModeChange?.(next)}
           />
-        ) : (
-          <span />
         )}
 
         <Button
           type="button"
           size="icon"
-          className="h-8 w-8 shrink-0 rounded-full"
+          className="h-9 w-9 shrink-0 rounded-full"
           disabled={busy || shut || !text.trim()}
           onClick={submit}
           aria-label="Send"
@@ -358,6 +410,12 @@ export function ChatComposer({
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
         </Button>
       </div>
+
+      {/* Under the row rather than in it: it is a sentence, and a sentence on
+          the line somebody is typing on is a sentence in the way. */}
+      {refusal && (
+        <p className="px-4 pb-2.5 -mt-0.5 text-xs text-muted-foreground">{refusal}</p>
+      )}
     </div>
   );
 }
@@ -531,7 +589,7 @@ function ContextPicker({
       ref={ref}
       role="dialog"
       aria-label="Add context"
-      className="absolute bottom-full left-3.5 z-30 mb-2 w-80 overflow-hidden rounded-xl border border-line bg-popover shadow-e2"
+      className="absolute bottom-full left-2 z-30 mb-2 w-80 overflow-hidden rounded-xl border border-line bg-popover shadow-e2"
     >
       {/*
         A FIELD, RATHER THAN A LINE OF TEXT WITH A RING AROUND IT.

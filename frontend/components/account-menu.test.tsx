@@ -248,7 +248,9 @@ describe("the allowance", () => {
   it("is in the menu, with the count and the way to the plans", async () => {
     await openMenu();
 
-    const link = screen.getByRole("link", { name: /minutes transcribed/ });
+    // "used", not "transcribed". The number counts minutes spent and recording
+    // spends them too, so "transcribed" named one of the two ways they go.
+    const link = screen.getByRole("link", { name: /minutes used/ });
     expect(link).toHaveAttribute("href", "/settings/plans");
     expect(link).toHaveTextContent("12 of 100");
   });

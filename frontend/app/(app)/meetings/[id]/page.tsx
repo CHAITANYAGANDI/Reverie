@@ -2768,7 +2768,9 @@ function ChatPanel({
             // nothing: meeting chat reads one meeting through one endpoint and
             // has no way to widen the scope.
             scope={title || "This meeting"}
-            placeholder="Ask about this meeting"
+            /* No placeholder. It read "Ask about this meeting" and the chip
+               above the box already names the meeting -- see the note on the
+               withdrawn prop in components/chat-composer. */
             compose={composeText}
             onSend={submit}
           />
