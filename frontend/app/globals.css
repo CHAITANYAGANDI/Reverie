@@ -285,14 +285,30 @@
       0 1px 0 rgb(var(--line)),
       inset 0 0.5px 0 rgb(255 255 255 / 0.1);
   }
-  /* While recording, the band IS the state — it turns rather than gaining a
-     pill beside everything else. */
-  .v2-band[data-recording="true"] {
-    background: rgb(28 12 11 / 0.72);
-    box-shadow:
-      0 1px 0 hsl(var(--danger) / 0.2),
-      inset 0 0.5px 0 rgb(255 255 255 / 0.1);
-  }
+  /*
+   * THE BAND DOES NOT TURN RED ANY MORE.
+   *
+   * <p>It used to: `[data-recording="true"]` washed the whole bar in
+   * `rgb(28 12 11)` with a danger-coloured hairline, on the reasoning that
+   * while recording the band IS the state rather than gaining a pill beside
+   * everything else.
+   *
+   * <p>What that missed is how long the attribute is set for. `capturing` is
+   * every non-idle state of the recorder -- asking for the microphone, running,
+   * paused, and stopped-with-audio-not-yet-saved, which is the whole time the
+   * Discard / Save and process question is on screen. So the alarm colour sat
+   * over the page while nothing was being captured and while somebody was
+   * reading a dialog, and red that means four different things means none of
+   * them.
+   *
+   * <p>The docked bar along the bottom carries the waveform, the clock and the
+   * two buttons that end a recording. That is where the state is said, once,
+   * and it is said in words.
+   *
+   * <p>The attribute is still set -- `components/v2/mobile-tabs` and the
+   * band's own tests read it, and it is a true fact about the chrome -- it
+   * simply no longer paints.
+   */
 
   /* A summoned surface: menu, palette, sheet, dock. Lighter than the page,
      because a thing above content has more light on it. */

@@ -11,7 +11,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { useCreateActionItemMutation, useCreateMomentMutation } from "@/lib/api";
+import { useCreateActionItemMutation } from "@/lib/api";
 import type { MomentRange } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,90 +43,17 @@ function Quoted({ quote }: { quote: string }) {
   );
 }
 
-/* -------------------------------- Note --------------------------------- */
-export function NoteDialog({
-  meetingId,
-  passage,
-  onClose,
-}: {
-  meetingId: string;
-  /** Null closes the dialog. */
-  passage: Passage | null;
-  onClose: () => void;
-}) {
-  const [create, { isLoading }] = useCreateMomentMutation();
-  const [body, setBody] = React.useState("");
-
-  // Reset per passage, so a note abandoned on one sentence does not turn up
-  // pre-filled on the next.
-  React.useEffect(() => {
-    setBody("");
-  }, [passage]);
-
-  async function save() {
-    if (!passage) return;
-    const text = body.trim();
-    if (!text) return;
-    try {
-      await create({
-        meetingId,
-        body: {
-          kind: "NOTE",
-          ranges: passage.ranges,
-          quote: passage.quote,
-          body: text,
-          speaker: passage.speaker,
-          startSeconds: passage.startSeconds,
-          endSeconds: passage.endSeconds,
-        },
-      }).unwrap();
-      onClose();
-    } catch {
-      toast.error("Could not save that note.");
-    }
-  }
-
-  return (
-    <Dialog open={passage !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a note</DialogTitle>
-          <DialogDescription>
-            Private to you — Reverie has one account per workspace, so there is
-            nobody else on this transcript to notify.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Quoted quote={passage?.quote ?? ""} />
-          <Textarea
-            autoFocus
-            rows={4}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              // Cmd/Ctrl+Enter saves. Plain Enter is a newline: a note is prose,
-              // and losing a paragraph break to a submit is worse than a
-              // slightly harder save.
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void save();
-              }
-            }}
-            placeholder="What did you want to remember about this?"
-          />
-          <div className="flex items-center gap-2">
-            <Button onClick={save} disabled={isLoading || !body.trim()}>
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />} Save note
-            </Button>
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+/*
+ * NO `NoteDialog`. Adding a note is withdrawn -- both ways in went at once,
+ * the selection menu's `Add note` and the turn row's `Add a note here`, since
+ * they were one dialog writing one kind of moment.
+ *
+ * <p>`NOTE` is still a `MomentKind` and the endpoint still accepts one: notes
+ * already written are drawn under the words they are about and still carry
+ * their own delete control. Withdrawing the way in is not a reason to make
+ * somebody's own words unreachable, and the server contract is not this
+ * change's to narrow.
+ */
 
 /* ---------------------------- Action item ------------------------------ */
 

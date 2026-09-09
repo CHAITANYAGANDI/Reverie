@@ -14,8 +14,14 @@
  * <p>What settled it is that the same action already had a button, in a
  * meeting's mode row, and the two are now the same panel — so there is no
  * reason for one of them to be forty pixels tall and the width of the page.
- * This is that button: `[mark] AI`, quiet, sized to its label, in the place the
- * bar used to occupy.
+ * This is that button: `[mark] AI`, quiet, sized to its label.
+ *
+ * <p>It sits on the greeting's line, at the right-hand end of the list column,
+ * rather than under the masthead where the bar was. Under it, it was a fourth
+ * stacked line in a block that already had three and it pushed the
+ * conversations down; opposite the greeting it is the one action facing the one
+ * heading — the arrangement the margin already uses, where `+ Add` sits across
+ * from `Action items` instead of beneath it.
  *
  * <h2>Why it is a button and not a link</h2>
  *
@@ -61,11 +67,19 @@ export function AskLauncher() {
   return (
     <Button
       variant="ghost"
-      size="sm"
-      /* `-ml-3` cancels the button's own `px-3`, so the mark sits on the
-         column's left edge with the greeting above it rather than three
-         pixels short of it. */
-      className="-ml-3 gap-1.5"
+      /*
+       * The default size, not `sm`: 36px tall and 14px type, up from 32 and
+       * 12. It is the one control on the page and it now sits beside a 26px
+       * heading, where `sm` read as a caption next to the greeting rather
+       * than as the thing to press.
+       *
+       * <p>No negative margin any more. `-ml-3` existed to cancel the
+       * button's own padding so the mark lined up with the greeting's first
+       * letter; right-aligned there is nothing to line up with on that side,
+       * and pulling the box past the column edge would run its hover tint
+       * into the rule that separates the list from the margin.
+       */
+      className="gap-2"
       /* Not a toggle. Pressing it while the chat is open has to leave it open
          — the same rule as the meeting page's, and for the same reason: a
          control labelled with a question shutting the answer in your face is
@@ -74,7 +88,7 @@ export function AskLauncher() {
       aria-expanded={pane.open}
       aria-controls={SIDE_PANE_ID}
     >
-      <BrandMark size={16} /> AI
+      <BrandMark size={18} /> AI
       <span className="sr-only"> — ask about your conversations</span>
     </Button>
   );

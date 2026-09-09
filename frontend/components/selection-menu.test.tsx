@@ -38,7 +38,6 @@ describe("SelectionMenu", () => {
     for (const label of [
       "Highlight",
       "Copy",
-      "Add note",
       "Ask Reverie",
       "Summarize",
       "Create action item",
@@ -46,6 +45,22 @@ describe("SelectionMenu", () => {
     ]) {
       expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
     }
+  });
+
+  it("no longer offers Add note", () => {
+    /*
+     * Withdrawn, and the whole path with it: `note` is gone from
+     * `SelectionAction`, so nothing can ask for it. The turn row's
+     * `Add a note here` went at the same time -- they were one dialog writing
+     * one kind of moment, so leaving either entrance open would have withdrawn
+     * nothing.
+     *
+     * <p>Notes already written are untouched: they draw under the words they
+     * are about and keep their own delete control.
+     */
+    render(<SelectionMenu anchor={anchor} onAction={vi.fn()} />);
+
+    expect(screen.queryByRole("menuitem", { name: "Add note" })).not.toBeInTheDocument();
   });
 
   it("reports which action was chosen", async () => {
@@ -81,10 +96,10 @@ describe("SelectionMenu", () => {
     expect(onAction).toHaveBeenCalledWith("highlight");
   });
 
-  it("leaves the other seven alone when it does", () => {
+  it("leaves the other items alone when it does", () => {
     render(<SelectionMenu anchor={anchor} onAction={vi.fn()} highlighted />);
 
-    for (const label of ["Copy", "Add note", "Ask Reverie", "Wrong speaker"]) {
+    for (const label of ["Copy", "Ask Reverie", "Wrong speaker"]) {
       expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
     }
   });

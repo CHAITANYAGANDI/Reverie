@@ -184,7 +184,7 @@ import {
   type ReassignTarget,
 } from "@/components/reassign-speaker-dialog";
 import { MomentsPanel } from "@/components/moments-panel";
-import { ActionItemDialog, NoteDialog, type Passage } from "@/components/moment-composer";
+import { ActionItemDialog, type Passage } from "@/components/moment-composer";
 import {
   askPrefix,
   attributedQuote,
@@ -2946,7 +2946,6 @@ function TranscriptPanel({
     capture: SelectionCapture;
     anchor: { top: number; left: number; bottom: number };
   } | null>(null);
-  const [noteFor, setNoteFor] = React.useState<Passage | null>(null);
   const [actionFor, setActionFor] = React.useState<Passage | null>(null);
   const [reassignFor, setReassignFor] = React.useState<ReassignTarget | null>(null);
   /** Why the last correction failed, shown in the dialog rather than only as a toast. */
@@ -3156,9 +3155,6 @@ function TranscriptPanel({
         // bare into a ticket loses the two things that make it evidence.
         await copyToClipboard(attributedQuote(p), "Copied with attribution.");
         break;
-      case "note":
-        setNoteFor(p);
-        break;
       case "ask":
         // Left unfinished: only the user knows what they wanted to ask.
         onAskAbout(askPrefix(p.quote), false);
@@ -3301,25 +3297,6 @@ function TranscriptPanel({
   /** Every word of a turn, as one string — what Copy puts on the clipboard. */
   function turnText(turn: Turn): string {
     return turn.segments.map((s) => s.text).join(" ").trim();
-  }
-
-  /**
-   * What a turn-level mark is about.
-   *
-   * No ranges, deliberately. A note on a whole turn is about what somebody
-   * said, not about a span of characters — and giving it ranges covering every
-   * word would paint the entire paragraph in highlighter, which is the styling
-   * that means "I marked these exact words".
-   */
-  function turnPassage(turn: Turn): Passage {
-    const last = turn.segments[turn.segments.length - 1];
-    return {
-      ranges: [],
-      quote: turnText(turn),
-      speaker: turn.speaker,
-      startSeconds: turn.start,
-      endSeconds: last ? last.end : turn.start,
-    };
   }
 
   /**
@@ -3702,7 +3679,6 @@ function TranscriptPanel({
                   busy={marking}
                   onReact={(emoji) => void toggleReaction(turn, emoji)}
                   onBookmark={() => void toggleBookmark(turn)}
-                  onComment={() => setNoteFor(turnPassage(turn))}
                   onCopy={() =>
                     void copyToClipboard(
                       attributedQuote({
@@ -3974,7 +3950,6 @@ function TranscriptPanel({
         onConfirm={confirmReassign}
         onConfirmNew={(name) => void confirmReassignToNew(name)}
       />
-      <NoteDialog meetingId={meetingId} passage={noteFor} onClose={() => setNoteFor(null)} />
       <ActionItemDialog
         meetingId={meetingId}
         passage={actionFor}

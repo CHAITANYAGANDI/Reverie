@@ -290,22 +290,6 @@ export default function HomePage() {
               to return nothing. */}
           <Masthead empty={listState === "empty"} />
 
-          {/*
-            The one functional surface on the page, and it opens the pane
-            rather than being a chat of its own.
-
-            <p>It was a 40px field the full width of the list, because the
-            approved reference drew a search-shaped field here. It is a button
-            now, and the same button a meeting has -- the two open the same
-            panel, so there was no reason for one of them to be the width of
-            the page. `mt-4` is the air the bar used to occupy as height.
-          */}
-          {listState !== "empty" && (
-            <div className="mt-4">
-              <AskLauncher />
-            </div>
-          )}
-
           {listState === "skeleton" ? (
             <div className="mt-8 space-y-5">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -502,10 +486,9 @@ function Masthead({ empty }: { empty: boolean }) {
      * band -- because a masthead with its own `pt-10` inside a frame with its
      * own top padding is two numbers deciding one gap.
      *
-     * <p>24px underneath, which is this block's. It belongs here rather than
-     * on the launcher: the launcher is not drawn at all on an empty account,
-     * and a top margin on a thing that is sometimes absent is a gap that
-     * sometimes disappears.
+     * <p>24px underneath, which is this block's -- the launcher is inside it
+     * now, on the greeting's line, so there is no second element between the
+     * masthead and the list to argue with about this gap.
      */
     <header className="pb-6">
       {/* Both lines reserve their height, so the greeting arriving one tick
@@ -521,9 +504,43 @@ function Masthead({ empty }: { empty: boolean }) {
             })
           : ""}
       </p>
-      <h1 className="v2-page-greet mt-2 min-h-[1.875rem] font-headline text-ink">
-        {now ? title : ""}
-      </h1>
+      {/*
+        THE GREETING AND THE ONE CONTROL, ON ONE LINE.
+
+        <p>The button was a row of its own under the lede -- and before that a
+        40px field the width of the list. Across from the greeting it reads as
+        the page's single action rather than a fourth stacked line, and it is
+        the arrangement the margin already uses: `+ Add` sits opposite
+        `Action items`, not underneath it.
+
+        <p>`items-center`, not `items-baseline`. The mark inside the button is
+        an inline SVG, so its baseline is its own bottom edge -- aligning
+        baselines would lift the glyph off the greeting's line.
+
+        <p>And not `items-start` either, which is a decision about 390px: down
+        there the greeting wraps and the button sits opposite the middle of the
+        pair of lines rather than on the first one. Looked at across 1440,
+        1280, 1024, 768 and 390 -- centred reads as balanced against the block
+        where top-aligned reads as having drifted up, and top-aligned would
+        need a hand-tuned negative margin to sit optically on a 31px line
+        anyway.
+
+        <p>`flex-1 min-w-0` on the heading rather than `justify-between`: the
+        greeting is the element allowed to wrap, and `min-w-0` is what lets it
+        wrap instead of forcing the row wider than the column at 390px.
+      */}
+      <div className="mt-2 flex items-center gap-4">
+        <h1 className="v2-page-greet min-h-[1.875rem] min-w-0 flex-1 font-headline text-ink">
+          {now ? title : ""}
+        </h1>
+        {/* Same condition as the block this replaced, so an empty account is
+            still offered nothing to ask about. */}
+        {!empty && (
+          <div className="shrink-0">
+            <AskLauncher />
+          </div>
+        )}
+      </div>
       <p className="v2-page-lede mt-2 max-w-[68ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.

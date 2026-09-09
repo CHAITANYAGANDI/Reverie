@@ -330,7 +330,6 @@ vi.mock("@/components/new-action-item-dialog", () => ({
 }));
 vi.mock("@/components/moment-composer", () => ({
   ActionItemDialog: () => <div data-testid="action-item-dialog" />,
-  NoteDialog: () => <div data-testid="note-dialog" />,
 }));
 vi.mock("@/components/reassign-speaker-dialog", () => ({
   ReassignSpeakerDialog: () => <div data-testid="reassign-dialog" />,
@@ -2161,11 +2160,25 @@ describe("the transcript", () => {
     expect(screen.getByTestId("selection-menu")).toBeInTheDocument();
   });
 
-  it("mounts the note and action-item composers a selection opens", async () => {
+  it("mounts the action-item composer a selection opens", async () => {
     await readTranscript();
 
-    expect(screen.getByTestId("note-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("action-item-dialog")).toBeInTheDocument();
+  });
+
+  it("mounts no note composer, because adding a note is withdrawn", async () => {
+    /*
+     * Both ways in went together -- the selection menu's `Add note` and the
+     * turn row's `Add a note here` -- because they were one dialog writing one
+     * kind of moment. The dialog itself is gone from
+     * `components/moment-composer`, so there is nothing left to mount.
+     *
+     * <p>Notes already written are unaffected; see the block on passage notes.
+     */
+    await readTranscript();
+
+    expect(screen.queryByTestId("note-dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Add note" })).not.toBeInTheDocument();
   });
 
   it("mounts the speaker correction dialog", async () => {

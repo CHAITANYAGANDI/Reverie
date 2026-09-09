@@ -42,13 +42,20 @@ export function ChatSuggestions({
   if (prompts.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      {/* Left-aligned and quiet, directly above the box these prompts fill in.
-          Centred under a "Try one of these" heading, they read as the page's
-          main offer — which is wrong twice over: they are a shortcut past the
-          empty input, not the point of the panel, and centring them puts the
-          shortest chip furthest from the cursor that is about to be used. */}
-      <p className="text-xs font-medium text-muted-foreground">Suggestions</p>
+    <div>
+      {/*
+        NO HEADING. It said `Suggestions`, and the chips do not need naming:
+        they are worded as questions, they sit directly above the box they fill
+        in, and they only appear while the thread is empty. A label over three
+        self-describing chips is a line of chrome in the one part of the panel
+        that is supposed to be an invitation.
+
+        <p>Still left-aligned and still directly above the composer. Centring
+        them under a heading read as the page's main offer, which is wrong
+        twice over: they are a shortcut past an empty input rather than the
+        point of the panel, and centring puts the shortest chip furthest from
+        the cursor that is about to be used.
+      */}
       <div className="flex flex-wrap gap-1.5">
         {prompts.map((p) => {
           const unfinished = p.prompt.endsWith(" ");

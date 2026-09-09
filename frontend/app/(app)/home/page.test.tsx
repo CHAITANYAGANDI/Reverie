@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { MeetingResponse, MeetingListQuery, Page } from "@/lib/types";
+import type {
+  ActionItemListQuery,
+  MeetingListQuery,
+  MeetingResponse,
+  Page,
+} from "@/lib/types";
 
 /**
  * Now — the greeting, the list, and the two screens an empty list can be.
@@ -57,7 +62,13 @@ const perMeeting = vi.hoisted(() => ({ calls: [] as { id: string; skip: boolean 
  * directly; here it decides which of loading, failed and settled Home is
  * laying out around -- the geometry has to be the same in all three.
  */
-const actionItems = vi.hoisted(() => ({ state: "ready" as "ready" | "loading" | "error" }));
+const actionItems = vi.hoisted(() => ({
+  state: "ready" as "ready" | "loading" | "error",
+  /* Every query the margin put, not just the last: it asks twice now, and
+     which two questions it asks is the thing that broke. See "asks for the
+     finished action items too". */
+  queries: [] as ActionItemListQuery[],
+}));
 /** The retry button is wired to this. */
 const refetch = vi.hoisted(() => vi.fn());
 
@@ -159,14 +170,23 @@ vi.mock("@/lib/api", () => ({
    * Home's composition: the margin is drawn either way now, which is the
    * correction the describe block at the bottom of this file is about.
    */
-  useGetActionItemsQuery: () => {
+  useGetActionItemsQuery: (q: ActionItemListQuery) => {
+    actionItems.queries.push(q);
     const loadingNow = actionItems.state === "loading";
     const erroredNow = actionItems.state === "error";
+    /*
+     * Answered by status, because the margin asks twice: once for `OPEN_ANY`
+     * and once for `DONE`. Filtering here rather than handing both halves the
+     * same page is the point -- the hook no longer splits one array, so a mock
+     * that ignored the filter would put every task in both views and hide the
+     * bug this arrangement exists to fix.
+     */
+    const half = tasks.filter((t) => (q.status === "DONE" ? t.status === "DONE" : t.status !== "DONE"));
     return {
       // Undefined rather than an empty page in both unsettled states, because
       // that is what RTK holds and it is the distinction `resourceState`
       // exists to keep: no answer is not the answer "none".
-      data: loadingNow || erroredNow ? undefined : { content: tasks, totalElements: tasks.length },
+      data: loadingNow || erroredNow ? undefined : { content: half, totalElements: half.length },
       isLoading: loadingNow,
       isFetching: loadingNow,
       isError: erroredNow,
@@ -260,6 +280,7 @@ beforeEach(() => {
   total = null;
   displayName = null;
   tasks = [];
+  actionItems.queries = [];
   // The window outlives a page now, so without this it would outlive a test and
   // the order the suite happened to run in would decide what Home opened on.
   // See lib/preference-store.ts.
@@ -337,6 +358,39 @@ describe("what Home asks for", () => {
 
     expect(lastQuery()?.size).toBe(20);
     expect(lastQuery()?.page).toBe(0);
+  });
+
+  it("asks for the finished action items too, not only the open ones", () => {
+    /*
+     * THE BUG THAT LOST AN ITEM, AS THE REQUEST THAT CAUSED IT.
+     *
+     * <p>Ticking an item off in the margin struck it through and then it was
+     * gone -- not moved to Completed, not there on a reload, and the Completed
+     * count never left zero.
+     *
+     * <p>Nothing was wrong with the write or with the component. The margin
+     * asked with `status: undefined`, meaning "give me both views", and the
+     * endpoint declares that parameter with `defaultValue = "OPEN_ANY"` -- so
+     * an omitted filter arrives asking for everything *unfinished*. A finished
+     * item was never in the answer to be filed under Completed.
+     *
+     * <p>There is no word for "all of them", so it is two requests -- see
+     * components/v2/now/use-action-items, which is where the pair and their
+     * combined state are covered, and lib/action-item-requests for what each
+     * one puts on the wire.
+     *
+     * <p>Asserted on the request rather than on the rows because that is where
+     * it lived: every rendering test here mocks this query, so a filter that
+     * means the opposite of what the call site intended passes all of them.
+     */
+    render(<HomePage />);
+
+    expect(actionItems.queries.map((q) => q.status).sort()).toEqual(["DONE", "OPEN_ANY"]);
+    // And the rest of it, unchanged: this list is the one nobody's transcript
+    // produced. A meeting's commitments are read on that meeting.
+    for (const q of actionItems.queries) {
+      expect(q.standalone).toBe(true);
+    }
   });
 
   it("does not offer a way to widen it to the whole workspace", () => {

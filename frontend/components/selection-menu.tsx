@@ -19,7 +19,6 @@ import {
   Eraser,
   Highlighter,
   Copy,
-  MessageSquarePlus,
   Sparkles,
   ListPlus,
   Link2,
@@ -31,7 +30,6 @@ import { cn } from "@/lib/utils";
 export type SelectionAction =
   | "highlight"
   | "copy"
-  | "note"
   | "ask"
   | "summarize"
   | "action-item"
@@ -53,7 +51,15 @@ interface Item {
 const ITEMS: Item[] = [
   { action: "highlight", label: "Highlight", icon: Highlighter },
   { action: "copy", label: "Copy", icon: Copy },
-  { action: "note", label: "Add note", icon: MessageSquarePlus },
+  /*
+   * NO `Add note`. It was the third item, and it is withdrawn -- the whole
+   * path, not just the row: `note` is gone from `SelectionAction`, so nothing
+   * can ask for it and no handler has to pretend to serve it.
+   *
+   * <p>Notes already written are untouched. They still draw under the words
+   * they are about and still carry their own delete control; withdrawing the
+   * way in is not a reason to make somebody's own words unreachable.
+   */
   { action: "ask", label: "Ask Reverie", icon: Sparkles },
   { action: "summarize", label: "Summarize", icon: FileText },
   { action: "action-item", label: "Create action item", icon: ListPlus },

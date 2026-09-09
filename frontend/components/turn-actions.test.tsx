@@ -41,13 +41,19 @@ describe("TurnActions", () => {
     expect(screen.getByRole("group", { name: "Actions for Priya at 12:04" })).toBeInTheDocument();
   });
 
-  it("offers the five gestures that take a whole turn", () => {
+  it("offers the four gestures that take a whole turn", () => {
     toolbar();
     expect(screen.getByLabelText("More reactions")).toBeInTheDocument();
-    expect(screen.getByLabelText("Add a note here")).toBeInTheDocument();
     expect(screen.getByLabelText("Bookmark this moment")).toBeInTheDocument();
     expect(screen.getByLabelText("Copy with attribution")).toBeInTheDocument();
     expect(screen.getByLabelText("Copy link to this moment")).toBeInTheDocument();
+    /*
+     * `Add note` is deliberately absent. Adding a note is withdrawn -- both
+     * ways in went together, this one and the selection menu's, because they
+     * were one dialog writing one kind of moment. Notes already written are
+     * still drawn under their words with their own delete control.
+     */
+    expect(screen.queryByLabelText("Add a note here")).not.toBeInTheDocument();
   });
 
   it("keeps the commonest reaction off the menu", async () => {
@@ -114,7 +120,9 @@ describe("TurnActions", () => {
   it("stays out of the way while a mark is saving", () => {
     toolbar({ busy: true });
     expect(screen.getByLabelText("React 👍")).toBeDisabled();
-    expect(screen.getByLabelText("Add a note here")).toBeDisabled();
+    // The other thing that writes to the server. `Add a note here` used to
+    // stand here and is withdrawn; the bookmark is the remaining write.
+    expect(screen.getByLabelText("Bookmark this moment")).toBeDisabled();
     // Copy and the link touch nothing on the server, so there is nothing for
     // them to race.
     expect(screen.getByLabelText("Copy with attribution")).not.toBeDisabled();
