@@ -331,6 +331,97 @@ describe("text handed over from elsewhere on the page", () => {
 
 
 /**
+ * The effort menu, and the three controls it shares a line with.
+ *
+ * <h2>What went wrong</h2>
+ *
+ * <p>The menu was `left-0` — its left edge on the picker's, growing rightward.
+ * The picker sits at the right-hand end of the bar beside Send, so a 256px menu
+ * opening rightward ran off the panel: in the 383px side pane both hints were
+ * cut mid-word, "Answers from the str…". It was reported from a screenshot.
+ *
+ * <p>Asserted as classes rather than as geometry, and that is the honest level
+ * here: jsdom lays nothing out, so a width and an overflow cannot be measured
+ * in it. What the rendered page does was measured in a browser at 1440 and in
+ * the 383px rail — menu fully inside both, no hint clipped, 12px of clearance
+ * over Send. What these hold is the decision that produced it, so a later
+ * `left-0` fails here rather than in somebody's screenshot.
+ */
+describe("the effort menu", () => {
+  async function open() {
+    render(<ChatComposer onSend={vi.fn()} modes={modes} />);
+    await userEvent.click(screen.getByRole("button", { name: /quick/i }));
+    return screen.getByRole("menu");
+  }
+
+  it("grows leftward from the picker rather than rightward off the panel", async () => {
+    const menu = await open();
+
+    expect(menu.className).toContain("right-0");
+    expect(menu.className).not.toContain("left-0");
+  });
+
+  it("clears the bar it opens over", async () => {
+    // `mb-3`. At `mb-2` the menu's bottom corner nearly touched Send and the
+    // two read as one object; twelve pixels reads as a menu above the bar.
+    const menu = await open();
+
+    expect(menu.className).toContain("mb-3");
+  });
+
+  it("marks the mode in effect with the accent, not a grey fill", async () => {
+    /*
+     * It was `bg-accent/60` — a grey wash that read as a hover that had got
+     * stuck. In this product the accent means "this is what is happening",
+     * which is exactly what the chosen effort level is.
+     */
+    await open();
+
+    const chosen = screen
+      .getAllByRole("menuitemradio")
+      .find((b) => b.getAttribute("aria-checked") === "true")!;
+    expect(chosen.className).toContain("bg-brand/12");
+    expect(chosen.className).not.toContain("bg-accent");
+  });
+
+  it("still chooses a mode, which is the only thing it is for", async () => {
+    // The styling changed; the behaviour must not have.
+    const onModeChange = vi.fn();
+    render(<ChatComposer onSend={vi.fn()} modes={modes} onModeChange={onModeChange} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /quick/i }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: /Thorough/ }));
+
+    expect(onModeChange).toHaveBeenCalledWith("advanced");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("gives all three controls one height, so the line does not stagger", async () => {
+    /*
+     * `h-8` on each. They were 36, 36 and whatever `py-1` made the mode
+     * trigger — three heights on one line, which is what made the bar read as
+     * unaligned. 32 also stops the glyph pair out-weighing the text they sit
+     * beside.
+     */
+    const { container } = render(<ChatComposer onSend={vi.fn()} modes={modes} />);
+
+    const row = (screen.getByLabelText("Ask a question") as HTMLElement).parentElement!;
+    const controls = [
+      row.querySelector('button[aria-label="Add context"]')!,
+      row.querySelector('button[aria-haspopup="menu"]')!,
+      row.querySelector('button[aria-label="Send"]')!,
+    ];
+    for (const el of controls) {
+      expect(el, el.getAttribute("aria-label") ?? "mode").not.toBeNull();
+      expect(el.className, el.getAttribute("aria-label") ?? "mode").toMatch(/\bh-8\b/);
+    }
+    // And they are round, which is what makes 32px read as a control rather
+    // than as a small box.
+    expect(container.querySelectorAll(".rounded-full").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
  * The box itself.
  *
  * <p>It is one row now — the context glyph, the text, the mode picker and Send

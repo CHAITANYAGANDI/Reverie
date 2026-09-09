@@ -329,6 +329,12 @@ export function ChatComposer({
         </div>
       )}
 
+      {/*
+        `items-end` and `px-2 py-2`: the controls hold the bottom of the box as
+        the text grows to its eight-row ceiling, and 8px of padding round a
+        32px control against a 36px line of text is what centres the row at one
+        line without pinning it there.
+      */}
       <div className="flex items-end gap-1 px-2 py-2">
         {/*
           THE CONTEXT CONTROL, AS A GLYPH.
@@ -351,8 +357,12 @@ export function ChatComposer({
             aria-expanded={picking}
             aria-label="Add context"
             title="Add context"
+            /* 32px, down from 36. At 36 the glyph pair was heavier than the
+               line of text it sits on and the bar read as a toolbar with a
+               field in it. 32 is the same height as the mode trigger beside
+               it, so all three controls share one line. */
             className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-press ease-soft",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-press ease-soft",
               // Brand, not ink: what is in the context chips is what Reverie
               // will read, which is the one meaning the accent carries here.
               selectedCount > 0
@@ -360,7 +370,7 @@ export function ChatComposer({
                 : "text-ink-3 hover:bg-surface-hover hover:text-ink",
             )}
           >
-            <AtSign className="h-[18px] w-[18px]" />
+            <AtSign className="h-4 w-4" />
           </button>
         )}
 
@@ -402,7 +412,10 @@ export function ChatComposer({
         <Button
           type="button"
           size="icon"
-          className="h-9 w-9 shrink-0 rounded-full"
+          /* 32px, and `ml-0.5` so there is a hair of air between the mode
+             trigger's hover shade and the filled circle. Without it the two
+             read as one control with a lump on the end. */
+          className="ml-0.5 h-8 w-8 shrink-0 rounded-full"
           disabled={busy || shut || !text.trim()}
           onClick={submit}
           aria-label="Send"
@@ -475,7 +488,10 @@ function ModePicker({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        /* `h-8` so it matches the two round buttons beside it: three controls
+           on one line that are three different heights is what made the bar
+           look unaligned. */
+        className="flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
       >
         {label}
         {/* Turns over when the list is showing. The menu opens *upwards* here
@@ -488,9 +504,31 @@ function ModePicker({
       </button>
 
       {open && (
+        /*
+         * RIGHT-ANCHORED, AND IT HAS TO BE.
+         *
+         * <p>It was `left-0`: the menu's left edge on the picker's, growing
+         * rightward. The picker sits at the right-hand end of the composer,
+         * beside Send, so a 256px menu opening rightward from there runs off
+         * the panel — in the 383px side pane both hints were cut mid-word
+         * ("Answers from the str…"), which is how it was reported.
+         *
+         * <p>`right-0` grows it leftward instead. In the rail that puts its
+         * left edge about 80px in from the box, and on `/ask` it sits under the
+         * picker with room to spare, so one rule is right at both widths and
+         * there is no breakpoint to keep in step.
+         *
+         * <p>`mb-3` rather than `mb-2`. The menu's bottom corner was almost
+         * touching Send; twelve pixels reads as a menu above the bar rather
+         * than one growing out of the button next to it.
+         *
+         * <p>`rounded-xl`, `border-line` and `shadow-e2` — the popover shape
+         * the rest of V2 uses. It was `rounded-lg`, a default `border` and
+         * `shadow-lg`, none of which is this product's.
+         */
         <div
           role="menu"
-          className="absolute bottom-full left-0 z-30 mb-2 w-64 overflow-hidden rounded-lg border bg-popover shadow-lg"
+          className="absolute bottom-full right-0 z-30 mb-3 w-64 overflow-hidden rounded-xl border border-line bg-popover p-1 shadow-e2"
         >
           {modes.map((m) => (
             <button
@@ -502,13 +540,20 @@ function ModePicker({
                 onChange(m.mode);
                 setOpen(false);
               }}
+              /* The one in effect takes the accent, which in this product
+                 means "this is what is happening" rather than "this is the
+                 primary action" — the same reading the retention dials and a
+                 citation have. It was `bg-accent/60`, a grey fill that read as
+                 a hover that had stuck. */
               className={cn(
-                "block w-full px-3 py-2.5 text-left transition-colors hover:bg-accent",
-                m.mode === value && "bg-accent/60",
+                "block w-full rounded-lg px-3 py-2.5 text-left transition-colors duration-press ease-soft",
+                m.mode === value
+                  ? "bg-brand/12 text-brand-text"
+                  : "text-ink-2 hover:bg-surface-hover hover:text-ink",
               )}
             >
-              <span className="block text-sm font-medium">{m.label}</span>
-              <span className="block text-xs text-muted-foreground">{m.hint}</span>
+              <span className="block text-sm font-headline">{m.label}</span>
+              <span className="block text-xs text-ink-3">{m.hint}</span>
             </button>
           ))}
         </div>
