@@ -98,6 +98,7 @@ import {
   type DateWindow,
 } from "@/components/date-filter";
 import { useStickyPreference, type PreferenceCodec } from "@/lib/preferences";
+import { useAllowance, spentEmptyNote } from "@/lib/allowance";
 
 /** The choice, not the window. See the identical codec on Now for why. */
 const WHEN_CODEC: PreferenceCodec<DateWindow> = {
@@ -310,6 +311,10 @@ function EmptyLibrary({
   onClearDate: () => void;
   onClearScope: () => void;
 }) {
+  // Read before the narrowing phrase below, because it decides whether any of
+  // it applies: a spent allowance is not a filter anybody can widen.
+  const spent = spentEmptyNote(useAllowance());
+
   /* "in AWD" / "outside your folders" / nothing. Built as a phrase rather than
      branched into six sentences, so every combination reads as English and
      none of them can be written twice. */
@@ -354,6 +359,23 @@ function EmptyLibrary({
             </Button>
           )}
         </div>
+      </div>
+    );
+  }
+
+  /*
+   * A fourth reason, and it is not a narrowing: there may be nothing here
+   * because there is nothing left to put here. Telling somebody with no minutes
+   * to "record a meeting or import audio you already have" describes two
+   * refusals. See `spentEmptyNote`.
+   */
+  if (spent) {
+    return (
+      <div>
+        <p className="text-body font-headline text-ink">No minutes left</p>
+        <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
+          {spent}
+        </p>
       </div>
     );
   }

@@ -1,4 +1,5 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import { markAccountRefusal, refusalFrom } from "@/lib/account-refused";
 import type {
   BaseQueryFn,
   FetchArgs,
@@ -107,7 +108,26 @@ const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
   extraOptions,
 ) => {
   try {
-    return await authenticatedFetch(args, api, extraOptions);
+    const result = await authenticatedFetch(args, api, extraOptions);
+    /*
+     * ONE REFUSAL IS NOT ABOUT THIS REQUEST.
+     *
+     * <p>A 403 carrying `FREE_TIER_EXHAUSTED` means provisioning declined to
+     * create an account for this identity at all -- it has already spent the
+     * lifetime allowance -- so there is no user id behind this session and
+     * every other query will be answered the same way.
+     *
+     * <p>Noticed here because here is the one place every request passes
+     * through. Left in the result as well as published: the caller still gets
+     * its ordinary error, so nothing downstream has to know about this, and
+     * `<AuthGate>` replaces the application before those errors are drawn.
+     *
+     * <p>The check is `refusalFrom`, which insists on the code and not merely
+     * the status -- an ordinary forbidden response must not do this.
+     */
+    const refused = refusalFrom(result.error);
+    if (refused) markAccountRefusal(refused);
+    return result;
   } catch (error) {
     if (error instanceof AuthUnavailableError) {
       return {

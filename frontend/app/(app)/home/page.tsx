@@ -92,6 +92,7 @@ import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { isTerminal } from "@/lib/format";
 import { groupByDay } from "@/lib/days";
 import { homeListState } from "@/lib/home-list-state";
+import { useAllowance, isSpent, spentEmptyNote } from "@/lib/allowance";
 import type { MeetingResponse } from "@/lib/types";
 import { LIBRARY, recordHref } from "@/lib/routes";
 
@@ -445,6 +446,13 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
  * drift from them.
  */
 function Masthead({ empty }: { empty: boolean }) {
+  /*
+   * The balance, because an empty account has two very different meanings and
+   * this line is where the wrong one was being printed. See `spentEmptyNote`.
+   * One request between this and `EmptyState` below: RTK Query caches it.
+   */
+  const allowance = useAllowance();
+  const spent = spentEmptyNote(allowance);
   const { mode, userId, profile } = useAuth();
   const prefs = useGetPreferencesQuery();
 
@@ -472,9 +480,13 @@ function Masthead({ empty }: { empty: boolean }) {
     hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   const title = empty
-    ? first
-      ? `Nothing here yet, ${first}.`
-      : "Nothing here yet."
+    ? spent
+      ? first
+        ? `No minutes left, ${first}.`
+        : "No minutes left."
+      : first
+        ? `Nothing here yet, ${first}.`
+        : "Nothing here yet."
     : first
       ? `${greeting}, ${first}.`
       : `${greeting}.`;
@@ -557,7 +569,8 @@ function Masthead({ empty }: { empty: boolean }) {
           somebody who has never heard of the bug as an odd thing to mention.
         */}
         {empty
-          ? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
+          ? spent
+            ?? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
           : "Recent conversations and anything that needs your attention."}
       </p>
     </header>
@@ -625,7 +638,18 @@ function EmptyState() {
    * got the first-minute screen. With the window gone there is one way for
    * this list to be empty and it is the account, so the branch and the widen
    * button went with it.
+   *
+   * <p>It branches once more now, and on something else: whether there is any
+   * allowance left to act on. Everything below this line -- two buttons, the
+   * allowance, and three steps describing what happens to a recording -- is an
+   * invitation, and an invitation is the wrong thing to show somebody whose
+   * next click is a refusal. See `spentEmptyNote`.
    */
+  const allowance = useAllowance();
+  if (isSpent(allowance)) {
+    return <SpentState />;
+  }
+
   return (
     <div>
       <div className="flex flex-wrap gap-2.5">
@@ -695,6 +719,43 @@ function EmptyState() {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Nothing here, and nothing left to change that.
+ *
+ * <p>Short on purpose. The screen it replaces is a pitch, and the reason it is
+ * wrong is that this reader has already accepted it -- they do not need to be
+ * told what Reverie does with a recording, because they have had all hundred
+ * minutes of it.
+ *
+ * <p>No buttons. Record and Import are in the band at the top of every page and
+ * both refuse with a reason of their own (`recordRefusal`, `importRefusal`), so
+ * the paths are still there for anybody who goes looking. Repeating them here
+ * as primary actions would be offering the refusal twice.
+ *
+ * <p>No mention of upgrading, because there is nothing to upgrade to -- the
+ * same rule the rest of the allowance copy follows.
+ */
+function SpentState() {
+  /*
+   * THE SENTENCE IS NOT REPEATED HERE, and that is worth a note because the
+   * first version of this printed it twice -- once as the masthead's lede and
+   * again as this block's first line. Two identical paragraphs, six lines
+   * apart, which is how a screen reader reads it as a stutter and how
+   * `findByText` reports two elements for one fact.
+   *
+   * <p>The masthead owns the explanation, because it owns the line that
+   * explains an empty screen in every other state too. What is left for here
+   * is the one thing the masthead does not say: where to go and look.
+   */
+  return (
+    <p className="max-w-[58ch] text-foot text-ink-5">
+      {/* The account menu carries the same two figures, which is where somebody
+          checking this will look for them. */}
+      Your usage is in Account Settings.
+    </p>
   );
 }
 

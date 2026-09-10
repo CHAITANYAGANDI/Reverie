@@ -98,7 +98,43 @@ function result<T>(
   };
 }
 
+/**
+ * What is left of the free allowance, as the usage endpoint reports it.
+ *
+ * <p>`state` as well as data, because an unreadable balance is deliberately
+ * *not* treated as an empty one -- see `isSpent`. A zero-state that announced
+ * "no minutes left" over a failed request would be the same class of bug as one
+ * announcing "no conversations" over one.
+ */
+const usage = vi.hoisted(() => ({
+  state: "ready" as "ready" | "loading" | "error",
+  data: { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 } as
+    | { minutesUsed: number; minutesLimit: number; importsUsed: number; importsLimit: number }
+    | undefined,
+}));
+
+/** Every minute spent, which is the state the screenshots were taken in. */
+function allMinutesSpent() {
+  usage.state = "ready";
+  usage.data = { minutesUsed: 100, minutesLimit: 100, importsUsed: 3, importsLimit: 3 };
+}
+
 vi.mock("@/lib/api", () => ({
+  /*
+   * The allowance, because both zero-states ask what is left of it before they
+   * offer to record anything. Full by default: almost nothing in this file is
+   * about the allowance, and every one of those tests wants the ordinary
+   * screen. `usage.minutesUsed` is what the spent cases move.
+   */
+  useGetUsageQuery: () => ({
+    data: usage.data,
+    isLoading: usage.state === "loading",
+    isFetching: usage.state === "loading",
+    isError: usage.state === "error",
+    isSuccess: usage.state === "ready",
+    isUninitialized: false,
+    refetch: () => {},
+  }),
   // The per-meeting poll a processing row runs under its socket subscription.
   useGetMeetingQuery: () => ({ data: undefined }),
   useGetMeetingsQuery: (q: MeetingListQuery, options?: { skip?: boolean }) => {
@@ -174,6 +210,8 @@ function aFolder(over: Partial<Project> = {}): Project {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usage.state = "ready";
+  usage.data = { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 };
   query.last = null;
   rows = [aMeeting()];
   total = null;
@@ -671,5 +709,48 @@ describe("when a date window has emptied it", () => {
     for (const fake of ["Hiring", "Nina", "Clear every filter"]) {
       expect(text).not.toContain(fake);
     }
+  });
+});
+
+describe("LIBRARY — an empty shelf with no minutes left", () => {
+  /*
+   * The same bug as Home's, in the other zero-state: "Record a meeting or
+   * import audio you already have, and it will be here. Record and Import are
+   * at the top of every page" -- two refusals and directions to them.
+   *
+   * <p>A fourth reason for an empty list, and the only one that is not a
+   * narrowing: there is no filter to widen and nothing to clear.
+   */
+  beforeEach(() => {
+    rows = [];
+    allMinutesSpent();
+  });
+
+  it("says there are no minutes left instead of how to record one", async () => {
+    render(<LibraryPage />);
+
+    // The heading exactly, and the sentence separately: a loose /no minutes
+    // left/ matches both and reports two elements for one fact.
+    expect(await screen.findByText("No minutes left")).toBeInTheDocument();
+    expect(screen.getByText(/no minutes left to record or import with/i))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/record a meeting or import audio you already have/i)).toBeNull();
+  });
+
+  it("keeps the ordinary empty shelf when there are minutes left", async () => {
+    usage.data = { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 };
+    render(<LibraryPage />);
+
+    expect(await screen.findByText(/record a meeting or import audio you already have/i))
+      .toBeInTheDocument();
+  });
+
+  it("says nothing about it while the balance is unreadable", async () => {
+    usage.state = "error";
+    usage.data = undefined;
+    render(<LibraryPage />);
+
+    expect(await screen.findByText(/record a meeting or import audio you already have/i))
+      .toBeInTheDocument();
   });
 });

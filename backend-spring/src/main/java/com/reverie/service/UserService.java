@@ -94,6 +94,23 @@ public class UserService {
 
         Optional<UserEntity> found = users.findByClerkUserId(clerkUserId);
         if (found.isEmpty()) {
+            /*
+             * A SECOND GATE, AND IT IS IN HERE FOR THE REASON THE FIRST ONE IS.
+             *
+             * <p>The lifetime free allowance belongs to the person, not to this
+             * row, so an identity that has already spent all of it is not given
+             * another account -- see `FreeTierService`. Like the self-only check
+             * above it refuses *before* the insert, so a refused subject leaves
+             * no user id behind for later requests to act as.
+             *
+             * <p>Inside the `found.isEmpty()` branch deliberately: this asks
+             * whether a NEW account may be created. An account that already
+             * exists signs in whatever its balance, because being out of free
+             * minutes is not a reason to lock somebody out of their own
+             * meetings, exports or deletion.
+             */
+            freeTier.refuseIfExhaustedIdentity(clerkUserId, email);
+
             users.insertIfAbsent(IdGenerator.user(), clerkUserId, email);
             // Whoever won, this reads their row. Blocking on the unique index
             // has already happened inside insertIfAbsent, so by here the winner

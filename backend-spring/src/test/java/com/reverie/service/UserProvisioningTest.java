@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -244,6 +245,63 @@ class UserProvisioningTest {
                     .isInstanceOf(ApiException.class);
 
             verifyNoInteractions(users);
+        }
+    }
+
+    @Nested
+    @DisplayName("an identity that has already spent its allowance")
+    class AlreadySpent {
+
+        /*
+         * A local mock, not the shared static one. `FREE_TIER` above is a
+         * static field, so a stubbed throw on it would outlive this class and
+         * fail whichever file surefire ran next.
+         */
+        private FreeTierService refusing() {
+            FreeTierService freeTier = org.mockito.Mockito.mock(FreeTierService.class);
+            doThrow(ApiException.freeTierExhausted("no minutes left"))
+                    .when(freeTier).refuseIfExhaustedIdentity(anyString(), any());
+            return freeTier;
+        }
+
+        @Test
+        @DisplayName("gets no account, and no row is inserted for it")
+        void refusedBeforeTheInsert() {
+            /*
+             * THE ORDERING IS THE POINT, and it is the same one self-only mode
+             * makes: refusing after the insert leaves a real user id with real
+             * rows behind, for every later request to act as. A refused subject
+             * must touch the repository not at all.
+             */
+            when(users.findByClerkUserId(SUBJECT)).thenReturn(Optional.empty());
+            UserService service =
+                    new UserService(users, new SelfOnlyAccess(false, ""), refusing(), "clerk");
+
+            assertThatThrownBy(() -> service.provision(SUBJECT, EMAIL))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("no minutes left");
+
+            verify(users, never()).insertIfAbsent(anyString(), anyString(), any());
+        }
+
+        @Test
+        @DisplayName("but an account that already exists is never refused")
+        void aLiveAccountIsUntouched() {
+            /*
+             * The distinction the whole rule rests on. Being out of free
+             * minutes is not a reason to lock somebody out of their own
+             * meetings, their exports, or the button that deletes the account
+             * -- and this is the method every authenticated request goes
+             * through, so refusing here would refuse all three.
+             */
+            FreeTierService freeTier = refusing();
+            when(users.findByClerkUserId(SUBJECT)).thenReturn(Optional.of(row("usr_live", EMAIL)));
+            UserService service =
+                    new UserService(users, new SelfOnlyAccess(false, ""), freeTier, "clerk");
+
+            assertThat(service.provision(SUBJECT, EMAIL)).isEqualTo("usr_live");
+
+            verify(freeTier, never()).refuseIfExhaustedIdentity(anyString(), any());
         }
     }
 }

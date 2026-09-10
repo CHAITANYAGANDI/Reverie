@@ -172,6 +172,92 @@ public class FreeTierService {
     }
 
     /**
+     * Refuse a <em>new</em> account to an identity that has already spent the
+     * whole allowance.
+     *
+     * <p>Called by {@code UserService.provision} immediately before it inserts
+     * a users row, and only then — an account that already exists is never
+     * refused by this, whatever its balance. That distinction is the whole
+     * design:
+     *
+     * <ul>
+     *   <li><b>A live account with nothing left.</b> Signs in exactly as
+     *       before. It can read its meetings, export them, and close itself.
+     *       Locking somebody out of their own data for spending their free
+     *       minutes would be a punishment, not a limit.</li>
+     *   <li><b>A closed account coming back with minutes left.</b> Allowed, and
+     *       it resumes on the remaining balance — that is what
+     *       {@link #linkOnProvision} does, unchanged.</li>
+     *   <li><b>A closed account coming back with nothing left.</b> Refused
+     *       here, before the row exists.</li>
+     * </ul>
+     *
+     * <h2>Why refuse rather than let them in with a spent balance</h2>
+     *
+     * <p>Because that is what happened before, and it was a worse experience
+     * for the same outcome: the account was created, the counters came back at
+     * 100 and 3, and every attempt to record or import was refused one at a
+     * time with no explanation of why a brand-new account had no allowance. One
+     * sentence at the door beats a product that looks broken.
+     *
+     * <p>It is not what stops the abuse. The counters coming back is what does
+     * that, and it already did. This is the same rule, said out loud.
+     *
+     * <h2>Minutes, and not imports</h2>
+     *
+     * <p>{@code MINUTES_ALLOWANCE} alone decides. Somebody who used all three
+     * imports and no minutes still has the entire recording allowance, and
+     * refusing them an account would be refusing the thing they can still do.
+     * Minutes are the resource everything consumes: with none left,
+     * {@code chargeMeetingOrThrow} refuses recordings and imports alike, so
+     * there is genuinely nothing a new account could be used for.
+     *
+     * <h2>What happens when the identity cannot be resolved</h2>
+     *
+     * <p>Nothing — the account is created. Clerk being unreachable must not
+     * refuse sign-up to people who have never been here, and it costs nothing
+     * to allow: {@code linkOnProvision} grants no entitlement it cannot key to
+     * an identity, so an account created during an outage has no free allowance
+     * until the identity resolves. Fail-open here is safe precisely because the
+     * grant itself fails closed.
+     */
+    @Transactional(readOnly = true)
+    public void refuseIfExhaustedIdentity(String clerkUserId, String claimEmail) {
+        Optional<String> hash = verifiedAddress(clerkUserId, claimEmail).flatMap(hasher::hash);
+        if (hash.isEmpty()) {
+            return;
+        }
+        Optional<FreeTierIdentity> known = identities.findByIdentityHash(hash.get());
+        if (known.isEmpty()) {
+            // Never been given the free tier. The overwhelmingly common case,
+            // and one indexed lookup.
+            return;
+        }
+        int spent = entitlements.findById(known.get().getEntitlementId())
+                .map(FreeTierEntitlement::getRecordingMinutesUsed)
+                .orElse(0);
+        if (spent < UsageLimitService.MINUTES_ALLOWANCE) {
+            // Been here, has minutes left. `linkOnProvision` will hand the
+            // remaining balance back a moment from now.
+            return;
+        }
+        /*
+         * Logged without the address and without the hash. What is useful in a
+         * log line is that the rule fired and for which Clerk subject; the
+         * identity of the person is the one thing this table exists not to
+         * hold in the clear.
+         */
+        log.info("Refused a new account for Clerk subject {}: this identity has already spent its "
+                + "lifetime free allowance ({} of {} minutes).",
+                clerkUserId, spent, UsageLimitService.MINUTES_ALLOWANCE);
+        throw ApiException.freeTierExhausted(
+                "This email address has already used all "
+                        + UsageLimitService.MINUTES_ALLOWANCE
+                        + " free transcription minutes. Closing an account doesn't reset them, so "
+                        + "a new account can't be created with this address.");
+    }
+
+    /**
      * The verified address this account's allowance is keyed to, if there is one.
      *
      * <h2>The order, and why the claim comes first</h2>

@@ -47,6 +47,18 @@ import {
   buildAuthHeaders,
   type TokenStatus,
 } from "@/lib/auth-store";
+import { forgetAccountRefusal, markAccountRefusal } from "@/lib/account-refused";
+
+/*
+ * The refusal screen is the one state with an action that leaves, so it is the
+ * one state that reads the auth context. Mocked rather than wrapped in a real
+ * provider: what is asserted is where it sends somebody, and a real provider
+ * would put Clerk in the middle of that question.
+ */
+const signOut = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({ signOut }),
+}));
 
 /** Counts renders, standing in for any component that queries on mount. */
 const childRendered = vi.fn();
@@ -81,9 +93,13 @@ function fullyReady(sessionId = "sess_1") {
 describe("AuthGate", () => {
   beforeEach(() => {
     childRendered.mockClear();
+    signOut.mockClear();
     authStore.mode = "clerk";
     setTokenGetter(null);
     resetAuthReadiness();
+    // A module store, so it outlives an unmount and would otherwise decide
+    // every test that ran after the refusal ones.
+    forgetAccountRefusal();
   });
 
   it("is in clerk mode, so the race is real", () => {
@@ -361,5 +377,116 @@ describe("AuthGate in dev mode", () => {
 
     expect(screen.getByText("workspace")).toBeInTheDocument();
     expect(childRendered).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AuthGate — an identity that cannot have an account", () => {
+  /*
+   * THE FOURTH STATE, AND IT IS NOT A WAIT.
+   *
+   * <p>The free allowance belongs to the person rather than to the row, so an
+   * identity that has spent all 100 minutes and asks for a *new* account is
+   * refused at provisioning -- before a users row exists. The API answers 403
+   * `FREE_TIER_EXHAUSTED` to every query the session makes.
+   *
+   * <p>Which is not a state of the credential: the token is valid and Clerk is
+   * perfectly happy. Nothing in the other three states can express it, and
+   * letting the app mount would mean eleven screens drawing eleven "couldn't
+   * load" states, retry buttons and all, over a condition no retry can change.
+   */
+  const MESSAGE =
+    "This email address has already used all 100 free transcription minutes.";
+
+  beforeEach(() => {
+    childRendered.mockClear();
+    signOut.mockClear();
+    authStore.mode = "clerk";
+    setTokenGetter(null);
+    resetAuthReadiness();
+    forgetAccountRefusal();
+  });
+
+  it("does not mount the app, and says why", () => {
+    act(() => markAccountRefusal(MESSAGE));
+
+    renderGate();
+
+    expect(screen.queryByText("workspace")).toBeNull();
+    expect(childRendered).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(MESSAGE);
+  });
+
+  it("shows the server's own sentence rather than a second copy of it", () => {
+    // The server owns the number in it. A sentence written here as well would
+    // be two places to keep 100 in step, and they would disagree.
+    act(() => markAccountRefusal("something else entirely"));
+
+    renderGate();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("something else entirely");
+  });
+
+  it("outranks the wait, because waiting cannot change it", () => {
+    /*
+     * Nothing is ready here -- no token getter, no session -- which is
+     * ordinarily the skeleton. A skeleton would be a promise that something is
+     * arriving, for ever.
+     */
+    act(() => markAccountRefusal(MESSAGE));
+
+    renderGate();
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(document.querySelector("[aria-busy=\"true\"]")).toBeNull();
+  });
+
+  it("outranks a failed credential too", () => {
+    // Both are true at once in the real sequence, and this is the more
+    // specific and more permanent of the two.
+    act(() => {
+      setTokenGetter(async () => null);
+      publishAuthState({ sessionId: "sess_1", phase: "preparing-session" });
+      resolveTokenProbe("sess_1", false);
+      markAccountRefusal(MESSAGE);
+    });
+
+    renderGate();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(MESSAGE);
+    expect(screen.queryByText(/couldn.t finish signing you in/i)).toBeNull();
+  });
+
+  it("offers a way out, and it is not Try again", () => {
+    /*
+     * Every other full-screen state here offers a retry, because every other
+     * one is a request that might succeed. This one cannot, and sending
+     * somebody back to sign in would be worse than useless: signing in
+     * *works*, which is exactly how a person ends up in a loop that always
+     * ends on this screen.
+     */
+    act(() => markAccountRefusal(MESSAGE));
+
+    renderGate();
+
+    expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it("signs out to the landing page rather than to sign-in", async () => {
+    act(() => markAccountRefusal(MESSAGE));
+    renderGate();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    expect(signOut).toHaveBeenCalledWith("/");
+  });
+
+  it("lets an ordinary session through, once nothing has been refused", () => {
+    // The guard against a gate that has learned to refuse everybody.
+    fullyReady();
+
+    renderGate();
+
+    expect(screen.getByText("workspace")).toBeInTheDocument();
   });
 });

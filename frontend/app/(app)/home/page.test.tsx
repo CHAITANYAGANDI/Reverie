@@ -124,7 +124,43 @@ function result<T>(data: T | undefined, opts: {
   };
 }
 
+/**
+ * What is left of the free allowance, as the usage endpoint reports it.
+ *
+ * <p>`state` as well as data, because an unreadable balance is deliberately
+ * *not* treated as an empty one -- see `isSpent`. A zero-state that announced
+ * "no minutes left" over a failed request would be the same class of bug as one
+ * announcing "no conversations" over one.
+ */
+const usage = vi.hoisted(() => ({
+  state: "ready" as "ready" | "loading" | "error",
+  data: { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 } as
+    | { minutesUsed: number; minutesLimit: number; importsUsed: number; importsLimit: number }
+    | undefined,
+}));
+
+/** Every minute spent, which is the state the screenshots were taken in. */
+function allMinutesSpent() {
+  usage.state = "ready";
+  usage.data = { minutesUsed: 100, minutesLimit: 100, importsUsed: 3, importsLimit: 3 };
+}
+
 vi.mock("@/lib/api", () => ({
+  /*
+   * The allowance, because both zero-states ask what is left of it before they
+   * offer to record anything. Full by default: almost nothing in this file is
+   * about the allowance, and every one of those tests wants the ordinary
+   * screen. `usage.minutesUsed` is what the spent cases move.
+   */
+  useGetUsageQuery: () => ({
+    data: usage.data,
+    isLoading: usage.state === "loading",
+    isFetching: usage.state === "loading",
+    isError: usage.state === "error",
+    isSuccess: usage.state === "ready",
+    isUninitialized: false,
+    refetch: () => {},
+  }),
   // The per-meeting poll that a processing row runs underneath its socket
   // subscription. Home lists meetings; only the rows that are still being
   // processed reach for this, and none of these tests is about one -- so what
@@ -268,6 +304,8 @@ function perMeetingCalls(): { id: string; skip: boolean }[] {
 }
 
 beforeEach(() => {
+  usage.state = "ready";
+  usage.data = { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 };
   query.last = null;
   perMeeting.calls = [];
   actionItems.state = "ready";
@@ -1305,5 +1343,90 @@ describe("the shape of Now", () => {
     await screen.findByRole("heading", { level: 1 });
 
     expect(perMeetingCalls()).toHaveLength(0);
+  });
+});
+
+describe("HOME — an empty account with no minutes left", () => {
+  /*
+   * WHAT WAS ON SCREEN, AND WHY IT WAS WRONG.
+   *
+   * <p>An account that had spent all 100 minutes and had nothing in it got the
+   * first-minute pitch: "Reverie becomes useful after your first conversation.
+   * Record one in the browser, or bring in a file you already have", two
+   * buttons, and "100 minutes of transcription and three imports, for the life
+   * of the account. No card."
+   *
+   * <p>Every line of it addressed to somebody who had already spent every one
+   * of those minutes -- so the two things it offered were the two things the
+   * next screen would refuse, and the allowance it advertised was one they had
+   * used up. Reachable two ways: minutes spent and the meetings then deleted,
+   * or an account recreated after deletion, which inherits the counters and
+   * starts empty.
+   */
+  beforeEach(() => {
+    rows = [];
+    total = 0;
+    allMinutesSpent();
+  });
+
+  it("says there are no minutes left instead of offering a first conversation", async () => {
+    render(<HomePage />);
+
+    expect(await screen.findByText(/no minutes left to record or import with/i))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/becomes useful after your first conversation/i)).toBeNull();
+  });
+
+  it("offers neither Record nor Import, because both would be refused", async () => {
+    render(<HomePage />);
+    await screen.findByText(/no minutes left to record or import with/i);
+
+    // The band at the top of every page still has both, and both refuse with a
+    // reason of their own. What is gone is offering them here as the way in.
+    expect(screen.queryByRole("link", { name: /record a meeting/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /import a recording/i })).toBeNull();
+  });
+
+  it("stops advertising the allowance it has already spent", async () => {
+    render(<HomePage />);
+    await screen.findByText(/no minutes left to record or import with/i);
+
+    expect(screen.queryByText(/for the life of the\s+account. No card/i)).toBeNull();
+    expect(screen.queryByText(/what happens to a conversation/i)).toBeNull();
+  });
+
+  it("and the greeting stops calling it a beginning", async () => {
+    displayName = "Chaitanya";
+    render(<HomePage />);
+
+    expect(await screen.findByText(/no minutes left, chaitanya/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing here yet, chaitanya/i)).toBeNull();
+  });
+
+  it("keeps the ordinary first-run screen when there are minutes left", async () => {
+    // The guard against fixing this by deleting the first-minute screen. A
+    // genuinely new account still gets the pitch, and still gets the buttons.
+    usage.data = { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 };
+    render(<HomePage />);
+
+    expect(await screen.findByText(/becomes useful after your first conversation/i))
+      .toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /record a meeting/i })).toBeInTheDocument();
+  });
+
+  it("says nothing about the allowance while the balance is unreadable", async () => {
+    /*
+     * An unreadable balance is not an empty one. "You have no minutes left"
+     * over a failed request is the same lie as "No conversations" over one, so
+     * the screen falls back to the ordinary empty state rather than inventing
+     * a refusal -- and Record and Import refuse on their own if pressed.
+     */
+    usage.state = "error";
+    usage.data = undefined;
+    render(<HomePage />);
+
+    expect(await screen.findByText(/becomes useful after your first conversation/i))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/no minutes left/i)).toBeNull();
   });
 });

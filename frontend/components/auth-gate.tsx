@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { authPhase, isAuthReady, retryTokenProbe, subscribeAuthReady } from "@/lib/auth-store";
+import { accountRefusal, subscribeAccountRefusal } from "@/lib/account-refused";
+import { useAuth } from "@/lib/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
@@ -104,11 +106,70 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
    * empty state over a failed request.
    */
   const phase = useSyncExternalStore(subscribeAuthReady, authPhase, () => "loading" as const);
+  /*
+   * Read before the wait, and answered before it.
+   *
+   * <p>This one is not a state of the credential -- the token is perfectly
+   * valid and Clerk is perfectly happy. It is the API declining to give this
+   * identity an account, which no amount of waiting or retrying changes, so it
+   * outranks both of the states below.
+   *
+   * <p>`() => null` during SSR and hydration, like the two above: there is no
+   * API on the server, so the server cannot know this and must not render it.
+   */
+  const refused = useSyncExternalStore(
+    subscribeAccountRefusal,
+    accountRefusal,
+    () => null,
+  );
+  if (refused) {
+    return <AccountRefused message={refused} />;
+  }
 
   if (!ready) {
     return phase === "failed" ? <AuthGateError /> : <AuthGateFallback />;
   }
   return <>{children}</>;
+}
+
+/**
+ * There is no account to sign into, and there is not going to be one.
+ *
+ * <p>Reached when this identity has already spent the whole lifetime free
+ * allowance and is asking for a *new* account. The message is the server's own,
+ * because the server is the authority on the number in it and this screen would
+ * otherwise be a second place to keep 100 in step.
+ *
+ * <h2>Sign out, and not Try again</h2>
+ *
+ * <p>Every other full-screen state in this file offers a retry, because every
+ * other one is a request that might succeed next time. This one cannot: the
+ * refusal is a property of the address that signed in. Offering a retry would
+ * be offering the same wall, and sending them back to sign-in would be worse --
+ * signing in works, which is exactly how somebody ends up in a loop that always
+ * ends here.
+ *
+ * <p>So the one action leaves, to the landing page rather than to sign-in. A
+ * document load, from `useAuth().signOut`, which is what discards the RTK Query
+ * cache and Clerk's client along with the session -- see lib/clerk-auth.
+ *
+ * <p>`role="alert"`, and no mention of upgrading: there is nothing to upgrade
+ * to, which is the same rule the rest of the allowance copy follows.
+ */
+function AccountRefused({ message }: { message: string }) {
+  const { signOut } = useAuth();
+  return (
+    <div
+      role="alert"
+      className="flex min-h-screen w-full flex-col items-center justify-center gap-3 p-6 text-center"
+    >
+      <p className="font-medium">This address has already used its free allowance</p>
+      <p className="max-w-md text-sm text-muted-foreground">{message}</p>
+      <Button variant="outline" onClick={() => signOut?.("/")}>
+        Sign out
+      </Button>
+    </div>
+  );
 }
 
 /**

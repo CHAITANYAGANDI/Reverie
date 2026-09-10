@@ -91,6 +91,7 @@ import { groupByDay, relativeDay, updatedPhrase } from "@/lib/days";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { FOLDERS, LIBRARY, folderHref, recordHref } from "@/lib/routes";
+import { useAllowance, spentEmptyNote } from "@/lib/allowance";
 import type { MeetingResponse } from "@/lib/types";
 
 export default function FolderPage() {
@@ -326,6 +327,10 @@ function Detail({
  * that does not exist.
  */
 function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
+  // What is left of the allowance, because it decides whether this panel is an
+  // invitation or an explanation. See `spentEmptyNote`.
+  const spent = spentEmptyNote(useAllowance());
+
   return (
     <EmptyPanel
       /*
@@ -340,10 +345,16 @@ function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
         so it would read as "no messages" rather than "no conversations".
       */
       icon={FileAudio}
-      heading="Nothing here yet"
+      heading={spent ? "No minutes left" : "Nothing here yet"}
       /* Labelled for anything that cannot see them: two glyphs on their own
          would be a pair of unnamed buttons at the end of an empty page. */
-      actions={
+      /*
+       * Nothing to offer once the allowance is gone -- both of these lead to a
+       * refusal, and an empty folder is not the place to discover that. Same
+       * correction as Home's and Library's zero-states; the sentence they all
+       * share is `spentEmptyNote`.
+       */
+      actions={spent ? null : (
         <>
           <Button variant="outline" size="icon" asChild title="Record a conversation">
             {/* Back to this folder afterwards, which is the only thing
@@ -359,10 +370,11 @@ function EmptyFolder({ name, folderId }: { name: string; folderId: string }) {
             </Link>
           </Button>
         </>
-      }
+      )}
     >
-      Conversations you add to {name} will appear here. Record, import, or
-      organize a conversation into this folder.
+      {spent
+        ? spent
+        : `Conversations you add to ${name} will appear here. Record, import, or organize a conversation into this folder.`}
     </EmptyPanel>
   );
 }

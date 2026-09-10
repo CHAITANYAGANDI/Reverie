@@ -1,6 +1,8 @@
 package com.reverie.repository;
 
 import com.reverie.ReverieApplication;
+import com.reverie.common.ApiException;
+import com.reverie.entity.FreeTierEntitlement;
 import com.reverie.security.TenantContext;
 import com.reverie.service.FreeTierIdentityHasher;
 import com.reverie.service.FreeTierService;
@@ -255,8 +257,24 @@ class FreeTierLifecycleTest {
     }
 
     @Test
-    @DisplayName("an exhausted identity stays exhausted")
-    void exhaustedStaysExhausted() throws Exception {
+    @DisplayName("an exhausted identity gets no second account at all")
+    void exhaustedGetsNoSecondAccount() throws Exception {
+        /*
+         * THIS TEST USED TO PROVE THE SAME THING A WEAKER WAY.
+         *
+         * <p>It signed up again with the spent address and read the counters
+         * back, asserting they were still 100 and 3 -- which was true, and was
+         * the whole anti-reset guarantee. What it also described was a poor
+         * experience: the account was created, its balance came back at zero
+         * remaining, and every attempt to record or import was refused one at a
+         * time with no explanation of why a brand-new account had nothing.
+         *
+         * <p>Provisioning now refuses the sign-up itself, so re-provisioning is
+         * no longer available as a way to read the counters. The claim is
+         * therefore stated directly, and it is the stronger of the two: not
+         * "the allowance does not come back" but "there is no account for it to
+         * come back to". See `FreeTierService.refuseIfExhaustedIdentity`.
+         */
         String first = signIn();
         /*
          * Imports first, minutes second, and not by preference: a meeting is
@@ -271,12 +289,59 @@ class FreeTierLifecycleTest {
             usageService.addAiMinutes(first, UsageLimitService.MINUTES_ALLOWANCE);
             return null;
         });
+        String entitlement = TenantContext.asSystem(() -> freeTier.forAccount(first));
+
+        closeAccount(first);
+
+        // A new Clerk subject with the same verified address, which is what
+        // deleting an account and signing up again looks like from here.
+        String refusedSubject = "user_it_"
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        subjects.add(refusedSubject);
+        assertThatThrownBy(() ->
+                TenantContext.asSystem(() -> userService.provision(refusedSubject, email)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already used all 100 free transcription minutes");
+
+        // And nothing was left behind by the attempt: no users row for that
+        // subject, and the entitlement's counters are exactly as they were.
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT count(*) FROM users WHERE clerk_user_id = ?")) {
+            ps.setString(1, refusedSubject);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertThat(rs.getInt(1)).as("a refused subject leaves no row").isZero();
+            }
+        }
+        FreeTierEntitlement after = entitlements.findById(entitlement).orElseThrow();
+        assertThat(after.getRecordingMinutesUsed())
+                .isGreaterThanOrEqualTo(UsageLimitService.MINUTES_ALLOWANCE);
+        assertThat(after.getImportsUsed()).isEqualTo(UsageLimitService.IMPORT_ALLOWANCE);
+    }
+
+    @Test
+    @DisplayName("but an identity with minutes left is welcomed back on the remainder")
+    void partlySpentIsStillAllowedBack() throws Exception {
+        /*
+         * The other half of the rule, and the half that keeps it from being a
+         * punishment: somebody who tried Reverie for a few minutes, deleted the
+         * account and came back gets an account and the rest of the allowance.
+         * Asserted here rather than only in the unit tests because "the sign-up
+         * is allowed" and "the counters come with it" are two claims and this
+         * is where the second one is real.
+         */
+        String first = signIn();
+        TenantContext.asSystem(() -> {
+            usageService.addAiMinutes(first, 10);
+            return null;
+        });
 
         closeAccount(first);
         String second = signIn();
 
-        assertThat(minutesUsed(second)).isGreaterThanOrEqualTo(UsageLimitService.MINUTES_ALLOWANCE);
-        assertThat(importsUsed(second)).isEqualTo(UsageLimitService.IMPORT_ALLOWANCE);
+        assertThat(second).isNotEqualTo(first);
+        assertThat(minutesUsed(second)).isEqualTo(10);
     }
 
     @Test

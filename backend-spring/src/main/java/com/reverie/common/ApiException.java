@@ -42,6 +42,20 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.CONFLICT, "CONFLICT", message);
     }
 
+    /**
+     * This identity has already spent its lifetime free allowance, and is
+     * asking for a <em>new account</em>.
+     *
+     * <p>403 and a code of its own, rather than {@code FORBIDDEN}: the client
+     * has to tell this apart from every other refusal, because it is the one
+     * that is permanent. There is nothing to retry and nothing to sign into --
+     * the only honest thing to show is a sentence explaining why, which needs
+     * a machine-readable reason to key off. See {@code FreeTierService}.
+     */
+    public static ApiException freeTierExhausted(String message) {
+        return new ApiException(HttpStatus.FORBIDDEN, "FREE_TIER_EXHAUSTED", message);
+    }
+
     public static ApiException usageLimitReached(String message) {
         return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "USAGE_LIMIT_REACHED", message);
     }

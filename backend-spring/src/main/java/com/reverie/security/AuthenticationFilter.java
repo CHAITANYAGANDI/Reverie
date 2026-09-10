@@ -1,5 +1,6 @@
 package com.reverie.security;
 
+import com.reverie.common.ApiException;
 import com.reverie.service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -103,12 +104,65 @@ public class AuthenticationFilter extends OncePerRequestFilter {
                 auth.setDetails(new SignInSecurity(authMode, identity.secondFactor()));
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
+        } catch (ApiException refused) {
+            /*
+             * A DECISION ABOUT THIS IDENTITY, AND IT HAS TO SURVIVE THIS LAYER.
+             *
+             * <p>Provisioning refuses two subjects on purpose: one that
+             * self-only mode does not allow, and one whose lifetime free
+             * allowance is already spent and is asking for a new account. Both
+             * raise 403 deliberately -- `SelfOnlyAccess` says why in its own
+             * words: "They proved who they are perfectly well. Calling the
+             * token invalid would send them round a sign-in loop that can never
+             * succeed."
+             *
+             * <p>And that is exactly what happened, because the catch below
+             * swallowed it and the authorization layer answered 401. The
+             * service's careful choice of status never reached anybody: the
+             * browser saw "Authentication required", concluded the session had
+             * expired, and sent them back to sign in -- which works, mints a
+             * fresh token, and arrives here again. A loop, once per refusal.
+             *
+             * <p>So it is written out with its own status and code, and the
+             * chain stops. Nothing downstream needs to run: there is no
+             * principal, and the response is already complete.
+             */
+            SecurityContextHolder.clearContext();
+            log.debug("Provisioning refused this subject: {}", refused.getErrorCode());
+            respond(response, refused);
+            return;
         } catch (Exception ex) {
             // Leave the context unauthenticated; the authorization layer returns 401.
             log.debug("Authentication resolution failed: {}", ex.getMessage());
             SecurityContextHolder.clearContext();
         }
         chain.doFilter(request, response);
+    }
+
+    /**
+     * The same JSON body every other error in this API has.
+     *
+     * <p>Hand-written rather than delegated, and it has to be: this runs in a
+     * filter, before Spring MVC exists, so there is no
+     * {@code @RestControllerAdvice} in the picture and no message converter to
+     * borrow. The shape is copied from {@code SecurityConfig}'s 401 entry
+     * point, which writes its body the same way and for the same reason.
+     *
+     * <p>Only the message is interpolated, and only the two characters that
+     * could break the document are escaped. The messages are literals in this
+     * codebase rather than anything a caller supplies -- but a refusal is not
+     * the place to find out that stopped being true.
+     */
+    private static void respond(HttpServletResponse response, ApiException refused)
+            throws IOException {
+        response.setStatus(refused.getStatus().value());
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        String message = refused.getMessage() == null ? "" : refused.getMessage();
+        response.getWriter().write("{\"status\":" + refused.getStatus().value()
+                + ",\"error\":\"" + refused.getErrorCode() + "\""
+                + ",\"message\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"")
+                + "\"}");
     }
 
     /**

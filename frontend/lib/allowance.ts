@@ -193,6 +193,46 @@ export function spentNote(a: Allowance): string | null {
 }
 
 /**
+ * The allowance is spent, settled enough to say so out loud.
+ *
+ * <p>`loading` and `unknown` are false rather than true, and that asymmetry is
+ * deliberate. Everywhere else in this file an unreadable balance fails closed,
+ * because what is at stake is starting something that cannot be finished. What
+ * is at stake here is a *claim about the account* printed on an empty screen,
+ * and "you have no minutes left" over a failed request is the same class of lie
+ * as "No conversations" over one. So it says nothing until it knows.
+ */
+export function isSpent(a: Allowance): boolean {
+  if (a.loading || a.unknown) return false;
+  return a.minutesLeft <= 0;
+}
+
+/**
+ * What an empty screen says when the allowance is gone, or null when it is not.
+ *
+ * <h2>The bug this closes</h2>
+ *
+ * <p>Home and Library both explained an empty account as a beginning: "Reverie
+ * becomes useful after your first conversation", two buttons, and "100 minutes
+ * of transcription and three imports, for the life of the account. No card."
+ * All of it addressed to somebody who had already spent every one of those
+ * minutes — so the two things it offered were the two things the next screen
+ * would refuse, and the allowance it advertised was one they had already used.
+ *
+ * <p>Reachable two ways, and the copy has to be true of both: minutes spent and
+ * the meetings then deleted, or an account recreated after deletion, which
+ * inherits the counters and starts with nothing in it (see
+ * `FreeTierService` — the allowance belongs to the person, not the row). Which
+ * is why this says nothing about anything being kept: on this screen there is
+ * demonstrably nothing to keep, and "your meetings are still here" printed over
+ * an empty list is the sentence being fixed, wearing a different hat.
+ */
+export function spentEmptyNote(a: Allowance): string | null {
+  if (!isSpent(a)) return null;
+  return `${SPENT}, so there are no minutes left to record or import with.`;
+}
+
+/**
  * Whether a file of this length fits, and what to say if it does not.
  *
  * <p>Checked before the upload rather than after it. The file is on the user's

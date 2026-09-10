@@ -4,6 +4,8 @@ import {
   importRefusal,
   lengthRefusal,
   aiRefusal,
+  isSpent,
+  spentEmptyNote,
   spentNote,
   reprocessCost,
   type AiFeature,
@@ -284,5 +286,79 @@ describe("what a reprocess costs", () => {
         expect(reprocessCost(a, d)).toMatch(/transcribes the recording again/);
       }
     }
+  });
+});
+
+describe("an empty screen with nothing left to fill it", () => {
+  /*
+   * WHAT THIS FIXES.
+   *
+   * <p>Home and Library both explained an empty account as a beginning:
+   * "Reverie becomes useful after your first conversation", a Record button, an
+   * Import button, and "100 minutes of transcription and three imports, for the
+   * life of the account. No card." Shown to somebody who had spent all hundred
+   * of those minutes -- so the two offers were the next two refusals, and the
+   * allowance being advertised was one they had already used.
+   */
+  it("is spent once the minutes are gone", () => {
+    expect(isSpent(allowance({ minutesLeft: 0 }))).toBe(true);
+    expect(spentEmptyNote(allowance({ minutesLeft: 0 }))).toContain(
+      "no minutes left to record or import with",
+    );
+  });
+
+  it("is not spent while a single minute remains", () => {
+    // One minute is an account that can still record something. The boundary
+    // is the whole allowance, not near it.
+    expect(isSpent(allowance({ minutesLeft: 1 }))).toBe(false);
+    expect(spentEmptyNote(allowance({ minutesLeft: 1 }))).toBeNull();
+  });
+
+  it("says nothing while the balance is still loading", () => {
+    /*
+     * THE ASYMMETRY, AND IT IS DELIBERATE.
+     *
+     * <p>Everywhere else in this file an unreadable balance fails *closed*,
+     * because what is at stake is starting something that cannot be finished.
+     * What is at stake here is a claim about the account printed on an empty
+     * screen -- and "you have no minutes left" over a request that has not
+     * arrived is the same class of lie as "No conversations" over one.
+     */
+    expect(isSpent(allowance({ loading: true, minutesLeft: 0 }))).toBe(false);
+    expect(spentEmptyNote(allowance({ loading: true, minutesLeft: 0 }))).toBeNull();
+  });
+
+  it("says nothing when the balance could not be read", () => {
+    // Same reasoning, and this is the one that actually happens: the usage
+    // request failed, so `minutesLeft` is 0 because nothing is known.
+    expect(isSpent(allowance({ unknown: true, minutesLeft: 0 }))).toBe(false);
+    expect(spentEmptyNote(allowance({ unknown: true, minutesLeft: 0 }))).toBeNull();
+  });
+
+  it("is not spent on an uncapped account", () => {
+    // `-1` is the server's unlimited and survives as Infinity. Nothing about
+    // it is empty for lack of minutes.
+    expect(isSpent(allowance({ minutesLeft: Number.POSITIVE_INFINITY }))).toBe(false);
+  });
+
+  it("promises nothing about content being kept", () => {
+    /*
+     * Every other refusal in this file names what is *kept* -- "Everything
+     * already transcribed is still here" -- because a limit being reached is
+     * not the account being closed. This one must not, and that is not an
+     * oversight: it is printed on a screen with nothing on it. Reachable by
+     * spending the minutes and deleting the meetings, or by recreating an
+     * account after deletion, which inherits the counters and starts empty.
+     */
+    const note = spentEmptyNote(allowance({ minutesLeft: 0 })) ?? "";
+
+    expect(note).not.toMatch(/still here/i);
+    expect(note).not.toMatch(/stays/i);
+  });
+
+  it("names no upgrade, like every other refusal here", () => {
+    // There is nothing to upgrade to.
+    const note = spentEmptyNote(allowance({ minutesLeft: 0 })) ?? "";
+    expect(note).not.toMatch(/upgrade|plan|billing|subscri/i);
   });
 });

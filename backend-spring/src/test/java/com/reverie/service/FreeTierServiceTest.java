@@ -1,6 +1,7 @@
 package com.reverie.service;
 
 import com.reverie.common.ApiException;
+import com.reverie.entity.FreeTierEntitlement;
 import com.reverie.entity.FreeTierIdentity;
 import com.reverie.entity.UsageLimit;
 import com.reverie.entity.UserEntity;
@@ -23,7 +24,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -71,6 +74,8 @@ class FreeTierServiceTest {
     private final Map<String, String> mapped = new HashMap<>();
     /** The accounts, so an attach can actually be seen. */
     private final Map<String, UserEntity> accounts = new HashMap<>();
+    /** entitlement id -> transcription minutes already spent against it. */
+    private final Map<String, Integer> minutesSpent = new HashMap<>();
 
     private FreeTierIdentityHasher hasher;
 
@@ -145,6 +150,20 @@ class FreeTierServiceTest {
         });
 
         when(entitlements.insertIfAbsent(anyString(), anyInt(), anyInt())).thenReturn(1);
+        // What each entitlement has spent. Absent means a row that is not
+        // there, which is what an unstubbed findById would have returned
+        // anyway -- stated rather than relied on, because the refusal below
+        // reads it.
+        when(entitlements.findById(anyString())).thenAnswer(i -> {
+            Integer minutes = minutesSpent.get(i.<String>getArgument(0));
+            if (minutes == null) {
+                return Optional.empty();
+            }
+            FreeTierEntitlement row = new FreeTierEntitlement();
+            row.setId(i.getArgument(0));
+            row.setRecordingMinutesUsed(minutes);
+            return Optional.of(row);
+        });
         when(usage.findByUserId(anyString())).thenReturn(Optional.empty());
     }
 
@@ -917,6 +936,155 @@ class FreeTierServiceTest {
 
             assertThat(linkOf(USER)).isEqualTo(owned);
             verify(clerk, never()).refreshVerifiedPrimaryEmail(anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("asking for a second account")
+    class RefusingASecondAccount {
+
+        /** An identity that has been here before, having spent `minutes`. */
+        private void previously(String email, int minutes) {
+            String entitlement = "fte_previous";
+            mapped.put(hashOf(email), entitlement);
+            minutesSpent.put(entitlement, minutes);
+        }
+
+        @Test
+        @DisplayName("is refused when the whole allowance is gone")
+        void refusesAnExhaustedIdentity() {
+            /*
+             * THE CASE THIS EXISTS FOR.
+             *
+             * <p>Delete the account, sign up again with the same address. The
+             * counters already came back -- that is what stopped the abuse --
+             * but the account was created first and then refused one action at
+             * a time, with no explanation of why a brand-new account had no
+             * allowance. This says it once, at the door.
+             */
+            previously(EMAIL_A, UsageLimitService.MINUTES_ALLOWANCE);
+
+            assertThatThrownBy(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("already used all 100 free transcription minutes")
+                    .hasMessageContaining("Closing an account doesn't reset them");
+        }
+
+        @Test
+        @DisplayName("and the refusal carries a code the client can act on")
+        void carriesItsOwnCode() {
+            // 403 alone is not enough: a folder somebody does not own is also
+            // 403, and the client has to tell "you cannot have this" from "you
+            // cannot have an account". See lib/account-refused.
+            previously(EMAIL_A, UsageLimitService.MINUTES_ALLOWANCE);
+
+            ApiException refused = catchThrowableOfType(
+                    () -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A), ApiException.class);
+
+            assertThat(refused.getErrorCode()).isEqualTo("FREE_TIER_EXHAUSTED");
+            assertThat(refused.getStatus().value()).isEqualTo(403);
+        }
+
+        @Test
+        @DisplayName("is allowed when there are minutes left, and resumes on them")
+        void allowsAnIdentityWithMinutesLeft() {
+            // The other half of the rule, and the more common one: somebody who
+            // tried Reverie for ten minutes, deleted the account, and came back.
+            // They get the account and the remaining ninety.
+            previously(EMAIL_A, 10);
+
+            assertThatCode(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("the boundary is the whole allowance, not near it")
+        void theBoundaryIsExact() {
+            // One minute left is an account that can still record. Ninety-nine
+            // used is not "basically finished", and rounding it up would refuse
+            // somebody an account they can use.
+            previously(EMAIL_A, UsageLimitService.MINUTES_ALLOWANCE - 1);
+            assertThatCode(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .doesNotThrowAnyException();
+
+            previously(EMAIL_A, UsageLimitService.MINUTES_ALLOWANCE + 5);
+            assertThatThrownBy(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .isInstanceOf(ApiException.class);
+        }
+
+        @Test
+        @DisplayName("ignores imports, which strand nobody on their own")
+        void importsAloneAreNotExhaustion() {
+            /*
+             * Three imports spent and no minutes is an account with the entire
+             * recording allowance intact. Refusing it would refuse the one
+             * thing that still works -- and `chargeMeetingOrThrow` already says
+             * "Recording in the browser still works" in exactly this state.
+             */
+            previously(EMAIL_A, 0);
+
+            assertThatCode(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("asks nothing about an identity nobody has seen")
+        void allowsAStranger() {
+            // The overwhelmingly common case: a genuinely new person. One
+            // indexed lookup, no entitlement read, no refusal.
+            assertThatCode(() -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A))
+                    .doesNotThrowAnyException();
+
+            verify(entitlements, never()).findById(anyString());
+        }
+
+        @Test
+        @DisplayName("lets somebody in when the identity cannot be resolved at all")
+        void failsOpenWhenClerkCannotAnswer() {
+            /*
+             * FAIL OPEN HERE, AND IT IS SAFE BECAUSE THE GRANT FAILS CLOSED.
+             *
+             * <p>Clerk being unreachable must not refuse sign-up to people who
+             * have never been here -- that is an outage turned into a wall. It
+             * costs nothing to allow: `linkOnProvision` grants no entitlement
+             * it cannot key to an identity, so an account created in this state
+             * has no free allowance until the identity resolves.
+             */
+            clerkCurrent = null;
+            clerkCached = null;
+
+            assertThatCode(() -> service.refuseIfExhaustedIdentity(SUBJECT, null))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("names neither the address nor its hash")
+        void saysNothingIdentifying() {
+            // The message is shown to somebody who is not signed in, and the
+            // hash is the one thing the ledger exists not to hold in the clear.
+            previously(EMAIL_A, UsageLimitService.MINUTES_ALLOWANCE);
+
+            String message = catchThrowableOfType(
+                    () -> service.refuseIfExhaustedIdentity(SUBJECT, EMAIL_A),
+                    ApiException.class).getMessage();
+
+            assertThat(message).doesNotContain(EMAIL_A);
+            assertThat(message).doesNotContain(hashOf(EMAIL_A));
+            assertThat(message).doesNotContain(SUBJECT);
+        }
+
+        @Test
+        @DisplayName("holds in dev mode too, on the identity dev mode derives")
+        void devModeIsRefusedTheSameWay() {
+            // Dev mode keys the allowance to the dev subject rather than to an
+            // address, and the rule is the same one -- otherwise the local
+            // stack would be the one place the reset still works.
+            FreeTierService dev = new FreeTierService(
+                    entitlements, identities, usage, users, hasher, clerk, "dev");
+            previously("dev-" + SUBJECT + "@dev.invalid", UsageLimitService.MINUTES_ALLOWANCE);
+
+            assertThatThrownBy(() -> dev.refuseIfExhaustedIdentity(SUBJECT, null))
+                    .isInstanceOf(ApiException.class);
         }
     }
 }

@@ -41,7 +41,26 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
+/** What is left of the free allowance. Full unless a test spends it. */
+const usage = vi.hoisted(() => ({
+  data: { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 },
+}));
+
 vi.mock("@/lib/api", () => ({
+  /*
+   * The allowance. The empty panel asks what is left before it offers to
+   * record anything -- see `spentEmptyNote`. Full, because nothing in this file
+   * is about the allowance and every test here wants the ordinary panel.
+   */
+  useGetUsageQuery: () => ({
+    data: usage.data,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+    isUninitialized: false,
+    refetch: () => {},
+  }),
   useGetProjectQuery: () => ({ data: project, isLoading: false }),
   // The per-meeting poll a row runs under its socket subscription, now that the
   // rows are the same component Now and Library use.
@@ -106,6 +125,9 @@ import ProjectPage from "@/app/(app)/folder/[id]/page";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A module-level control, so without this the last describe's spent state
+  // would decide whatever ran after it.
+  usage.data = { minutesUsed: 0, minutesLimit: 100, importsUsed: 0, importsLimit: 3 };
   project = {
     id: "prj_1",
     name: "Client ABC",
@@ -427,5 +449,28 @@ describe("ProjectPage", () => {
       "href",
       "/library",
     );
+  });
+});
+
+describe("FOLDER — an empty folder with no minutes left", () => {
+  /*
+   * The third place the same wrong invitation was printed. Home and Library
+   * were the two in the report; this one is one click away and had it too --
+   * "Record, import, or organize a conversation into this folder", with a
+   * Record button and an Import button, on an account that can do none of it.
+   */
+  beforeEach(() => {
+    // The panel only appears for a folder with nothing in it.
+    meetings = [];
+    usage.data = { minutesUsed: 100, minutesLimit: 100, importsUsed: 3, importsLimit: 3 };
+  });
+
+  it("explains instead of inviting, and offers neither action", async () => {
+    render(<ProjectPage />);
+
+    expect(await screen.findByText("No minutes left")).toBeInTheDocument();
+    expect(screen.getByText(/no minutes left to record or import with/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /record a conversation/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /import a recording/i })).toBeNull();
   });
 });
