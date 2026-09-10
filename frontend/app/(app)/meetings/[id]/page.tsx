@@ -1379,6 +1379,10 @@ export default function MeetingDetailPage() {
           reported={live?.progress}
           hasTranscript={hasTranscript}
           hasSummary={hasSummary}
+          // Which run this is. Without it the strip ticks every stage off the
+          // previous run's transcript and summary, which a reprocess leaves in
+          // place -- see lib/processing-stages.
+          attempt={meeting.data?.processingAttempt}
           message={live?.message}
           onStop={stoppable ? () => void stopProcessing() : undefined}
           stopping={recordingJob.stopping}

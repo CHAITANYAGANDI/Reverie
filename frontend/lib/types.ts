@@ -152,6 +152,19 @@ export interface MeetingResponse {
   transcriptDeletedAt?: string | null;
   /** When the person recording confirmed they had told the room. */
   consentConfirmedAt?: string | null;
+  /**
+   * Which run of the pipeline this meeting is on. 1 until it is reprocessed.
+   *
+   * <p>Needed because a reprocess leaves the previous run's transcript and
+   * summary in place — a new run that fails must not have destroyed a good
+   * transcript — so their presence says nothing about the run that is
+   * currently going. See `lib/processing-stages`.
+   *
+   * <p>Optional: a response from a build before it was sent has no value here,
+   * and the absence is treated as "no reprocess", which is what it used to
+   * assume anyway.
+   */
+  processingAttempt?: number;
 }
 
 export interface PreferencesResponse {

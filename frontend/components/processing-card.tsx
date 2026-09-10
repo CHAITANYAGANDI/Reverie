@@ -38,6 +38,7 @@ export function ProcessingCard({
   reported,
   hasTranscript,
   hasSummary,
+  attempt,
   message,
   onStop,
   stopping,
@@ -49,6 +50,12 @@ export function ProcessingCard({
   reported?: number;
   hasTranscript?: boolean;
   hasSummary?: boolean;
+  /**
+   * The run number. Above 1 means the transcript and summary this card can see
+   * are the previous run's, and none of this run's stages may be ticked off
+   * them. See lib/processing-stages.
+   */
+  attempt?: number;
   message?: string;
   onStop?: () => void;
   stopping?: boolean;
@@ -57,7 +64,7 @@ export function ProcessingCard({
   // estimate, and "37.499999%" or a value that briefly overshoots would both
   // read as a bug in the one number somebody is watching.
   const percent = Math.round(Math.min(100, Math.max(0, progress)));
-  const facts: ProcessingFacts = { status, reported, hasTranscript, hasSummary };
+  const facts: ProcessingFacts = { status, reported, hasTranscript, hasSummary, attempt };
   const stages = processingStages(facts);
 
   return (

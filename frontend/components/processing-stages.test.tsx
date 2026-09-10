@@ -28,6 +28,36 @@ describe("the stage strip", () => {
     expect(screen.getByText(", in progress")).toBeInTheDocument();
   });
 
+  it("does not tick a reprocess off the last run's results", () => {
+    /*
+     * THE BUG, WHERE IT WAS SEEN.
+     *
+     * <p>Reprocess re-runs the pipeline from the audio and leaves the previous
+     * transcript and summary in place, so the strip had four green ticks and
+     * ", done" four times over a bar at 11%. In words rather than in colour,
+     * which is how a screen reader was told the same untruth.
+     *
+     * <p>The rule and its reasoning are in lib/processing-stages; asserted
+     * again here because this is the component that says it out loud.
+     */
+    render(
+      <ProcessingStages
+        stages={processingStages({
+          status: "TRANSCRIBING",
+          reported: 11,
+          hasTranscript: true,
+          hasSummary: true,
+          attempt: 2,
+        })}
+      />,
+    );
+
+    // Uploaded only. Transcript is in progress, the other two are waiting.
+    expect(screen.getAllByText(", done")).toHaveLength(1);
+    expect(screen.getByText(", in progress")).toBeInTheDocument();
+    expect(screen.getAllByText(", waiting")).toHaveLength(2);
+  });
+
   it("marks the stages of a queued meeting as waiting", () => {
     render(<ProcessingStages stages={processingStages({ status: "QUEUED" })} />);
 

@@ -256,3 +256,110 @@ describe("the reveal plan", () => {
     expect(plan.transcript).not.toBe("preparing");
   });
 });
+
+describe("a reprocess, with the last run's work still on screen", () => {
+  /*
+   * THE BUG, AS REPORTED.
+   *
+   * <p>Press Reprocess on a finished meeting. The new run starts at the
+   * beginning -- 11%, transcribing the audio again -- and the strip showed
+   * "✓ Uploaded ✓ Transcript ✓ Speakers ✓ Summary", every stage complete, with
+   * the caption "Preparing transcript…" underneath. Four ticks for work this
+   * run had not done any of.
+   *
+   * <p>Because `hasTranscript` and `hasSummary` were both true: a reprocess
+   * leaves the previous run's results in place on purpose, so a run that fails
+   * has not destroyed a good transcript. They are real, and they are evidence
+   * about the run that made them -- which is the qualifier that was missing.
+   */
+  const reprocessing = {
+    status: "TRANSCRIBING" as const,
+    reported: 11,
+    hasTranscript: true,
+    hasSummary: true,
+    attempt: 2,
+  };
+
+  it("ticks only what this run has actually done", () => {
+    expect(state(reprocessing)).toEqual({
+      // The audio is uploaded -- that is true of the meeting, not of a run.
+      uploaded: "done",
+      // 11% is a long way short of the reported marker.
+      transcript: "active",
+      speakers: "pending",
+      summary: "pending",
+    });
+  });
+
+  it("and says it is transcribing, not preparing", () => {
+    // The caption read "Preparing transcript…" for the same reason: it asks
+    // `transcriptDone`, which was answering about the previous run.
+    expect(stageText(reprocessing)).toBe("Transcribing audio…");
+  });
+
+  it("ticks the transcript again once this run reports the marker", () => {
+    // Nothing about the fix delays a stage that has genuinely finished: the
+    // reported marker still completes the transcript and the speaker pass.
+    const past = { ...reprocessing, reported: PROGRESS_TRANSCRIBED };
+
+    expect(state(past)).toMatchObject({ transcript: "done", speakers: "done" });
+  });
+
+  it("and the summary when the run lands", () => {
+    // READY is the run finishing, and at that point the artifacts really are
+    // this run's. Four ticks, honestly.
+    expect(state({ ...reprocessing, status: "READY" })).toEqual({
+      uploaded: "done",
+      transcript: "done",
+      speakers: "done",
+      summary: "done",
+    });
+  });
+
+  it("leaves a first run exactly as it was", () => {
+    /*
+     * The guard against fixing this by distrusting the artifacts everywhere.
+     * On a first run they are the strongest evidence there is -- segments that
+     * have been fetched and are non-empty cannot have arrived without the
+     * transcription that produced them -- and the module's whole first rule
+     * depends on still trusting them.
+     */
+    const firstRun = { ...reprocessing, attempt: 1 };
+
+    expect(state(firstRun)).toMatchObject({ transcript: "done", speakers: "done" });
+    expect(state({ ...firstRun, attempt: undefined })).toMatchObject({
+      transcript: "done",
+      summary: "done",
+    });
+  });
+
+  it("keeps whatever a failed reprocess had reached", () => {
+    // A failed run is not in flight, so what the meeting holds is what it
+    // holds. Nothing is marked active either -- see the module: a spinner
+    // under an error message is the worst outcome available here.
+    expect(state({ ...reprocessing, status: "FAILED" })).toEqual({
+      uploaded: "done",
+      transcript: "done",
+      speakers: "done",
+      summary: "done",
+    });
+  });
+
+  it("still shows the previous transcript and summary on the page", () => {
+    /*
+     * A DELIBERATE ASYMMETRY, AND THE REASON THE FIX IS THIS NARROW.
+     *
+     * <p>`revealPlan` decides what the *page* shows, and there the old
+     * transcript and summary are the right thing to render: they are the
+     * meeting's current content until the new run replaces them, and blanking
+     * the page for the minutes a reprocess takes would be a worse lie than the
+     * one being fixed. What was false was never their presence -- it was the
+     * claim that this run had produced them.
+     */
+    const plan = revealPlan(reprocessing);
+
+    expect(plan.transcript).toBe("ready");
+    expect(plan.summary).toBe("ready");
+    expect(plan.banner).toBe(true);
+  });
+});

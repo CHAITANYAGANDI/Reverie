@@ -1260,7 +1260,11 @@ public class MeetingService {
                 m.getSourceType(), m.getSourceUrl(), m.getLanguage(),
                 m.getSpokenLanguage(),
                 m.getSummaryTemplate(), m.getContentType(), m.getProjectId(),
-                m.getAudioDeletedAt(), m.getTranscriptDeletedAt(), m.getConsentConfirmedAt());
+                m.getAudioDeletedAt(), m.getTranscriptDeletedAt(), m.getConsentConfirmedAt(),
+                // The run this meeting is on. See the field's note: the progress
+                // card cannot tell a reprocess from a first run without it, and
+                // ticked every stage off the previous run's leftovers.
+                m.getProcessingAttempt());
     }
 
     /**

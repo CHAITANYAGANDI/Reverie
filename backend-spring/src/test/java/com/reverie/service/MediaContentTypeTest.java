@@ -159,6 +159,49 @@ class MediaContentTypeTest {
     }
 
     @Test
+    @DisplayName("carries the run number, which the progress card cannot do without")
+    void carriesTheProcessingAttempt() {
+        /*
+         * WHY THIS FIELD IS ON THE WIRE.
+         *
+         * <p>Reprocess re-runs the pipeline and deliberately leaves the previous
+         * run's transcript and summary in place -- a run that fails must not
+         * have destroyed a good transcript. So while the new run is at 11%, the
+         * old results are still fetchable, and the progress card read them as
+         * this run's: "Uploaded, Transcript, Speakers, Summary", four ticks over
+         * a bar that had barely moved.
+         *
+         * <p>The run number is what tells the two apart, and it is the identity
+         * the server already keys every stale-callback check to (V57). Asserted
+         * here because it is a wire contract: a client that stops receiving it
+         * silently goes back to ticking everything.
+         */
+        Meeting m = new Meeting();
+        m.setId("mtg_re");
+        m.setUserId(USER);
+        m.setTitle("Reprocessed twice");
+        m.setObjectKey("meetings/usr_1/mtg_re/call.mp3");
+        m.setProcessingAttempt(3);
+        when(meetings.findByIdAndUserId("mtg_re", USER)).thenReturn(Optional.of(m));
+
+        assertThat(service.get(USER, "mtg_re").processingAttempt()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("and a meeting that has never been reprocessed says so with 1")
+    void firstRunIsOne() {
+        // The entity's default, and what the client treats as "no reprocess".
+        Meeting m = new Meeting();
+        m.setId("mtg_first");
+        m.setUserId(USER);
+        m.setTitle("Recorded once");
+        m.setObjectKey("meetings/usr_1/mtg_first/call.mp3");
+        when(meetings.findByIdAndUserId("mtg_first", USER)).thenReturn(Optional.of(m));
+
+        assertThat(service.get(USER, "mtg_first").processingAttempt()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("a meeting from before this column still resolves, as audio")
     void legacyMeetingHasNoContentType() {
         Meeting m = new Meeting();

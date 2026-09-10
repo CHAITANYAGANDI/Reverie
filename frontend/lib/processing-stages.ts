@@ -15,7 +15,9 @@
  *    poll. `SUMMARIZING` is the worker saying transcription finished; the
  *    status did not move by itself.
  * 2. **The resource actually being there** — segments, a summary. Strongest
- *    evidence of all, and it overrides everything.
+ *    evidence of all, and it overrides everything — *for the run that made
+ *    it*. See the reprocess note below, which is where that qualifier was
+ *    missing and cost four wrong ticks.
  *
  * ## The one number that is not an estimate
  *
@@ -48,6 +50,50 @@
 import type { MeetingStatus } from "@/lib/types";
 
 /**
+ * Whether the artifacts on screen belong to a run that has already finished.
+ *
+ * <h2>The bug this closes</h2>
+ *
+ * <p>Pressing Reprocess re-runs the pipeline from the audio, and it
+ * deliberately leaves the previous run's transcript and summary exactly where
+ * they were: a new run that fails must not have destroyed a good transcript on
+ * its way in. `MeetingService.reprocess` does one thing about that — it flags
+ * translations stale — and states the principle plainly: from that moment
+ * nobody should read what is on the page as current.
+ *
+ * <p>The stage strip was reading it as current. `hasTranscript` and
+ * `hasSummary` were true because the *old* results were still fetchable, so a
+ * reprocess at 11% showed "✓ Uploaded ✓ Transcript ✓ Speakers ✓ Summary" over
+ * a bar that had barely moved, and the caption read "Preparing transcript…"
+ * while the audio was still being transcribed. Four stages complete on a run
+ * that had produced none of them.
+ *
+ * <p>So the rule at the top of this file keeps its two sources and gains a
+ * qualifier: a resource being there is evidence about the run that produced
+ * it. While a later run is in flight, only what the worker has reported about
+ * *that* run counts — the status and the one reported marker.
+ *
+ * <h2>Why the run number and not a guess</h2>
+ *
+ * <p>"A summary exists but the status is TRANSCRIBING, so this must be a
+ * reprocess" would work most of the time and would be a run boundary invented
+ * on the client. It also misses the case where the previous run failed before
+ * summarising, which leaves a transcript and no summary. `processingAttempt`
+ * is the identity the server already keys every stale-callback check to (V57),
+ * so it is the thing to ask.
+ *
+ * <p>Absent — an older response, or a caller that does not pass it — is
+ * treated as "first run", which is exactly what this module assumed before.
+ */
+function artifactsPredateThisRun(facts: ProcessingFacts): boolean {
+  if (facts.attempt === undefined || facts.attempt <= 1) return false;
+  // A finished or failed run is not "in flight", and what the meeting holds
+  // then really is what it holds: a READY meeting's summary is its summary
+  // whichever run wrote it, and a failed one keeps whatever it reached.
+  return facts.status !== "READY" && facts.status !== "FAILED";
+}
+
+/**
  * The progress the worker reports once the transcript and the speaker pass are
  * both done. Mirrors `PROGRESS_TRANSCRIBED` in ai-service/app/pipeline.py.
  */
@@ -75,6 +121,14 @@ export interface ProcessingFacts {
   hasTranscript?: boolean;
   /** A real summary has been fetched. */
   hasSummary?: boolean;
+  /**
+   * Which run of the pipeline this is: `MeetingResponse.processingAttempt`.
+   *
+   * <p>Anything above 1 while the meeting is still processing means the
+   * transcript and summary above are the previous run's, and neither is
+   * evidence about this one. See {@link artifactsPredateThisRun}.
+   */
+  attempt?: number;
 }
 
 /**
@@ -114,7 +168,9 @@ function reachedStatus(status: MeetingStatus, mark: MeetingStatus): boolean {
  * Reverie said rather than things inferred from a clock.
  */
 function transcriptDone(facts: ProcessingFacts): boolean {
-  if (facts.hasTranscript) return true;
+  // The transcript on screen is the last run's, and this run has not written
+  // one yet. Everything below is about what the worker has said this time.
+  if (facts.hasTranscript && !artifactsPredateThisRun(facts)) return true;
   if (reachedStatus(facts.status, "SUMMARIZING")) return true;
   return (
     facts.status === "TRANSCRIBING" &&
@@ -139,7 +195,8 @@ function transcriptDone(facts: ProcessingFacts): boolean {
  * arriving.
  */
 function summaryDone(facts: ProcessingFacts): boolean {
-  return Boolean(facts.hasSummary) || facts.status === "READY";
+  if (facts.status === "READY") return true;
+  return Boolean(facts.hasSummary) && !artifactsPredateThisRun(facts);
 }
 
 /**

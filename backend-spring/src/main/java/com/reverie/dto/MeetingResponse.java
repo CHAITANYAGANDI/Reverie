@@ -56,7 +56,34 @@ public record MeetingResponse(
         Instant transcriptDeletedAt,
 
         /** When the person recording confirmed they had told the room, or null. */
-        Instant consentConfirmedAt
+        Instant consentConfirmedAt,
+
+        /**
+         * Which run of the pipeline this meeting is on. 1 for a meeting that has
+         * never been reprocessed; incremented by {@code MeetingService.reprocess}.
+         *
+         * <h2>Why the client needs it</h2>
+         *
+         * <p>Because a reprocess leaves the previous run's transcript and
+         * summary exactly where they were -- deliberately, since a run that
+         * fails must not have destroyed a good transcript on its way in. So
+         * while the new run is at 11%, the old artifacts are still there to be
+         * fetched, and the progress card read them as evidence that *this* run
+         * had produced them: "Uploaded, Transcript, Speakers, Summary", all
+         * four ticked, above a bar that had barely moved.
+         *
+         * <p>This is the same fact {@code translations.markStaleByMeetingId}
+         * acts on at the other end of that method, and for the same reason
+         * stated there: from the moment a reprocess is requested, nobody should
+         * read what is on the page as current.
+         *
+         * <p>Sent rather than derived because it is already the identity every
+         * stale-callback check in the system uses (V57). A client guessing at
+         * it -- "a summary exists but the status is TRANSCRIBING, so this must
+         * be a reprocess" -- would be inferring a run boundary the server
+         * already knows.
+         */
+        int processingAttempt
 ) {
     public static MeetingResponse from(Meeting m) {
         return new MeetingResponse(
@@ -77,7 +104,8 @@ public record MeetingResponse(
                 m.getProjectId(),
                 m.getAudioDeletedAt(),
                 m.getTranscriptDeletedAt(),
-                m.getConsentConfirmedAt()
+                m.getConsentConfirmedAt(),
+                m.getProcessingAttempt()
         );
     }
 }
