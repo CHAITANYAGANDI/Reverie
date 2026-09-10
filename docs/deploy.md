@@ -113,7 +113,9 @@ redeploy of the existing build silently keeps serving the old bundle pointing at
 the old API URL.
 
 **`CLERK_SECRET_KEY` is the one that takes the whole site down.** It is the only
-non-`NEXT_PUBLIC_` variable the frontend needs — set it **in Vercel** — and
+non-`NEXT_PUBLIC_` variable the frontend needs — set it **in Vercel**, and the
+backend needs the same value on Render as well, where its absence refuses the
+deploy outright (section 4) — and
 `clerkMiddleware` reads it from the environment *implicitly*: there is no
 `process.env.CLERK_SECRET_KEY` anywhere in the source to grep for. Without it the
 middleware throws on every request that matches, including the public marketing
@@ -450,9 +452,42 @@ Where each value goes:
 | Variable | Set in | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | **Vercel** | build-time — inlined into the bundle |
-| `CLERK_SECRET_KEY` | **Vercel** | runtime only, server-side; never `NEXT_PUBLIC_` |
+| `CLERK_SECRET_KEY` | **Vercel _and_ Render** (`reverie-backend`) | the same value in both; runtime only, server-side; never `NEXT_PUBLIC_` |
 | `CLERK_ISSUER` | **Render** (`reverie-backend`) | |
 | `CLERK_JWKS_URL` | **Render** (`reverie-backend`) | |
+| `FREE_TIER_IDENTITY_HMAC_SECRET` | **Render** (`reverie-backend`) | `render.yaml` generates it once; back it up with the database |
+
+**`CLERK_SECRET_KEY` now goes in two places, and the backend one is `sync: false`
+— so Render leaves it blank and the service refuses to start until you paste it
+in.** The message is unambiguous about which variable it is, and this is what it
+looks like:
+
+```
+Caused by: java.lang.IllegalStateException: This deployment is running with the
+`production` profile but still holds 1 development setting(s). Fix these and redeploy:
+  - CLERK_SECRET_KEY is not set. The lifetime free allowance needs a verified
+    email from Clerk's Backend API when the session token has no email claim ...
+```
+
+It is the same secret Vercel already holds, from the same Clerk instance as
+`CLERK_ISSUER` and `CLERK_JWKS_URL` — `sk_test_…` for a development instance,
+`sk_live_…` for a production one. A key from a *different* instance is worse than
+none: tokens still verify against the JWKS, so signing in works, and every
+Backend API lookup answers 401 — which resolves to no identity, so nobody is
+granted a free allowance and `DeploymentCheck` has nothing left to complain
+about.
+
+**`FREE_TIER_IDENTITY_HMAC_SECRET` is `generateValue: true`,** so Render makes it
+on first deploy and keeps it. That is the requirement, not a convenience: every
+identity hash in `free_tier_identities` was computed with that exact value, so a
+new one makes every returning person look new and hands the whole estate another
+100 minutes and 3 imports — silently, because nothing breaks. **Back it up with
+the database.** Restoring one without the other resets everybody's allowance.
+
+Both are required in clerk mode rather than in production alone. Outside the
+production profile `ClerkIdentityCheck` refuses to start for the same two
+values, because a clerk-mode deployment cannot enforce the allowance without
+them anywhere — a local stack included. `REVERIE_AUTH_MODE=dev` needs neither.
 
 Add the production domain to the Clerk instance once Vercel has issued it.
 
@@ -461,6 +496,14 @@ carries no email, and without it every Clerk-authenticated user lands with a
 null address — which is the address shown on their own profile page, **and the
 address every queued message is delivered to**. No longer cosmetic: seven
 messages now depend on it — see section 4b below.
+
+The claim is no longer what the **free allowance** depends on, though, and that
+is deliberate: an anti-abuse guarantee resting on whether somebody remembered to
+edit a JWT template is not a guarantee. With `CLERK_SECRET_KEY` set, the backend
+resolves the verified primary address from Clerk's Backend API when the token
+carries no claim, and re-reads it uncached immediately before an account is
+deleted. The claim is still the faster path and still worth adding — it saves a
+round trip on provisioning — but nothing depends on it alone.
 
 ---
 
