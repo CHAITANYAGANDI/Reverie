@@ -34,6 +34,11 @@
  *
  * <p>Each switch saves on its own. A section of five toggles behind one Save
  * button is a section where flipping one thing and leaving loses it.
+ *
+ * <p>And each saves *optimistically* — see `updatePreferences` in lib/api. The
+ * switches used to wait for the PATCH and then for the refetch it invalidated
+ * before moving at all, with all five disabled meanwhile, so one click locked
+ * the section and looked like nothing had happened.
  */
 
 import { toast } from "sonner";
@@ -43,7 +48,21 @@ import { settingsError } from "@/components/settings/shared";
 
 export function EmailTab() {
   const prefs = useGetPreferencesQuery();
-  const [update, { isLoading }] = useUpdatePreferencesMutation();
+  /*
+   * NO `isLoading` HERE ANY MORE, and that is the second half of the fix.
+   *
+   * <p>It was `disabled={isLoading}` on every switch, so saving any one of the
+   * five disabled all five for the length of the request. Combined with a
+   * `checked` that only moved once the server answered, a single click locked
+   * the whole section and appeared to do nothing — which is what "taking a lot
+   * of time to check and uncheck" was.
+   *
+   * <p>Nothing needs disabling now: the update is optimistic, so the switch
+   * moves immediately and reflects the intent even mid-flight, and toggling
+   * twice quickly sends two PATCHes whose last value is the one that sticks.
+   * See `updatePreferences` in lib/api.
+   */
+  const [update] = useUpdatePreferencesMutation();
 
   async function set(field: EmailSwitch, value: boolean) {
     try {
@@ -95,7 +114,6 @@ export function EmailTab() {
                 <input
                   type="checkbox"
                   checked={prefs.data![row.field]}
-                  disabled={isLoading}
                   onChange={(e) => void set(row.field, e.target.checked)}
                   className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
                 />

@@ -44,7 +44,7 @@
  *
  * <h2>Two filters, because two of the four are real</h2>
  *
- * <p>The reference draws four chips: Any time, Every folder, Any kind, Any
+ * <p>The reference draws four chips: Any time, a folder scope, Any kind, Any
  * voice. Dates go on the wire. Folders turned out to be real as well, just not
  * as a parameter: `GET /projects/{id}/meetings` and `GET /projects/unfiled`
  * have always existed, so narrowing to a folder is a different question rather
@@ -86,7 +86,7 @@ import { Group } from "@/components/v2/group";
 import { FolderMargin } from "@/components/v2/library/folder-margin";
 import {
   FolderFilter,
-  EVERY_FOLDER,
+  ALL_MEETINGS,
   scopeLabel,
   type FolderScope,
 } from "@/components/v2/library/folder-filter";
@@ -137,7 +137,7 @@ export default function LibraryPage() {
    * <p>So this resets to the whole archive on every visit, which is also the
    * safer default for the page whose title is "Every meeting".
    */
-  const [scope, setScope] = React.useState<FolderScope>(EVERY_FOLDER);
+  const [scope, setScope] = React.useState<FolderScope>(ALL_MEETINGS);
 
   const list = useLibraryList({ when, scope, ready: whenPref.ready });
   const { state, groups } = list;
@@ -190,7 +190,7 @@ export default function LibraryPage() {
               dateLabel={when.label}
               scope={scope}
               onClearDate={() => setWhen(ANY_TIME)}
-              onClearScope={() => setScope(EVERY_FOLDER)}
+              onClearScope={() => setScope(ALL_MEETINGS)}
             />
           ) : (
             <div className="space-y-7">
@@ -350,7 +350,7 @@ function EmptyLibrary({
           )}
           {scoped && (
             <Button variant="outline" size="sm" onClick={onClearScope}>
-              Every folder
+              All meetings
             </Button>
           )}
         </div>

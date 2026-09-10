@@ -14,6 +14,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { chatError } from "@/lib/chat-error";
 import {
   ChevronDown,
   Maximize2,
@@ -312,8 +313,10 @@ function Row({
     }
     try {
       await onRename(title);
-    } catch {
-      toast.error("Couldn't rename that conversation.");
+    } catch (err) {
+      // Same reasoning as the delete handler below: the server's message where
+      // it sent one, this sentence where it did not.
+      toast.error(chatError(err, "Couldn't rename that conversation."));
     }
   }
 
@@ -388,8 +391,23 @@ function Row({
           onClick={async () => {
             try {
               await onDelete();
-            } catch {
-              toast.error("Couldn't delete that conversation.");
+            } catch (err) {
+              /*
+               * THE SERVER'S REASON, NOT A SHRUG.
+               *
+               * <p>This was `catch { toast.error(…) }`, which threw the error
+               * away. When somebody reported this toast appearing on `/ask`,
+               * that sentence was all there was to go on: both surfaces call
+               * the same `remove` with the same scope on the same endpoint, so
+               * the failure is the server's answer — and the interface had
+               * discarded it.
+               *
+               * <p>`chatError` falls back to the same sentence when the
+               * response carries no message, so nothing gets worse; when it
+               * carries one, the reader is told and so is whoever reads the
+               * next bug report.
+               */
+              toast.error(chatError(err, "Couldn't delete that conversation."));
             }
           }}
         >

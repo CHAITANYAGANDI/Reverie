@@ -313,15 +313,15 @@ describe("the filters", () => {
     }
   });
 
-  it("offers every folder, the unfiled, and each real folder by name", async () => {
+  it("offers the whole archive, the unfiled, and each real folder by name", async () => {
     folders = [aFolder({ id: "p1", name: "AWD" }), aFolder({ id: "p2", name: "Hiring" })];
     render(<LibraryPage />);
     await screen.findByText("Tuesday design review");
 
-    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: /All meetings/ }));
 
-    expect(await screen.findByRole("menuitem", { name: /Every folder/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Not in a folder/ })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /All meetings/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Unfiled/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /AWD/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Hiring/ })).toBeInTheDocument();
   });
@@ -341,7 +341,7 @@ describe("the filters", () => {
     render(<LibraryPage />);
     await screen.findByText("Tuesday design review");
 
-    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: /All meetings/ }));
     await userEvent.click(await screen.findByRole("menuitem", { name: /AWD/ }));
 
     expect(scoped.folderId).toBe("p1");
@@ -349,13 +349,13 @@ describe("the filters", () => {
     expect(query.last?.unfiled).toBeUndefined();
   });
 
-  it("asks the unfiled endpoint for Not in a folder, and never the flag", async () => {
+  it("asks the unfiled endpoint for Unfiled, and never the flag", async () => {
     unfiledRows = [aMeeting({ id: "mtg_loose", title: "Never filed" })];
     render(<LibraryPage />);
     await screen.findByText("Tuesday design review");
 
-    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: /Not in a folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: /All meetings/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Unfiled/ }));
 
     expect(scoped.unfiledAsked).toBe(true);
     expect(await screen.findByText("Never filed")).toBeInTheDocument();
@@ -369,12 +369,12 @@ describe("the filters", () => {
     render(<LibraryPage />);
     await screen.findByText("Tuesday design review");
 
-    await userEvent.click(screen.getByRole("button", { name: /Every folder/ }));
+    await userEvent.click(screen.getByRole("button", { name: /All meetings/ }));
     await userEvent.click(await screen.findByRole("menuitem", { name: /Hiring/ }));
 
     expect(await screen.findByText(/Nothing in Hiring/)).toBeInTheDocument();
     expect(screen.queryByText("Nothing here yet")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Every folder" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All meetings" })).toBeInTheDocument();
   });
 });
 

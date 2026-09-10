@@ -312,9 +312,49 @@ export const api = createApi({
       providesTags: [{ type: "Preferences", id: "ME" }],
     }),
 
+    /**
+     * A preference, changed on the click rather than on the round trip.
+     *
+     * <h2>The bug this fixes</h2>
+     *
+     * <p>The email switches took "a lot of time to check and uncheck", and the
+     * reason is that their `checked` came straight from `getPreferences`. So a
+     * click did nothing visible until the PATCH resolved *and* the invalidated
+     * query came back — two round trips before the box moved. On a slow
+     * connection that is seconds of a control that appears not to work, and the
+     * natural response is to click it again.
+     *
+     * <p>`onQueryStarted` patches the cached preferences before the request
+     * leaves, so the switch moves at once and the server confirms afterwards.
+     * `patch.undo()` on failure puts it back, which is the half that makes an
+     * optimistic update honest rather than a lie that usually holds.
+     *
+     * <p>Here rather than in the component, because it is the *cache* that was
+     * stale, not one checkbox: anything else reading a preference gets the same
+     * correction, and a component holding its own mirrored copy would be a
+     * second source of truth to keep in step.
+     *
+     * <p>`invalidatesTags` stays. The optimistic patch is a guess about the
+     * fields sent; the refetch is what makes the cache the server's answer
+     * again, including any field the server computed rather than accepted.
+     */
     updatePreferences: builder.mutation<PreferencesResponse, PreferencesUpdateRequest>({
       query: (body) => ({ url: "/preferences", method: "PATCH", body }),
       invalidatesTags: [{ type: "Preferences", id: "ME" }],
+      async onQueryStarted(body, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          api.util.updateQueryData("getPreferences", undefined, (draft) => {
+            Object.assign(draft, body);
+          }),
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          /* The server refused it. Put the control back where it was — the
+             component's own catch is what tells the reader why. */
+          patch.undo();
+        }
+      },
     }),
 
     getTranscript: builder.query<TranscriptResponse, string>({
