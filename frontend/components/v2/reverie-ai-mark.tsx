@@ -1,15 +1,21 @@
 /*
  * THE REVERIE AI MARK — the approved orb, as the product draws it.
  *
- * <h2>TWO IDENTITIES, AND THEY ARE NOT INTERCHANGEABLE</h2>
+ * <h2>TWO IDENTITIES, AND ONE PLACE THEY NOW MEET</h2>
  *
  *     BrandMark        the lens          "which product am I using?"
  *     ReverieAiMark    the lit orb       "where is Reverie's assistant?"
  *
- * <p>The first belongs in the band's corner, the auth shell and the footer; the
- * landing hero has its own, `landing/hero-brand`. The second belongs on the
- * controls that summon the assistant and nowhere else — see the placement note
- * at the foot of this file, which is the part that is easy to get wrong later.
+ * <p>The first belongs in the band's corner, the auth shell and the footer. The
+ * second belongs on the controls that summon the assistant — and, since the
+ * product owner asked for it, on the landing hero, which is the one placement
+ * that is not an invocation. `landing/hero-brand` draws the same file directly
+ * rather than through this component, because it needs a responsive `clamp`
+ * where every other placement is a fixed size.
+ *
+ * <p>The placement note at the foot of this file is the part that is easy to
+ * get wrong later, and it records the argument the hero overturned rather than
+ * pretending it was never made.
  *
  * <h2>It is the artwork, not a drawing of the artwork</h2>
  *
@@ -202,6 +208,13 @@ export function ReverieAiMark({
  * that the chat is not ready yet (40). Every one of those replaced a `Sparkles`
  * — the glyph every product in this category spends on the same claim, which
  * says nothing about whose assistant it is.
+ *
+ * <p>AND AN EIGHTH THAT IS NOT AN INVOCATION: the landing hero, at about 320px
+ * of sphere. That was argued against here and in app/page.test.tsx — the case
+ * being that the orb answers "where is the assistant?", so leading a front page
+ * with it claims the product *is* an assistant rather than a record of what was
+ * said. The product owner overruled it, which is theirs to do; the argument is
+ * left standing so that the next person to reach for it knows it was heard.
  *
  * <p>It does not go beside a generated sentence, on a citation, in a transcript
  * row, next to an action item, or on Search. An identity mark that appears

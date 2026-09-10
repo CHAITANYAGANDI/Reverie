@@ -1247,29 +1247,30 @@ describe("Ask", () => {
     expect(screen.getAllByRole("button", { name: AI_BUTTON })).toHaveLength(1);
   });
 
-  it("carries the AI identity rather than the product's", () => {
+  it("carries the AI identity in the accent rather than in a mark", () => {
     /*
      * The same rule as Home's launcher, and the two are deliberately the same
-     * control drawn twice: the orb answers "where is Reverie's assistant?",
-     * and the mark in the window's corner answers "which product is this?".
-     * This was a 16px `BrandMark`, which said the second thing in a place that
-     * has to say the first.
+     * control drawn twice. It has held three marks — a `Sparkles`, a 16px
+     * `BrandMark` which said "which product is this?" in a place that has to
+     * say "where is the assistant?", and the approved 28px orb — and now none.
+     * Withdrawn on request, with the accent moved onto the label.
+     *
+     * <p>`--brand-text` is the palette's azure-as-a-word, and azure in this
+     * product already means "Reverie is doing this". So the colour makes the
+     * orb's statement in type. See the fuller note on Home's launcher.
      */
     render(<MeetingDetailPage />);
 
     const ask = screen.getByRole("button", { name: AI_BUTTON });
-    const orb = ask.querySelector("[data-ai-mark]") as HTMLElement;
+    expect(ask.querySelector("[data-ai-mark]")).toBeNull();
+    expect(ask.querySelectorAll("img")).toHaveLength(0);
 
-    expect(orb).not.toBeNull();
-    // The approved render, at 28px of sphere in a 34px element, and decorative:
-    // the button is named. The box is an inline style so `Button`'s own
-    // `[&_svg]:size-4` and its relatives cannot shrink it.
-    expect(orb.querySelector("img")!.getAttribute("src")).toBe(
-      "/brand/reverie-ai-orb-mark.webp",
-    );
-    expect(orb.style.width).toBe("34px");
-    expect(orb.getAttribute("aria-hidden")).toBe("true");
-    expect(ask.className).toContain("group");
+    const word = [...ask.querySelectorAll("span")].find(
+      (el) => el.textContent === "Ask Reverie",
+    )!;
+    expect(word).toBeDefined();
+    expect(word.className).toContain("text-brand-text");
+    expect(ask.className).not.toMatch(/bg-brand/);
   });
 });
 

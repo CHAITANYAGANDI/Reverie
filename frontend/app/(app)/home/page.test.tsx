@@ -1022,84 +1022,66 @@ describe("the shape of Now", () => {
     expect(launcher).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("draws one glyph in the launcher and no keyboard badge", async () => {
+  it("draws no glyph in the launcher and no keyboard badge", async () => {
     /*
-     * One mark. It was a `Waypoints`, then the `Sparkles` every product in the
-     * category spends on the same claim, then the Reverie mark — and it is now
-     * the Reverie **AI** mark, which is the distinction the test below is
-     * about. The reference put a mark at each end of this control and a `⌘ J`
-     * keycap inside it: two marks read as a logo pasted twice, and a keycap
+     * NO MARK AT ALL, which is the fourth answer this control has had. It was a
+     * `Waypoints`, then the `Sparkles` every product in the category spends on
+     * the same claim, then the Reverie lens, then the approved AI orb — and it
+     * is now the words alone, in the accent. Withdrawn on request; the colour
+     * carries what the mark was carrying, and `--brand-text` in this product
+     * already means "Reverie is doing this".
+     *
+     * <p>The keycap half is unchanged and is its own rule: the reference put a
+     * mark at each end of this control and a `⌘ J` inside it, and a keycap
      * promises a shortcut that does not exist.
      */
     const { container } = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
     const launcher = screen.getByRole("button", { name: LAUNCHER });
-    /* One mark, and it is an image rather than an `svg` now: the orb is the
-       approved render, not a drawing of it. See the note in
-       components/v2/ai-mark-asset for how that was decided. */
-    expect(launcher.querySelectorAll("img")).toHaveLength(1);
+    expect(launcher.querySelectorAll("img")).toHaveLength(0);
     expect(launcher.querySelectorAll("svg")).toHaveLength(0);
     expect(launcher.querySelector("kbd")).toBeNull();
     expect(container.querySelector("kbd")).toBeNull();
   });
 
-  it("opens Ask under the AI identity, not the product's", async () => {
+  it("says it is an AI surface in the accent, not with a mark", async () => {
     /*
-     * THE RULE THIS WHOLE SURFACE TURNS ON.
+     * INVERTED DELIBERATELY, AND THE RULE IT HELD IS WORTH KEEPING IN VIEW.
      *
      *     the Reverie mark    which product am I using
      *     the Reverie AI orb  where is Reverie's assistant
      *
-     * <p>This control is the second question, so it carries the orb. It was
-     * an 18px `BrandMark` — the same mark as the corner of the window, at a
-     * size where the waveform inside it was three grey pixels.
+     * <p>This control is the second question, so it carried the orb — and
+     * before that an 18px `BrandMark`, which said the first thing in a place
+     * that has to say the second. The orb is withdrawn on request and the
+     * accent moved onto the label.
      *
-     * <p>Both halves are asserted, because the failure mode is reaching for
-     * the nearest mark: the orb is present *and* the corner of the window
-     * still is not wearing it. Only the AI mark answers to `[data-ai-mark]`.
+     * <p>Which does not abandon the distinction, it restates it. The V2
+     * palette's own rule is that azure means "Reverie noticed this, or Reverie
+     * is doing this" — the mark, an AI surface, a citation, the focus ring —
+     * and it is why the primary button in this product is ink. So an azure
+     * `Ask Reverie` is the same claim the orb was making, and it is the only
+     * azure word on Home.
+     *
+     * <p>`--brand-text` specifically, not `--brand`: the palette documents the
+     * first as azure-as-a-word at 8.59:1 and the second as the tier for fills
+     * and marks at 5.98. A 15px label belongs in the text tier.
      */
     render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
 
     const launcher = screen.getByRole("button", { name: LAUNCHER });
-    const orb = launcher.querySelector("[data-ai-mark]") as HTMLElement;
-    expect(orb).not.toBeNull();
+    expect(launcher.querySelector("[data-ai-mark]")).toBeNull();
 
-    // The approved artwork, not a reconstruction of it.
-    expect(orb.querySelector("img")!.getAttribute("src")).toBe(
-      "/brand/reverie-ai-orb-mark.webp",
-    );
-    /* 30px of painted sphere, in a 36px element — an inline style, because
-       `Button`'s own `[&_svg]:size-4` and its relatives are exactly what took
-       this mark down to 13px once already. Not 18: the reported problem was
-       that this mark was a favicon beside a 26px greeting. */
-    expect(orb.style.width).toBe("36px");
-    // Decorative inside a labelled button, or a reader hears the control twice.
-    expect(orb.getAttribute("aria-hidden")).toBe("true");
-    // And it responds to the pointer, which the header's and the resting one
-    // deliberately do not.
-    expect(launcher.className).toContain("group");
-    expect(orb.className).toContain("group-hover:scale-[1.055]");
-  });
-
-  it("marks the orb while the panel it opens is on screen", async () => {
-    // The same fact `aria-expanded` reports, said in the mark: a wider glow
-    // and a full-brightness waveform. A state, not a loop — nothing here
-    // animates for ever in the corner of a page.
-    render(<HomePage />);
-    await screen.findByRole("heading", { level: 1 });
-
-    const launcher = screen.getByRole("button", { name: LAUNCHER });
-    /* The halo, which is a span behind the image — never the image. Tinting
-       the artwork is the one thing the identity rules forbid, so the open
-       state is carried by the only thing that may change. */
-    const halo = () => launcher.querySelector(".v2-ai-halo")!.getAttribute("class");
-
-    expect(halo()).toContain("opacity-0");
-    await userEvent.click(launcher);
-    expect(halo()).toContain("opacity-50");
-    expect(launcher.innerHTML).not.toMatch(/animate-/);
+    const word = [...launcher.querySelectorAll("span")].find(
+      (el) => el.textContent === "Ask Reverie",
+    )!;
+    expect(word).toBeDefined();
+    expect(word.className).toContain("text-brand-text");
+    // The accent is on the word, not on the button: a filled azure control
+    // would be the loudest thing on the page and the palette forbids it.
+    expect(launcher.className).not.toMatch(/bg-brand/);
   });
 
   it("keeps your own list on the page rather than behind a tab", async () => {

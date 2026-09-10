@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { AskHeader } from "@/components/chat/ask-header";
 
 describe("AskHeader", () => {
-  it("says what the panel is with the mark, and not in words", () => {
+  it("names the panel without drawing anything", () => {
     const { container } = render(<AskHeader />);
 
     /*
@@ -22,33 +22,28 @@ describe("AskHeader", () => {
     expect(screen.queryByText("Ask Reverie")).not.toBeInTheDocument();
 
     /*
-     * ONE MARK, AND IT IS THE AI ORB — named, which is the part that changed.
+     * NO MARK AT ALL NOW, AND THE NAME SURVIVES IT.
      *
-     * <p>It was a 16px `BrandMark`, `aria-hidden`. Two things were wrong with
-     * that. It was the *product's* mark, which answers "which product am I
-     * using?" in a header that has to answer "whose panel is this?"; and it
-     * was hidden from a reader, in the one place in the app where this mark is
-     * the only identity there is. With the words gone, hiding it left a header
-     * that named nothing at all.
+     * <p>This row has held three things in three passes: `[mark] Ask Reverie`
+     * in words, then a 16px `BrandMark`, then a 26px AI orb with a title. All
+     * three are gone — the words because the panel's name is the least useful
+     * thing in a header somebody opened deliberately, and the marks on
+     * request.
      *
-     * <p>So it is the orb, at 26px, and it carries a title. Everywhere else
-     * this mark sits inside a labelled button and stays `aria-hidden`, or the
-     * control gets announced twice.
+     * <p>What is asserted instead is the part that was load-bearing. The side
+     * pane has no `aria-label` of its own and this row has no heading, so the
+     * orb's title was the only thing naming the panel; without a replacement a
+     * screen reader reaches a region of unlabelled controls. So the name is
+     * `sr-only` text: invisible, and exactly as findable as it was.
      */
-    const mark = container.querySelector("[data-ai-mark]") as HTMLElement;
-    expect(mark).not.toBeNull();
-    /* Named as the image's own alt, which is how a logotype is named — and the
-       wrapper drops its `aria-hidden` so the name reaches a reader. Everywhere
-       else this mark sits inside a labelled button and stays hidden, or the
-       control gets announced twice. */
-    expect(mark.getAttribute("aria-hidden")).toBeNull();
-    const img = mark.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe("Reverie AI");
-    expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
-    // 26px of sphere in a 31px element.
-    expect(mark.style.width).toBe("31px");
-    // Not a control. Nothing here is hoverable, so the orb does not lean in.
-    expect(mark.className).not.toMatch(/group-hover/);
+    expect(container.querySelector("[data-ai-mark]")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+
+    const name = screen.getByText("Reverie AI");
+    expect(name.className).toContain("sr-only");
+    // Once. Two copies of a panel's name is a panel announced twice.
+    expect(screen.getAllByText("Reverie AI")).toHaveLength(1);
   });
 
   it("offers a way out where there is one, and none where there is not", async () => {

@@ -25,17 +25,19 @@ import LandingPage from "@/app/page";
  */
 
 /**
- * The hero identity, as the words a reader is given.
+ * The hero's tagline, exactly.
  *
- * <p>The wordmark and the tagline are pixels inside the approved render, so the
- * artwork is decorative — `alt=""`, `aria-hidden` — and this is live `sr-only`
- * text beside it. Which is a change from a descriptive `alt`: an alt is a
- * substitute for a picture, and these words are the product's name.
+ * <p>This has been three things, and the round trip is the point. It was live
+ * type; then pixels inside the approved lockup, reachable only as the image's
+ * `alt`; then `sr-only` text beside a decorative image. It is live type again,
+ * because the hero's artwork is the AI orb now and the orb carries no words —
+ * so the objection that killed the typographic version (the lockup's `Reverie`
+ * is set in a face this product does not ship) no longer applies.
  *
- * <p>Title case, exactly as specified. Several tests name it, which is exactly
- * why it is one constant.
+ * <p>Letterspaced caps, exactly as specified. Several tests name it, which is
+ * exactly why it is one constant.
  */
-const HERO_IDENTITY = "Reverie — Conversational Intelligence";
+const HERO_TAGLINE = "CONVERSATIONAL INTELLIGENCE";
 
 describe("what it promises", () => {
   it("quotes the allowance the server actually enforces", () => {
@@ -247,24 +249,30 @@ describe("the hero", () => {
      * approved render carries both inside the picture — the artwork's `Reverie`
      * is set in a face this product does not ship.
      *
-     * <p>Now it is `sr-only` text beside a decorative image, which is the right
-     * answer and was worth the two moves to reach. An `alt` is a *substitute*
-     * for a picture; the product's name is not a description of a picture. As
-     * live text it is in the document rather than in an attribute.
+     * <p>Then `sr-only` text beside a decorative image. And now visible type
+     * again: the hero's artwork is the AI orb, which carries no words, so the
+     * wordmark and the tagline are set in the product's own face under it.
      *
-     * <p>And exactly once: a descriptive `alt` *and* identical `sr-only` text
-     * would announce the identity twice, which is worse than either alone.
+     * <p>Which is where this started, and the reason it is right this time is
+     * that the objection has gone rather than been overruled. Setting the
+     * *lockup's* `Reverie` in markup meant imitating a typeface this product
+     * does not ship; setting the product's name beside an orb is just the name.
+     *
+     * <p>Exactly once, and visibly. There is no `sr-only` copy any more — with
+     * the words on the page it would announce the identity twice.
      */
     const { container } = render(<LandingPage />);
 
-    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
+    const tagline = screen.getByText(HERO_TAGLINE);
+    expect(tagline).toBeInTheDocument();
+    expect(tagline.className).not.toContain("sr-only");
+    expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
+    expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
 
     const art = container.querySelector("main > section img")!;
-    expect(art.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
+    expect(art.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
     expect(art.getAttribute("alt")).toBe("");
     expect(art.getAttribute("aria-hidden")).toBe("true");
-    // Not in the accessibility tree at all, so there is nothing to say twice.
-    expect(screen.queryByRole("img", { name: /conversational/i })).toBeNull();
   });
 
   it.each([
@@ -306,34 +314,49 @@ describe("the hero", () => {
     expect(mark.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("is the product's identity throughout, and never the AI orb", () => {
+  it("leads with the AI orb, and keeps the lens for the functional lockups", () => {
     /*
-     * THE ABSENCE THAT MATTERS MOST, because this page is where a marketing
-     * instinct would put the prettier mark.
+     * INVERTED DELIBERATELY, AND IT WAS THE STRONGEST RULE IN THIS FILE.
      *
-     * <p>Reverie has two identities. The lens answers "which product is this?"
-     * and is the whole of the landing page's opening statement; the orb answers
-     * "where is Reverie's assistant?" and lives on the controls that open Ask,
-     * inside the application. An orb in this hero would say the product *is*
-     * an assistant, which is a different claim from the one the headline makes.
+     * <p>This asserted the opposite: that the orb appears nowhere on the
+     * landing page. The argument was that Reverie has two identities — the lens
+     * answers "which product is this?" and the orb answers "where is Reverie's
+     * assistant?" — and that leading with the orb claims the product *is* an
+     * assistant, which is a different claim from the one the headline makes.
      *
-     * <p>Asserted across the whole document rather than just the hero: the nav,
-     * the three showcases and the footer all carry branding, and any of them
-     * is a place the wrong mark could arrive later.
+     * <p>That argument is recorded here rather than deleted, because it is a
+     * real one and somebody will reach for it again. It was overruled by the
+     * product owner, who asked for the orb in the hero directly. It was a
+     * design position, not a constraint, and this test now holds the position
+     * that replaced it.
+     *
+     * <p>WHAT STILL HOLDS, and it has narrowed to one place: the FOOTER is the
+     * vector lens with its word beside it. The nav's became the orb too, on
+     * request, because a lens in the bar and an orb in the hero forty pixels
+     * below it are two identities on one screen.
+     *
+     * <p>Which leaves the footer as the only lens on the page, and that is
+     * worth keeping rather than tidying away: `Lockup` is the *functional*
+     * identity — the thing that is a link home in the application's band, in
+     * the auth shell and on the SSO screen — and the day this page has no lens
+     * on it at all is the day somebody swaps the band's too.
      */
     const { container } = render(<LandingPage />);
 
-    expect(container.querySelectorAll("[data-ai-mark]")).toHaveLength(0);
-    /* And the identity that is here is the *product's* approved render, which
-       is a different file from the orb — `reverie-main-hero.webp` against
-       `reverie-ai-orb-mark.webp`. Asserted by src, because with both identities
-       now being images the filename is the distinction. */
-    const hero = container.querySelector("main > section")!;
-    const mark = hero.querySelector("img")!;
-    expect(mark.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
-    for (const img of container.querySelectorAll("img")) {
-      expect(img.getAttribute("src")).not.toMatch(/ai-orb/);
+    // Two orbs: the bar's and the hero's, both the approved file.
+    const orbs = [...container.querySelectorAll("img")];
+    expect(orbs).toHaveLength(2);
+    for (const img of orbs) {
+      expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
     }
+    const hero = container.querySelector("main > section")!;
+    expect(hero.querySelector("img")).not.toBeNull();
+
+    // The footer's, unchanged: `svg`, named, and not the orb.
+    const lockups = screen.getAllByRole("img", { name: "Reverie" });
+    const lens = lockups.filter((el) => el.tagName.toLowerCase() === "svg");
+    expect(lens).toHaveLength(1);
+    expect(lens[0].closest("footer")).not.toBeNull();
   });
 
   it("keeps the headline exactly, on its two authored lines", () => {
@@ -354,15 +377,23 @@ describe("the hero", () => {
      */
     const { container } = render(<LandingPage />);
 
+    /* CHANGED: the bar is the orb alone now. It held the lens with `Reverie`
+       beside it, and the word went on request — the hero forty pixels below
+       says the name in 62px type, so the bar was naming the product directly
+       above the place the product names itself. The mark is not a link here
+       either (you are already home), so it had no label to carry. */
     const header = container.querySelector("header")!;
-    expect(header.querySelector('svg[aria-label="Reverie"]')).not.toBeNull();
-    expect(header.textContent).toContain("Reverie");
+    expect(header.querySelector("[data-ai-mark]")).not.toBeNull();
+    expect(header.querySelector("svg")).toBeNull();
+    expect(header.textContent).not.toMatch(/\bReverie\b/);
     expect(header.textContent).not.toMatch(/CONVERSATIONAL/i);
-    /* The tagline appears exactly once on the page, as the hero's `sr-only`
-       identity. The nav's lockup is still the vector lens with live type beside
-       it and must never carry a tagline of its own. */
-    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
-    expect(header.textContent).not.toMatch(/Conversational Intelligence/i);
+    // Named, because with the word gone the mark is the bar's whole identity.
+    expect(header.querySelector("img")!.getAttribute("alt")).toBe("Reverie");
+    /* The tagline appears exactly once on the page, in the hero. The nav's
+       lockup is the vector lens with live type beside it and must never carry a
+       tagline of its own. */
+    expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
+    expect(header.textContent).not.toMatch(/CONVERSATIONAL/i);
   });
 
   it("labels the identity once per lockup and never twice in one", () => {
@@ -374,17 +405,18 @@ describe("the hero", () => {
      */
     render(<LandingPage />);
 
-    /* Two vector lockups — the nav's and the footer's — each one mark named
-       once beside its own word. It was three; the hero's is no longer one of
-       them, because its artwork is decorative and its name is live text. Which
-       is also why the hero contributes no `img` role at all: counted here so a
-       stray third `Reverie` label cannot appear unnoticed. */
+    /* Two marks named `Reverie`, and they are now different objects: the
+       footer's vector lockup and the bar's orb. It has been three, then two
+       vector lockups, and the count is what matters — one accessible name per
+       mark, never two on one, so a stray extra label cannot appear unnoticed.
+
+       <p>The bar's is an `img` because it is the approved artwork; the
+       footer's is an `svg` because it is drawn. Asserted as a pair rather than
+       looped over with one expectation, because they are no longer alike. */
     const named = screen.getAllByRole("img", { name: "Reverie" });
     expect(named).toHaveLength(2);
-    for (const el of named) {
-      expect(el.tagName.toLowerCase()).toBe("svg");
-    }
-    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
+    expect(named.map((el) => el.tagName.toLowerCase()).sort()).toEqual(["img", "svg"]);
+    expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
   });
 
   it("adds the hero's own light without replacing the page's", () => {
@@ -428,7 +460,7 @@ describe("the hero", () => {
     // And the words are there too, before the headline.
     expect(
       screen
-        .getByText(HERO_IDENTITY)
+        .getByText(HERO_TAGLINE)
         .compareDocumentPosition(screen.getByRole("heading", { level: 1 })),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
@@ -498,17 +530,16 @@ describe("the product identity", () => {
     /*
      * The nav and the footer — two, as rendered *text*.
      *
-     * <p>It was three for a while. The hero's word was live type, set beside a
-     * vector mark; the wordmark is inside the approved render now, so the page
-     * has two bare `Reverie` strings and the hero's own identity line, which is
-     * `Reverie — Conversational Intelligence` and does not match this query.
+     * <p>Two: the hero's and the footer's. The count has been three, two,
+     * three and is two again — the hero's word became pixels and came back as
+     * type, and the bar's went when the bar became the orb alone.
      *
      * <p>Counted rather than merely asserted present, because the word is the
      * one thing on this page that could quietly appear again inside a showcase
      * and turn the identity into a repetition.
      */
     expect(screen.getAllByText("Reverie").length).toBe(2);
-    expect(screen.getAllByText(HERO_IDENTITY)).toHaveLength(1);
+    expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
   });
 });
 

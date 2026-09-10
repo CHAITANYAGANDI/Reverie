@@ -402,6 +402,43 @@
   }
 
   /*
+   * THE TWO LIGHT FIELDS FROM THE APPROVED ARTWORK.
+   *
+   * <p>The reference render is not an orb on flat black. It sits in a field
+   * that is brightest just above and behind it, falls away through the middle,
+   * and pools again below the wordmark — two soft blues, one over and one
+   * under, which is what stops a luminous object from reading as a sticker.
+   *
+   * <p>Both are ellipses far wider than they are tall, because a circle of
+   * light behind a circular mark reads as a halo somebody drew. `--brand` for
+   * the upper field and `--brand-hover` for the lower one: the pool in the
+   * artwork is the *reflection* of the orb and reflected light is lighter than
+   * its source, which is a physical fact the palette happens to have a token
+   * for.
+   *
+   * <p>Both sit under `.v2-ambient`, the page's own wash, and are deliberately
+   * at the edge of visible: if either reads as an effect rather than as
+   * atmosphere it is wrong, and the way to check is to look at the page for ten
+   * seconds and not notice them.
+   */
+  .v2-hero-light-top {
+    background-image: radial-gradient(
+      closest-side,
+      hsl(var(--brand) / 0.16),
+      hsl(var(--brand) / 0.06) 52%,
+      transparent 100%
+    );
+  }
+  .v2-hero-light-bottom {
+    background-image: radial-gradient(
+      closest-side,
+      hsl(var(--brand-hover) / 0.13),
+      hsl(var(--brand-hover) / 0.05) 55%,
+      transparent 100%
+    );
+  }
+
+  /*
    * A horizon: one soft arc of light low in the hero.
    *
    * <p>The reference artwork has a lit curve beneath the logo. Taken literally

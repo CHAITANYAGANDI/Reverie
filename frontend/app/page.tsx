@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Lockup } from "@/components/v2/lockup";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand";
 import { HeroBeat } from "@/components/v2/landing/hero-beat";
 import { HERO_BEATS } from "@/components/v2/landing/hero-beats";
@@ -161,20 +162,42 @@ export default function LandingPage() {
  * this page has one job, and a bar competing with the claim under it is the
  * commonest way a landing page loses that job.
  *
- * <p>The mark is the product's own. It was a `<Mic />` glyph in a filled
- * rounded square, which is the generic recorder logo the V2 identity study
- * explicitly rejected — and it meant the public page and the application were
- * wearing two different brands.
+ * <p>The mark alone, with no word beside it. It was a `<Mic />` glyph in a
+ * filled rounded square — the generic recorder logo the V2 identity study
+ * rejected — then the product lockup at 21px, and it is now the orb on its own.
+ *
+ * <p>Two reasons the word could go. The hero forty pixels below it says
+ * `Reverie` in 62px type, so the bar was naming the product immediately above
+ * the place the product names itself; and this mark is not a link — you are
+ * already home — so it had no label to carry either. What is left is a mark
+ * that says which page you are on and gets out of the way, which is the whole
+ * brief for this bar.
  */
 function Header() {
   return (
     <header className="relative z-10">
       <div className="mx-auto flex h-[68px] max-w-doc items-center gap-8 px-6 lg:px-8">
-        {/* 21px of wordmark, up from 19, and the mark that goes with it is
-            43px of visible lens rather than 17px of square box — see `MARK` in
-            components/v2/lockup. The nav's identity was legible and weightless
-            beside a hero that is now the page's whole opening statement. */}
-        <Lockup size={21} />
+        {/*
+          THE ORB, AND NO WORDMARK.
+
+          <p>The orb rather than the lens, because the hero below is the orb:
+          a lens up here and an orb down there would be two identities on one
+          screen, forty pixels apart. `Lockup` is untouched and still draws the
+          lens with its word in the footer, the auth shell and the SSO screen —
+          and in the application's band, where the mark *is* a link home and
+          the orb would claim the whole product is the assistant.
+
+          <p>30px, which puts its box at 36 — exactly the height of `Sign in`
+          and `Get started` at the other end of the bar. 26 is the nav scale
+          elsewhere and read as an afterthought here: with the word gone this
+          is the only thing on the left of a 68px bar, where before it was a
+          43px-wide lens with a 21px word beside it.
+
+          <p>`title` because with the word gone the mark is the only identity
+          in the bar, and an unnamed image in a header says nothing to a
+          reader.
+        */}
+        <ReverieAiMark size={30} title="Reverie" />
         <nav aria-label="Reverie" className="ml-auto flex items-center gap-6">
           {/* A 36px target, not a 20px line of text. It sits beside a filled
               button of the same height, and a link half its neighbour's height

@@ -1,9 +1,17 @@
 /**
- * AN ASK THREAD WITH NOTHING IN IT YET: the identity, and what to ask it.
+ * AN ASK THREAD WITH NOTHING IN IT YET: one line, and what to ask it.
  *
- * <p>The orb at its expressive size, and one line under it. That is the whole
- * component, and the restraint is the design: what the reader needs from an
- * empty panel is to know what it is and that it is theirs to type into.
+ * <p>One line, centred. That is the whole component, and the restraint is the
+ * design: what the reader needs from an empty panel is to know what it answers
+ * and that it is theirs to type into.
+ *
+ * <h2>The orb is gone from here</h2>
+ *
+ * <p>It was 56px of the approved AI artwork above this line — the mark's
+ * largest placement in the application. Withdrawn on request. Which leaves the
+ * sentence doing the work alone, and it can: the panel is opened deliberately,
+ * from a control that says `Ask Reverie`, so the reader already knows whose
+ * panel it is by the time they see this.
  *
  * <h2>What it is not</h2>
  *
@@ -31,8 +39,6 @@
  * top to bottom in that order.
  */
 
-import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
-
 export function AskResting({ label }: { label: string }) {
   return (
     /*
@@ -45,15 +51,7 @@ export function AskResting({ label }: { label: string }) {
      * above the geometric one, and the panel has a dock under it that the eye
      * counts as part of the box.
      */
-    <div className="flex h-full flex-col items-center justify-center gap-4 pb-6 text-center">
-      {/*
-       * No `interactive`. There is no control here to hover, and a mark that
-       * leaned forward when the pointer crossed the middle of a panel would be
-       * claiming to be pressable. It is also not `active`: the surface being
-       * open is what put this on screen, so brightening it would be saying the
-       * one thing that cannot be false.
-       */}
-      <ReverieAiMark size={56} />
+    <div className="flex h-full flex-col items-center justify-center pb-6 text-center">
       {/* `--ink-2`, not `--ink`. It is an invitation rather than a heading, and
           the loudest thing in an empty panel should be the box. */}
       <p className="max-w-[24ch] text-body leading-[1.5] text-ink-2">{label}</p>

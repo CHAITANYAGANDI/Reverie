@@ -170,7 +170,6 @@ import { AskHeader } from "@/components/chat/ask-header";
 import { AskThread } from "@/components/chat/ask-thread";
 import { AskResting } from "@/components/chat/ask-resting";
 import { AskEvidence } from "@/components/chat/ask-evidence";
-import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { usePendingTurn, announceAnswer } from "@/lib/pending-turn";
 import { useThreadScroll } from "@/lib/use-thread-scroll";
 import { MEETING_PROMPTS, toPrompts } from "@/lib/chat-prompts";
@@ -1522,20 +1521,25 @@ export default function MeetingDetailPage() {
               {ready && (
                 <Button
                   variant="ghost"
-                  /* `group` is what the orb reads for hover and press. The
-                     default size rather than `sm`: `sm` is 32px tall and a
-                     28px orb does not fit in it with its glow. */
-                  className="group gap-2 px-3"
+                  /* The default size rather than `sm`: `sm` is 32px tall with
+                     12px type, and this label is 15. */
+                  className="px-3"
                   onClick={openSidePane}
                 >
                   {/*
-                    THE ORB, NOT A STAR AND NOT THE PRODUCT'S MARK.
+                    NO MARK, AND THE WORDS CARRY THE ACCENT.
 
-                    <p>It was a `Sparkles` — the glyph every product in the
-                    category spends on the same claim, which says nothing about
-                    whose assistant this is — and then a 16px `BrandMark`,
-                    which said "Reverie" where this has to say "Reverie's
-                    Ask". The orb is the approved AI identity, at 28px.
+                    <p>This has held three: a `Sparkles` — the glyph every
+                    product in the category spends on the same claim — then a
+                    16px `BrandMark`, which said "Reverie" where this has to
+                    say "Reverie's Ask", then the approved 28px AI orb. All
+                    three are withdrawn, with the accent moved onto the label.
+
+                    <p>`--brand-text` is the palette's azure-as-a-word, and
+                    azure in this product already means "Reverie noticed this,
+                    or Reverie is doing this" — so the colour is making the
+                    orb's statement in type. Home's launcher is the same
+                    control drawn the same way; see the note there.
 
                     <p>`Ask Reverie` rather than `AI`, and the same label
                     Home's launcher carries: one name for one panel. `AI` was
@@ -1547,8 +1551,7 @@ export default function MeetingDetailPage() {
                     Reverie about this conversation" and contains the visible
                     text, so what is read and what is spoken cannot disagree.
                   */}
-                  <ReverieAiMark size={28} interactive />
-                  <span className="text-[0.9375rem]">Ask Reverie</span>
+                  <span className="text-[0.9375rem] text-brand-text">Ask Reverie</span>
                   <span className="sr-only"> about this conversation</span>
                 </Button>
               )}

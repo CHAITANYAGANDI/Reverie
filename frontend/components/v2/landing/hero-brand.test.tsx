@@ -14,10 +14,15 @@ import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand
  * ribbon's rotation sat on a `<g>` and not on the path; and that
  * `CONVERSATIONAL INTELLIGENCE` was live text.
  *
- * <p>None of that survives. The hero loads `reverie-main-hero.webp` — the
- * approved artwork, cropped, with its baked background turned into alpha — and
- * the lens, the wordmark and the tagline are pixels in one file. The vector
- * reconstruction was faithful to the geometry and was visibly not the artwork.
+ * <p>None of that survives. The hero loads approved artwork, cropped, with its
+ * baked background turned into alpha. The vector reconstruction was faithful to
+ * the geometry and was visibly not the artwork.
+ *
+ * <p>And the artwork it loads has since changed: it was the product lockup —
+ * lens, wordmark and tagline in one picture — and is now the Reverie AI orb, at
+ * the product owner's request. The orb carries no text, so the wordmark and the
+ * tagline are set in type under it, which is where they were before the lockup
+ * became a picture.
  *
  * <p>Which costs something real, and the cost is asserted rather than glossed:
  * the words are inside a picture, so they are put back beside it as live
@@ -39,38 +44,61 @@ function lockup() {
 }
 
 describe("the hero identity", () => {
-  it("is the approved artwork rather than a drawing of it", () => {
+  it("is the approved AI orb rather than a drawing of anything", () => {
+    /*
+     * Two changes in one assertion, and both were deliberate: the hero stopped
+     * being vector geometry, and then stopped being the product lockup. It is
+     * the same file every Ask control draws — see components/v2/ai-mark-asset —
+     * so there is one orb in the product and the hero is simply its largest
+     * placement.
+     */
     const { container } = lockup();
 
     const img = container.querySelector("img")!;
     expect(img).not.toBeNull();
-    expect(img.getAttribute("src")).toBe("/brand/reverie-main-hero.webp");
-    // No vector identity left in the hero at all — that is the change.
+    expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
+    // No vector identity left in the hero at all — that was the first change.
     expect(container.querySelector("svg")).toBeNull();
   });
 
-  it("names the identity in live text, and says it exactly once", () => {
+  it("sets the name and the tagline in visible type, each once", () => {
     /*
-     * The words were rendered type, then the image's `alt`, and are now
-     * `sr-only` text beside a decorative image. The last move is the right one:
-     * an `alt` is a *substitute* for a picture, and the product's name is not a
-     * description of a picture.
+     * FOUR ANSWERS, AND THIS IS THE FIRST ONE AGAIN.
      *
-     * <p>The doubling is what this guards. A descriptive `alt` *and* identical
-     * `sr-only` text announces the identity twice — "Reverie, conversational
-     * intelligence, image. Reverie, Conversational Intelligence." — which is
-     * worse than either alone. So the image contributes no accessible name at
-     * all, and there is exactly one string.
+     * <p>Rendered type, then pixels inside the approved lockup reachable only
+     * as the image's `alt`, then `sr-only` text beside a decorative image, and
+     * now visible type. Each move had a reason and the last one is that the
+     * hero's artwork is the AI orb, which carries no words — so there is
+     * nothing left to duplicate and nothing to imitate.
+     *
+     * <p>The doubling is what this guards, from either direction: a descriptive
+     * `alt`, or an `sr-only` copy, alongside words that are already on the page
+     * announces the identity twice. So the image contributes no accessible name
+     * and there is no hidden text anywhere in the component.
      */
     const { container } = lockup();
 
-    expect(screen.getAllByText("Reverie — Conversational Intelligence")).toHaveLength(1);
+    expect(screen.getAllByText("Reverie")).toHaveLength(1);
+    expect(screen.getAllByText("CONVERSATIONAL INTELLIGENCE")).toHaveLength(1);
+    expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
 
     const img = container.querySelector("img")!;
     expect(img.getAttribute("alt")).toBe("");
     expect(img.getAttribute("aria-hidden")).toBe("true");
-    // Out of the accessibility tree entirely, so nothing can be said twice.
     expect(screen.queryAllByRole("img")).toHaveLength(0);
+  });
+
+  it("reads mark, then name, then tagline", () => {
+    // The order is the lockup, and it is the one thing about this arrangement
+    // that a refactor could quietly invert.
+    const { container } = lockup();
+
+    const img = container.querySelector("img")!;
+    const name = screen.getByText("Reverie");
+    const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
+
+    expect(img.compareDocumentPosition(name)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(name.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("keeps the identity text readable before and without the entrance", () => {
@@ -82,9 +110,7 @@ describe("the hero identity", () => {
      */
     const { container } = lockup();
 
-    const text = screen.getByText("Reverie — Conversational Intelligence");
-    expect(text.className).toContain("sr-only");
-    expect(text.closest("[data-reveal]")).not.toBeNull();
+    expect(screen.getByText("Reverie").closest("[data-reveal]")).not.toBeNull();
     // Not `hidden`, not `display:none` — either would take it out of the tree.
     expect(container.querySelector("[hidden]")).toBeNull();
   });
@@ -110,11 +136,13 @@ describe("the hero identity", () => {
     // The intrinsic pixels as attributes, with the CSS width overriding them
     // for layout. Without the pair the browser has no aspect ratio until the
     // file arrives, and everything below the hero shifts when it lands.
+    //
+    // Square, because the orb is. The lockup this replaced was 820x576.
     const { container } = lockup();
     const img = container.querySelector("img")!;
 
-    expect(img.getAttribute("width")).toBe("820");
-    expect(img.getAttribute("height")).toBe("576");
+    expect(img.getAttribute("width")).toBe("256");
+    expect(img.getAttribute("height")).toBe("256");
     expect(img.className).toContain("h-auto");
     // Not lazy: this is the first paint of the front door.
     expect(img.getAttribute("loading")).not.toBe("lazy");

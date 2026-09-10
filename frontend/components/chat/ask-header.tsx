@@ -44,7 +44,6 @@
 
 import * as React from "react";
 import { X } from "lucide-react";
-import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { cn } from "@/lib/utils";
 
 export function AskHeader({
@@ -76,27 +75,22 @@ export function AskHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
+    <div className={cn("flex min-w-0 items-center gap-2", className)}>
       {/*
-        THE ORB, AND IT IS THE PANEL'S NAME.
+        THE PANEL'S NAME, AND NOTHING DRAWN.
 
-        <p>Not a decoration and not a control: with the words gone it is the
-        whole of what says this panel is Reverie's assistant answering rather
-        than a form on the page underneath. So it carries a title — the one
-        place in the app where this mark is named out loud, because it is the
-        only identity in a header that has no heading. Everywhere else it sits
-        inside a labelled button and is `aria-hidden`, or the button would be
-        read twice.
+        <p>A 26px orb stood here — the approved AI artwork, titled, and the only
+        thing identifying this panel once the words `Ask Reverie` were taken out
+        of the header. It is withdrawn on request, and the row is the
+        conversation and its controls now.
 
-        <p>26px, up from a 16px `BrandMark`. Two things were wrong with that:
-        it was the *product's* mark, which says "Reverie" where this has to say
-        "Reverie's Ask", and at 16px a mark with a waveform in it is a smudge.
-        26 is the largest that leaves the conversation picker beside it its
-        full width in a 26rem rail — measured, not chosen.
+        <p>The name stays as `sr-only` text, because it was carrying more than
+        decoration. The side pane has no `aria-label` of its own, so with the
+        orb gone and no heading in the row, a screen reader would reach a
+        region of unlabelled controls. One hidden word costs nothing visually
+        and is the difference between a named panel and an anonymous one.
       */}
-      <span className="flex shrink-0 items-center">
-        <ReverieAiMark size={26} title="Reverie AI" />
-      </span>
+      <span className="sr-only">Reverie AI</span>
 
       {scope && <div className="min-w-0">{scope}</div>}
 

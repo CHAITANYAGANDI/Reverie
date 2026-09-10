@@ -59,14 +59,22 @@
  * avoided. And `AI` was never a good label. It names a technology where every
  * other control in this product names what it does.
  *
- * <h2>The mark is the AI identity, not the product's</h2>
+ * <h2>No mark at all, and the words carry the accent</h2>
  *
- * <p>`ReverieAiMark`, not `BrandMark`. They answer different questions —
- * "which product am I using?" belongs in the band's corner, and "where is
- * Reverie's assistant?" belongs here — and the orb is what the approved
- * artwork gives the second one. It was an 18px lens: the same mark as the
- * corner of the window, at a size where the waveform inside it was three grey
- * pixels.
+ * <p>This has held three marks: an 18px lens, then the approved 30px AI orb,
+ * and now none. Withdrawn on request, with the accent moved onto the label —
+ * `--brand-text`, which the palette documents as "azure ANYWHERE it is a
+ * word", at 8.59:1 on the canvas.
+ *
+ * <p>Which is a smaller change than it sounds, because the accent already
+ * meant this. The V2 palette's rule is that azure means "Reverie noticed this,
+ * or Reverie is doing this" — an AI surface, a citation, the mark. So an azure
+ * `Ask Reverie` is the same statement the orb was making, in type instead of
+ * in a picture, and it is the only azure word on Home.
+ *
+ * <p>What goes with the orb is the hover sequence and the open-state glow: the
+ * button keeps its own ghost hover and `aria-expanded` still reports whether
+ * the panel is open, but nothing draws that state any more.
  *
  * <p>`aria-expanded` rather than `aria-haspopup="dialog"`. It reveals a region
  * that is a sibling of the page and does not trap focus or take a modal
@@ -74,7 +82,6 @@
  * so the relationship is stated rather than implied by position.
  */
 
-import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { Button } from "@/components/ui/button";
 import { SIDE_PANE_ID, openSidePane, useSidePane } from "@/components/side-pane";
 
@@ -93,10 +100,9 @@ export function AskLauncher() {
        * which was itself up from `sm`'s 32 and 12, for the same reason each
        * time. This is the one control on the page and it sits beside a 26px
        * heading; anything smaller reads as a caption next to the greeting
-       * rather than as the thing to press. 40 is also what a 30px orb needs
-       * around it: at 36 the button's box cut into the sphere's glow.
-       *
-       * <p>`gap-2.5` keeps a round mark off the ascender of the A beside it.
+       * rather than as the thing to press. 40 was also what a 30px orb needed
+       * around it, and it is kept now the orb has gone: the control's size was
+       * never really about the mark.
        *
        * <p>No negative margin. `-ml-3` existed to cancel the button's own
        * padding so the mark lined up with the greeting's first letter;
@@ -104,7 +110,7 @@ export function AskLauncher() {
        * pulling the box past the column edge would run its hover tint into the
        * rule that separates the list from the margin.
        */
-      className="group h-10 gap-2.5 px-3.5"
+      className="h-10 px-3.5"
       /* Not a toggle. Pressing it while the chat is open has to leave it open
          — the same rule as the meeting page's, and for the same reason: a
          control labelled with a question shutting the answer in your face is
@@ -113,12 +119,11 @@ export function AskLauncher() {
       aria-expanded={pane.open}
       aria-controls={SIDE_PANE_ID}
     >
-      {/* 30px of painted sphere. `active` while the panel is open, which is
-          the same fact `aria-expanded` reports below — a slightly wider glow
-          and a full-brightness waveform, and no loop: something that pulses
-          for ever in the corner of a page is a notification, not a state. */}
-      <ReverieAiMark size={30} interactive active={pane.open} />
-      <span className="text-[0.9375rem]">Ask Reverie</span>
+      {/* `--brand-text`, not `--brand`: the palette's azure-as-a-word, which
+          is the tier that clears contrast at a body size. `--brand` is for
+          fills and marks and is 5.98:1 — legible, and not what a 15px label
+          should be set in. */}
+      <span className="text-[0.9375rem] text-brand-text">Ask Reverie</span>
       <span className="sr-only"> about your conversations</span>
     </Button>
   );
