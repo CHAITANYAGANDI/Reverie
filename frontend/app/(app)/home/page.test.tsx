@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ActionItemListQuery,
@@ -1393,6 +1393,42 @@ describe("HOME — an empty account with no minutes left", () => {
 
     expect(screen.queryByText(/for the life of the\s+account. No card/i)).toBeNull();
     expect(screen.queryByText(/what happens to a conversation/i)).toBeNull();
+  });
+
+  it("says all three lines as one block, not two", async () => {
+    /*
+     * WHAT THIS IS GUARDING.
+     *
+     * <p>The first version split the message across two components: the
+     * heading and the sentence came from the masthead, top-left, and "Your
+     * usage is in Account Settings" sat 64px below them in the list slot --
+     * one statement rendered as a headline and an orphaned footnote.
+     *
+     * <p>Asserted as containment rather than as class names: what matters is
+     * that the three lines share a parent, which is what lets one rule centre
+     * them. Classes would pin the implementation and still not prove that.
+     */
+    displayName = "Chaitanya";
+    render(<HomePage />);
+
+    const heading = await screen.findByRole("heading", { level: 1 });
+    const block = heading.parentElement as HTMLElement;
+
+    expect(heading).toHaveTextContent("No minutes left, Chaitanya.");
+    expect(within(block).getByText(/no minutes left to record or import with/i))
+      .toBeInTheDocument();
+    expect(within(block).getByText(/your usage is in account settings/i))
+      .toBeInTheDocument();
+  });
+
+  it("leaves exactly one heading on the page", async () => {
+    // The masthead stands its own `h1` down rather than rendering it empty:
+    // an empty heading is a landmark a screen reader announces and finds
+    // nothing in, and two `h1`s is the other way to get this wrong.
+    render(<HomePage />);
+    await screen.findByText(/no minutes left to record or import with/i);
+
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("and the greeting stops calling it a beginning", async () => {

@@ -445,16 +445,36 @@ function Rows({ meetings }: { meetings: MeetingResponse[] }) {
  * exist are stated as headings over the rows they count, where they cannot
  * drift from them.
  */
+/**
+ * Whose page this is, in one word, or null.
+ *
+ * <p>Extracted because two components greet with it now -- the masthead and
+ * the spent-allowance panel, which owns the heading when the masthead stands
+ * its own down. Two copies of this precedence would be two places to get the
+ * fallback wrong, and the wrong fallback is the user id: an opaque key where a
+ * name goes reads as somebody else's account, which is exactly how it was
+ * reported.
+ *
+ * <p>One request between the callers. `useGetPreferencesQuery` is RTK Query,
+ * so the second subscriber reads the first one's cache.
+ */
+function useFirstName(): string | null {
+  const { mode, userId, profile } = useAuth();
+  const prefs = useGetPreferencesQuery();
+  // Settings first, then what they told their identity provider, then nothing
+  // -- the same order of precedence the account menu uses.
+  const full = prefs.data?.displayName?.trim() || profile.name || (mode === "dev" ? userId : "");
+  // First name only. "Good morning, Chaitanyasai Gandi" is a form letter.
+  return full.trim().split(/\s+/)[0] || null;
+}
+
 function Masthead({ empty }: { empty: boolean }) {
   /*
    * The balance, because an empty account has two very different meanings and
    * this line is where the wrong one was being printed. See `spentEmptyNote`.
    * One request between this and `EmptyState` below: RTK Query caches it.
    */
-  const allowance = useAllowance();
-  const spent = spentEmptyNote(allowance);
-  const { mode, userId, profile } = useAuth();
-  const prefs = useGetPreferencesQuery();
+  const spent = isSpent(useAllowance()) && empty;
 
   /*
    * The clock is read after mounting, never during a render.
@@ -467,26 +487,16 @@ function Masthead({ empty }: { empty: boolean }) {
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => setNow(new Date()), []);
 
-  // The same order of precedence as the account menu: what this person typed
-  // into Settings, then what they told their identity provider, then nothing.
-  // Never the user id -- an opaque key in the place a name goes reads as
-  // somebody else's account, which is exactly how it was reported.
-  const full = prefs.data?.displayName?.trim() || profile.name || (mode === "dev" ? userId : "");
-  // First name only. "Good morning, Chaitanyasai Gandi" is a form letter.
-  const first = full.trim().split(/\s+/)[0] || null;
+  const first = useFirstName();
 
   const hour = now?.getHours() ?? 0;
   const greeting =
     hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   const title = empty
-    ? spent
-      ? first
-        ? `No minutes left, ${first}.`
-        : "No minutes left."
-      : first
-        ? `Nothing here yet, ${first}.`
-        : "Nothing here yet."
+    ? first
+      ? `Nothing here yet, ${first}.`
+      : "Nothing here yet."
     : first
       ? `${greeting}, ${first}.`
       : `${greeting}.`;
@@ -541,6 +551,17 @@ function Masthead({ empty }: { empty: boolean }) {
         greeting is the element allowed to wrap, and `min-w-0` is what lets it
         wrap instead of forcing the row wider than the column at 390px.
       */}
+      {/*
+        SUPPRESSED WHEN THE ALLOWANCE IS SPENT, and the dateline above is not.
+        <p>`SpentState` owns the heading and the sentence in that case, as one
+        centred block -- see the component. Printing them here as well put the
+        same two lines top-left and the third one 64px below them, which is
+        what the screenshots showed.
+        <p>The `h1` is not rendered empty either: an empty heading is a
+        landmark a screen reader announces and finds nothing in. The panel
+        carries the page's `h1` instead, so there is still exactly one.
+      */}
+      {spent ? null : (
       <div className="mt-2 flex items-center gap-4">
         <h1 className="v2-page-greet min-h-[1.875rem] min-w-0 flex-1 font-headline text-ink">
           {now ? title : ""}
@@ -553,6 +574,8 @@ function Masthead({ empty }: { empty: boolean }) {
           </div>
         )}
       </div>
+      )}
+      {spent ? null : (
       <p className="v2-page-lede mt-2 max-w-[68ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.
@@ -569,10 +592,10 @@ function Masthead({ empty }: { empty: boolean }) {
           somebody who has never heard of the bug as an odd thing to mention.
         */}
         {empty
-          ? spent
-            ?? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
+          ? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
           : "Recent conversations and anything that needs your attention."}
       </p>
+      )}
     </header>
   );
 }
@@ -740,22 +763,39 @@ function EmptyState() {
  */
 function SpentState() {
   /*
-   * THE SENTENCE IS NOT REPEATED HERE, and that is worth a note because the
-   * first version of this printed it twice -- once as the masthead's lede and
-   * again as this block's first line. Two identical paragraphs, six lines
-   * apart, which is how a screen reader reads it as a stutter and how
-   * `findByText` reports two elements for one fact.
+   * ONE BLOCK, CENTRED, AND IT OWNS THE WHOLE MESSAGE.
    *
-   * <p>The masthead owns the explanation, because it owns the line that
-   * explains an empty screen in every other state too. What is left for here
-   * is the one thing the masthead does not say: where to go and look.
+   * <p>The first version of this split it in two: the heading and the sentence
+   * came from the masthead, top-left, and only "Your usage is in Account
+   * Settings" was here -- 64px underneath, which read as an orphaned footnote
+   * rather than as part of the same statement. So the masthead stands its
+   * title and lede down when the allowance is spent and this carries all
+   * three lines.
+   *
+   * <p>`items-center pt-16 text-center` and `max-w-[46ch]`, which are
+   * `EmptyPanel`'s numbers rather than new ones. That component is the centred
+   * empty state this product already has -- the folder page's version of this
+   * very screen uses it -- and a second set of numbers for the same shape is
+   * how two screens come to be nearly aligned.
+   *
+   * <p>The `h1` is here because the masthead's is not: one page, one heading.
    */
+  const first = useFirstName();
+  const allowance = useAllowance();
   return (
-    <p className="max-w-[58ch] text-foot text-ink-5">
-      {/* The account menu carries the same two figures, which is where somebody
-          checking this will look for them. */}
-      Your usage is in Account Settings.
-    </p>
+    <div className="flex flex-col items-center pt-16 text-center">
+      <h1 className="v2-page-greet font-headline text-ink">
+        {first ? `No minutes left, ${first}.` : "No minutes left."}
+      </h1>
+      <p className="v2-page-lede mt-2.5 max-w-[46ch] text-ink-3">
+        {spentEmptyNote(allowance)}
+      </p>
+      <p className="mt-7 text-foot text-ink-5">
+        {/* The account menu carries the same two figures, which is where
+            somebody checking this will look for them. */}
+        Your usage is in Account Settings.
+      </p>
+    </div>
   );
 }
 

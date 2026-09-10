@@ -370,12 +370,15 @@ function EmptyLibrary({
    * refusals. See `spentEmptyNote`.
    */
   if (spent) {
+    /*
+     * Centred, on `EmptyPanel`'s numbers rather than new ones -- the folder
+     * page's version of this screen uses that component, and this is the same
+     * statement on a wider column. `h2` because the page's `h1` is its title.
+     */
     return (
-      <div>
-        <p className="text-body font-headline text-ink">No minutes left</p>
-        <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
-          {spent}
-        </p>
+      <div className="flex flex-col items-center pt-16 text-center">
+        <h2 className="v2-page-greet font-headline text-ink">No minutes left</h2>
+        <p className="v2-page-lede mt-2.5 max-w-[46ch] text-ink-3">{spent}</p>
       </div>
     );
   }

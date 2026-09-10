@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { MeetingResponse, MeetingListQuery, Page, Project } from "@/lib/types";
 
@@ -735,6 +735,17 @@ describe("LIBRARY — an empty shelf with no minutes left", () => {
     expect(screen.getByText(/no minutes left to record or import with/i))
       .toBeInTheDocument();
     expect(screen.queryByText(/record a meeting or import audio you already have/i)).toBeNull();
+  });
+
+  it("says both lines as one block", async () => {
+    // Same containment check as Home's, and the same reason: one rule centres
+    // them only if they share a parent. `h2` here -- the page's `h1` is its
+    // own title, which stays.
+    render(<LibraryPage />);
+
+    const heading = await screen.findByRole("heading", { name: "No minutes left" });
+    expect(within(heading.parentElement as HTMLElement)
+      .getByText(/no minutes left to record or import with/i)).toBeInTheDocument();
   });
 
   it("keeps the ordinary empty shelf when there are minutes left", async () => {
