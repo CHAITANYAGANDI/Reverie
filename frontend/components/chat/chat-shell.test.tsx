@@ -39,11 +39,26 @@ describe("ChatDock", () => {
     // the empty thread, where the first answer was about to appear.
     const region = screen.getByLabelText("Ask a question").parentElement!;
     const chips = screen.getByRole("button", { name: /hasn't been completed/i });
-    expect(region).toHaveTextContent("Suggestions");
+    expect(region).toContainElement(chips);
     // Before the box, not after it and not in the middle of the empty thread
     // where the first answer is about to appear.
     expect(chips.compareDocumentPosition(screen.getByLabelText("Ask a question")))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    /*
+     * AND NO HEADING OVER THEM. This asserted `Suggestions` until the word was
+     * withdrawn from every chat in the app.
+     *
+     * <p>It was naming the obvious. The chips are worded as questions, they
+     * sit directly above the box they fill in, and they are only drawn while
+     * the thread is empty -- so a label reading "Suggestions" spent a line
+     * telling somebody that the three questions in front of them were
+     * questions they might ask.
+     *
+     * <p>The order is what this test was ever about, and it is unchanged: the
+     * chips come before the input, not in the middle of the empty thread.
+     */
+    expect(region).not.toHaveTextContent("Suggestions");
   });
 
   it("sends a complete prompt and composes an unfinished one", async () => {

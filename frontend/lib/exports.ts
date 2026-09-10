@@ -42,28 +42,19 @@ import { API_BASE } from "@/lib/api";
 import { buildAuthHeaders } from "@/lib/auth-store";
 import { zip } from "@/lib/zip";
 
-export type ExportFormat = "pdf" | "docx" | "md" | "txt";
-
-/** How much of the back-and-forth to flatten away. */
-export type CombineMode = "none" | "speaker" | "all";
-
-/** The three things a meeting can be taken away as, for naming a failure. */
+/**
+ * The three things a meeting can be taken away as.
+ *
+ * <p>Also the whole of what the export dialog chooses. There used to be a
+ * format from four, a set of summary section keys, and five booleans about how
+ * to lay a transcript out; the endpoint that took them is gone, and so is the
+ * `ExportFormat` and `CombineMode` this file used to export. The format follows
+ * from the part: a summary is a PDF, a transcript is a PDF, audio is an MP3.
+ */
 export type ExportPart = "summary" | "transcript" | "audio";
 
+/** What the two document endpoints accept, and it is not about the content. */
 export interface ExportOptions {
-  /** The brief. Defaults to included, which is what the endpoint does. */
-  summary?: boolean;
-  /** Which summary sections, by key. Omitted or empty means all of them. */
-  sections?: string[];
-  /** What people agreed to do. Defaults to included. */
-  actionItems?: boolean;
-  /** The transcript is left out unless asked for; it is most of the file. */
-  transcript?: boolean;
-  /** Label each utterance with who said it. Defaults to true. */
-  speakers?: boolean;
-  /** Label each utterance with when it was said. Defaults to true. */
-  timestamps?: boolean;
-  combine?: CombineMode;
   /** A language the meeting has already been translated into. */
   language?: string | null;
 }
@@ -80,26 +71,29 @@ function timeZone(): string | null {
   }
 }
 
+/**
+ * Where a document comes from.
+ *
+ * <p>`/export/summary` and `/export/transcript`, each a PDF and neither taking
+ * a parameter that changes what is in it. This built `/export?format=…` with up
+ * to eight more, which is what let a "summary" arrive with the transcript
+ * appended and half its sections missing.
+ *
+ * <p>What is left on the query string is about the reader: the language they
+ * are reading the meeting in, and their time zone so the date on the file
+ * matches the date on the screen they exported it from.
+ */
 export function exportPath(
   meetingId: string,
-  format: ExportFormat,
+  part: "summary" | "transcript",
   options: ExportOptions = {},
   zone: string | null = timeZone(),
 ): string {
-  const params = new URLSearchParams({ format });
-  // Only what differs from the endpoint's defaults, so a plain summary export
-  // still produces the short URL it always did — and so a bookmarked one keeps
-  // meaning what it meant.
-  if (options.summary === false) params.set("summary", "false");
-  if (options.sections?.length) params.set("sections", options.sections.join(","));
-  if (options.actionItems === false) params.set("actionItems", "false");
-  if (options.transcript) params.set("transcript", "true");
-  if (options.speakers === false) params.set("speakers", "false");
-  if (options.timestamps === false) params.set("timestamps", "false");
-  if (options.combine && options.combine !== "none") params.set("combine", options.combine);
+  const params = new URLSearchParams();
   if (options.language) params.set("language", options.language);
   if (zone) params.set("tz", zone);
-  return `/meetings/${meetingId}/export?${params.toString()}`;
+  const query = params.toString();
+  return `/meetings/${meetingId}/export/${part}${query ? `?${query}` : ""}`;
 }
 
 /**
@@ -207,7 +201,59 @@ function serverSentence(error: unknown): string | null {
   // Length and shape as a last guard. A stack trace or a serialised exception
   // that reached a `message` field is not a sentence somebody wrote to be read.
   if (!trimmed || trimmed.length > 300 || /\n\s*at\s/.test(trimmed)) return null;
+  if (isStatusPhrase(trimmed)) return null;
   return trimmed;
+}
+
+/**
+ * The canonical HTTP status phrases, which are not sentences about a meeting.
+ *
+ * <p>Reported from a real export. A deployment whose frontend had the new
+ * `/export/summary` route and whose backend did not answered with the
+ * framework's own 404 body — `{"message": "Not found"}` — and the dialog
+ * repeated it, so somebody choosing "Summary" was told "Not found" about
+ * nothing in particular. The caller already has a better sentence for exactly
+ * that case: "Couldn't export the summary."
+ *
+ * <p>These are the phrases Reverie's own `GlobalExceptionHandler` and the
+ * proxies in front of it produce as a `message` when nothing more specific was
+ * written. Anything a person composed survives.
+ */
+const STATUS_PHRASES = new Set([
+  "bad request",
+  "unauthorized",
+  "payment required",
+  "forbidden",
+  "not found",
+  "method not allowed",
+  "not acceptable",
+  "request timeout",
+  "conflict",
+  "gone",
+  "payload too large",
+  "unsupported media type",
+  "unprocessable entity",
+  "too many requests",
+  "internal server error",
+  "not implemented",
+  "bad gateway",
+  "service unavailable",
+  "gateway timeout",
+]);
+
+/**
+ * Whether a message is *only* a status phrase.
+ *
+ * <p>Exact, on a normalised string: lowercased, with the outer whitespace gone
+ * and any internal run collapsed, so `"  NOT  FOUND "` is caught and
+ * <b>"Meeting not found"</b> is not. Matching on "contains" would throw away
+ * the specific sentences that are the whole reason this repeats server copy —
+ * "Meeting not found", "Audio has been erased", "This meeting has not been
+ * translated into German" — and a rule about length or word count would throw
+ * away "Audio has been erased" too.
+ */
+function isStatusPhrase(message: string): boolean {
+  return STATUS_PHRASES.has(message.toLowerCase().replace(/\s+/g, " ").trim());
 }
 
 const PART_NOUN: Record<ExportPart, string> = {
@@ -291,12 +337,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function fetchExportFile(
   meetingId: string,
-  format: ExportFormat,
+  part: "summary" | "transcript",
   options: ExportOptions = {},
   retryDelayMs: number = RETRY_DELAY_MS,
 ): Promise<ExportFile> {
-  const path = exportPath(meetingId, format, options);
-  const fallback = `meeting.${format}`;
+  const path = exportPath(meetingId, part, options);
+  // Only used when the server sends no `Content-Disposition`, which it always
+  // does. Named after the part so even that fallback says which file it is.
+  const fallback = `meeting-${part}.pdf`;
   try {
     return await requestFile(path, fallback);
   } catch (error) {

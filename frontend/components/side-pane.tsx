@@ -46,12 +46,24 @@ export interface SidePaneState {
   /** Whether a page has put anything in it. */
   occupied: boolean;
   /**
-   * Whether the reader wants to see it.
+   * Whether the reader has asked to see it.
    *
-   * Not persisted, unlike the width. A width is a fact about the monitor and is
-   * worth remembering; a collapse is usually "get this out of the way for a
-   * minute", and coming back tomorrow to an app with no chat in it — and one
-   * icon to explain where it went — is the wrong thing to remember.
+   * <h2>False by default, and that is the correction</h2>
+   *
+   * <p>It defaulted to true, so the moment a page filled the pane the pane
+   * appeared. On the one page that fills it — a meeting — that meant every
+   * READY meeting opened as a document beside a chat application, which is the
+   * split-pane shape the V2 study exists to remove. The reference has one
+   * document and an `Ask` control; the chat is what you press that for.
+   *
+   * <p>So it opens on request. `openSidePane` is the request, and it is called
+   * by `Ask` in the meeting's mode row and by "Ask about this" on a transcript
+   * selection — the two things somebody does when they actually want it.
+   *
+   * <p>Not persisted, unlike the width. A width is a fact about the monitor and
+   * is worth remembering; whether the chat was open ten minutes ago is not, and
+   * a meeting that opens with a chat because of something you did on a
+   * different meeting is the behaviour this replaces.
    */
   open: boolean;
   /**
@@ -66,7 +78,13 @@ export interface SidePaneState {
   expanded: boolean;
 }
 
-const CLOSED: SidePaneState = { occupied: false, open: true, expanded: false };
+/**
+ * Nothing in it, nobody asking for it.
+ *
+ * <p>`open: false` is the point — see the field. The name was accurate about
+ * `occupied` and quietly wrong about the rest.
+ */
+const CLOSED: SidePaneState = { occupied: false, open: false, expanded: false };
 
 let state: SidePaneState = CLOSED;
 let occupants = 0;
@@ -114,6 +132,42 @@ export function occupySidePane(): () => void {
 /** Show or hide the pane. */
 export function toggleSidePane(): void {
   set({ ...state, open: !state.open });
+}
+
+/**
+ * Ask for the pane, whether or not it is already there.
+ *
+ * <p>Not `toggleSidePane`: pressing Ask on an open chat has to leave it open
+ * and let the question through, and a toggle would shut it in your face. Both
+ * openers — the mode row's Ask and a transcript selection's "Ask about this" —
+ * go through here.
+ */
+export function openSidePane(): void {
+  if (state.open) return;
+  set({ ...state, open: true });
+}
+
+/**
+ * Put the pane away, whether or not it is already away.
+ *
+ * <p>The mirror of `openSidePane`, and added for the same reason it exists: the
+ * control that closes the pane now lives *inside* the pane, next to the tabs it
+ * belongs to, rather than in a shell row above the document. That row was the
+ * only thing left in the shell's action strip, and reserving 60px above every
+ * meeting so the chat could be dismissed moved the whole document down 60px the
+ * moment `Ask` was pressed.
+ *
+ * <p>Idempotent, rather than a toggle, because a control labelled "Hide" must
+ * not be able to show. `toggleSidePane` is still the store's general-purpose
+ * operation; this is what a close button wants.
+ *
+ * <p>`expanded` is deliberately untouched. It is a remembered shape rather than
+ * a visibility, so a pane put away while maximised comes back maximised — which
+ * is exactly what closing it from the shell has always done.
+ */
+export function closeSidePane(): void {
+  if (!state.open) return;
+  set({ ...state, open: false });
 }
 
 /** Maximise the pane over the page, or put it back to a column. */

@@ -306,28 +306,41 @@ describe("the expand control", () => {
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
-  it("is drawn and refused on the page that is already the full chat", async () => {
-    const onExpand = vi.fn();
-    picker({ expandDisabled: true, onExpand });
+  it("is never drawn and refused, which is the withdrawn behaviour", () => {
+    /*
+     * `expandDisabled` is gone, and with it the greyed button.
+     *
+     * <p>It existed for `/ask`, which is already as big as this chat gets, on
+     * the argument that the same header sits on three surfaces and one of them
+     * quietly missing a button reads as a panel that has lost something. In
+     * front of somebody it read as a broken control instead: a permanently
+     * grey arrow-in glyph in the corner of the page whose only message was
+     * about a state the page can never leave.
+     *
+     * <p>So the rule is the ordinary one again -- the control is drawn when
+     * there is a panel to maximise, which is what `onExpand` means. Asserted
+     * with no expand props at all, because that is what `/ask` passes now.
+     */
+    picker();
 
-    // Kept rather than hidden, and this is the deliberate exception to not
-    // drawing controls that cannot act: the same header sits on three surfaces,
-    // and one of them quietly missing a button reads as a panel that has lost
-    // something rather than one already at its largest. It says which it is.
-    const button = screen.getByRole("button", { name: "This is already the full chat" });
-    expect(button).toBeDisabled();
-
-    await userEvent.click(button);
-    expect(onExpand).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: /already the full chat/i }),
+    ).not.toBeInTheDocument();
+    // And nothing else took its place in that corner: New chat is the only
+    // button beside the title.
+    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /expand|shrink/i })).not.toBeInTheDocument();
   });
 
-  it("claims no state while it is refused", () => {
-    picker({ expandDisabled: true });
+  it("claims its own state when it can act", () => {
+    // The other half of what `expandDisabled` used to complicate: a real
+    // toggle says which way it is, and this is now the only shape this
+    // control has.
+    picker({ onExpand: vi.fn() });
 
-    // `aria-pressed="false"` on a control that cannot be pressed announces a
-    // toggle that is currently off, which is a different and wrong claim.
-    expect(
-      screen.getByRole("button", { name: "This is already the full chat" }),
-    ).not.toHaveAttribute("aria-pressed");
+    expect(screen.getByRole("button", { name: "Expand the chat" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });

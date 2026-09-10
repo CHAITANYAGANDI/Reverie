@@ -366,6 +366,54 @@ export function segmentMarks(
   return marks.sort((a, b) => a.start - b.start);
 }
 
+/**
+ * The highlight a fresh selection lands on, if any.
+ *
+ * <h2>Why this takes resolved marks and not the moments</h2>
+ *
+ * <p>Because it is the question "is the thing I can see here?", and what can
+ * be seen is decided by {@link segmentMarks} -> {@link resolveRange}, not by
+ * the offsets on the stored range. The two agree on an untouched line, which
+ * is what made the first version of this look correct: it compared the
+ * selection with `moment.ranges[].startOffset` and passed every test that did
+ * not involve an edit.
+ *
+ * <p>Correct a line and they part. `resolveRange` repairs a mark by searching
+ * for its quote, so the painted position follows the words while the stored
+ * position stays where the words used to be. Measured on a running stack: a
+ * highlight stored at `7..25`, forty characters inserted ahead of it, the
+ * quote found again at `43`, the words at `43..61` painted — and a selection
+ * of exactly those words compared against `7..25` overlaps nothing. The
+ * highlight was visible and there was no way to remove it.
+ *
+ * <p>Taking the same `SegmentMark[]` the renderer paints from makes "painted"
+ * and "removable" one condition instead of two that have to be kept in step.
+ * It is the same overlap rule as {@link isMarked}, for the same reason.
+ *
+ * @param ranges   the new selection, one range per segment
+ * @param resolved marks per segment id, as `segmentMarks` produced them
+ */
+export function highlightOver(
+  ranges: readonly Pick<MomentRange, "segmentId" | "startOffset" | "endOffset">[],
+  resolved: ReadonlyMap<string, SegmentMark[]>,
+): TranscriptMoment | undefined {
+  for (const sel of ranges) {
+    const marks = resolved.get(sel.segmentId);
+    if (!marks) continue;
+    const hit = marks.find(
+      (m) =>
+        m.moment.kind === "HIGHLIGHT" &&
+        // Overlap, not containment: somebody removing a highlight re-selects
+        // the words by hand, and a hand-made selection rarely reproduces the
+        // offsets that made the mark.
+        sel.startOffset < m.end &&
+        m.start < sel.endOffset,
+    );
+    if (hit) return hit.moment;
+  }
+  return undefined;
+}
+
 /** True when a word's span is touched by a mark. */
 export function isMarked(marks: SegmentMark[], from: number, to: number): SegmentMark | undefined {
   // Overlap rather than containment: a mark repaired by quote-search can land

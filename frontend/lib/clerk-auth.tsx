@@ -14,8 +14,11 @@ import {
   tokenProbeAttempt,
 } from "@/lib/auth-store";
 import { clearPreferences } from "@/lib/preference-store";
+import { signOutAndLeave } from "@/lib/sign-out";
 import { normalizeProvider } from "@/lib/identity-owner";
 import type { AuthContextValue, UserProfile } from "@/lib/auth";
+import { SIGN_IN, SIGN_UP } from "@/lib/routes";
+import { ONBOARDING_FLAG, onboardingCompleted } from "@/lib/onboarding";
 
 type Ctx = React.Context<AuthContextValue | null>;
 
@@ -151,6 +154,70 @@ function ClerkBridge({
     [user],
   );
 
+  /*
+   * THE FLAG LIVES ON THE IDENTITY, and that is the whole of why the lifecycle
+   * works.
+   *
+   * <p>`unsafeMetadata` is the one part of a Clerk user the browser may write,
+   * which is right for this: it is a preference the person themselves just
+   * set, not a claim about them that the server should be the source of.
+   *
+   * <p>Putting it here rather than in Reverie's own preferences means
+   * destroying the identity destroys the flag with it. Closing an account and
+   * then signing in again with the same Google account produces a *new* Clerk
+   * user carrying nothing, so onboarding runs again — which is the required
+   * behaviour, and it falls out rather than being arranged. It also needs no
+   * backend change: `PreferencesResponse` has no field for this and adding one
+   * is a migration.
+   */
+  const completed = onboardingCompleted(user?.unsafeMetadata);
+
+  const completeOnboarding = React.useCallback(async () => {
+    if (!user) return;
+    /*
+     * Merged, not replaced. `unsafeMetadata` is a single object shared with
+     * anything else that ever writes to it, and `update` takes the whole value
+     * — so assigning a fresh object here would silently drop the rest.
+     */
+    await user.update({
+      unsafeMetadata: { ...user.unsafeMetadata, [ONBOARDING_FLAG]: true },
+    });
+  }, [user]);
+
+  /**
+   * Forget that onboarding was ever finished, without touching anything else on
+   * the identity.
+   *
+   * <p>The key is removed rather than set to false, so the metadata carries no
+   * claim either way — which is what `onboardingCompleted` already reads as
+   * "not done", and leaves nothing behind for a later reader to misinterpret.
+   */
+  const clearOnboarding = React.useCallback(async () => {
+    if (!user) return;
+    const rest = { ...user.unsafeMetadata };
+    delete (rest as Record<string, unknown>)[ONBOARDING_FLAG];
+    await user.update({ unsafeMetadata: rest });
+  }, [user]);
+
+  /**
+   * Destroy the sign-in itself.
+   *
+   * <p>The instance can refuse — self-service deletion is a dashboard setting —
+   * so this reports whether the identity is actually gone instead of assuming.
+   * Telling somebody their sign-in was destroyed when it was not is worse than
+   * telling them it could not be, because the next thing they do is try to sign
+   * in and succeed.
+   */
+  const deleteIdentity = React.useCallback(async () => {
+    if (!user) return false;
+    try {
+      await user.delete();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [user]);
+
   const value: AuthContextValue = {
     mode: "clerk",
     userId: userId ?? "",
@@ -163,12 +230,41 @@ function ClerkBridge({
     sessionKey: isLoaded ? sessionId ?? "" : "",
     isSignedIn: Boolean(isSignedIn),
     isLoaded,
+    // Not known until the identity has arrived, and not-known is treated as
+    // not-done: the cost is two skippable questions.
+    onboardingCompleted: isLoaded ? completed : false,
+    completeOnboarding,
+    clearOnboarding,
+    deleteIdentity,
     profile,
-    signOut: () => {
+    signOut: (to?: string) => {
       // Belt to the session key's braces, and the part that runs even when the
       // next person to sign in on this browser is somebody else.
       clearPreferences();
-      void signOut();
+
+      /*
+       * THE LEAVING IS OURS RATHER THAN CLERK'S.
+       *
+       * <p>It was `signOut({ redirectUrl })`, which is never read on the one
+       * path that matters: `clerk.signOut` returns on its first line when the
+       * client has no sessions left, and destroying an identity is exactly what
+       * leaves it in that state. Closing an account therefore moved nobody —
+       * see lib/sign-out for the line and the three cases.
+       *
+       * <p>The target is still given per call rather than left to
+       * `afterSignOutUrl`, because closing an account leaves by a different
+       * door from an ordinary sign-out.
+       *
+       * <p>A document load and not a route change, deliberately. The RTK Query
+       * cache, the Redux store and Clerk's own client all belong to the session
+       * being left; a client-side navigation carries every one of them into the
+       * next screen, and on the deletion path that means into a screen built
+       * for an account that no longer exists. `replace` rather than `assign`
+       * for the same reason — Back is not somewhere to return to.
+       */
+      void signOutAndLeave(signOut, to ?? SIGN_IN, (target) =>
+        window.location.replace(target),
+      );
     },
   };
 
@@ -189,14 +285,19 @@ export function ClerkAuthProvider({
      * at its own hosted pages. Reverie hosts the two screens itself — see
      * app/sign-in and app/sign-up — so a default that sent people to
      * accounts.clerk.dev would take them out of the product to come back into
-     * it, and `afterSignOutUrl` is what stops signing out landing on a
-     * protected route that immediately bounces you to sign in again.
+     * it.
+     *
+     * `afterSignOutUrl` is the sign-in form rather than the landing page. It
+     * has to be a public route — a protected one would bounce straight back to
+     * sign-in anyway — and of the two public ones, the form is where somebody
+     * who just signed out is going next. The landing page is for people who
+     * have not decided yet.
      */
     <ClerkProvider
       publishableKey={publishableKey}
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      afterSignOutUrl="/"
+      signInUrl={SIGN_IN}
+      signUpUrl={SIGN_UP}
+      afterSignOutUrl={SIGN_IN}
     >
       <ClerkBridge AuthContext={AuthContext}>{children}</ClerkBridge>
     </ClerkProvider>

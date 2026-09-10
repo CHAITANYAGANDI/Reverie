@@ -38,7 +38,6 @@ describe("SelectionMenu", () => {
     for (const label of [
       "Highlight",
       "Copy",
-      "Add note",
       "Ask Reverie",
       "Summarize",
       "Create action item",
@@ -48,6 +47,22 @@ describe("SelectionMenu", () => {
     }
   });
 
+  it("no longer offers Add note", () => {
+    /*
+     * Withdrawn, and the whole path with it: `note` is gone from
+     * `SelectionAction`, so nothing can ask for it. The turn row's
+     * `Add a note here` went at the same time -- they were one dialog writing
+     * one kind of moment, so leaving either entrance open would have withdrawn
+     * nothing.
+     *
+     * <p>Notes already written are untouched: they draw under the words they
+     * are about and keep their own delete control.
+     */
+    render(<SelectionMenu anchor={anchor} onAction={vi.fn()} />);
+
+    expect(screen.queryByRole("menuitem", { name: "Add note" })).not.toBeInTheDocument();
+  });
+
   it("reports which action was chosen", async () => {
     const onAction = vi.fn();
     render(<SelectionMenu anchor={anchor} onAction={onAction} />);
@@ -55,6 +70,38 @@ describe("SelectionMenu", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: "Highlight" }));
 
     expect(onAction).toHaveBeenCalledWith("highlight");
+  });
+
+  it("becomes the way out of a highlight over words that carry one", async () => {
+    /*
+     * Highlighting had no undo. Selecting highlighted words offered
+     * `Highlight` again, which stacked a second mark over the first and looked
+     * like nothing had happened -- and there was nowhere else to go, because a
+     * passage highlight is drawn as a tint on the words themselves rather than
+     * as a row in the margin with a bin beside it.
+     *
+     * <p>One item rather than two: the selection either lands on a highlight
+     * or it does not, so the other one is never available, and offering it
+     * greyed out would be a row of chrome on every selection to serve one
+     * case.
+     */
+    const onAction = vi.fn();
+    render(<SelectionMenu anchor={anchor} onAction={onAction} highlighted />);
+
+    expect(screen.queryByRole("menuitem", { name: "Highlight" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Remove highlight" }));
+
+    // The same action either way. Which of the two it means is the page's to
+    // decide, because the page is what knows the marks.
+    expect(onAction).toHaveBeenCalledWith("highlight");
+  });
+
+  it("leaves the other items alone when it does", () => {
+    render(<SelectionMenu anchor={anchor} onAction={vi.fn()} highlighted />);
+
+    for (const label of ["Copy", "Ask Reverie", "Wrong speaker"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
   });
 
   it("suppresses its own mousedown", () => {

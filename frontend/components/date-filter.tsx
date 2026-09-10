@@ -257,20 +257,26 @@ export function DateFilter({
 
   return (
     <div ref={root} className={cn("relative", className)}>
+      {/* THE SAME PILL AS THE FOLDER FILTER BESIDE IT.
+          <p>It was `text-sm font-medium hover:bg-accent` -- shadcn's defaults,
+          from before this palette existed -- so beside a control drawn from
+          the tokens it read as a leftover. `.v2-filter-pill` is the shared
+          declaration; see app/globals.css. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:bg-accent"
+        className="v2-filter-pill"
       >
-        <CalendarDays className="h-4 w-4 text-muted-foreground" />
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-ink-4" aria-hidden />
         {value.label}
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform duration-200",
+            "h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform duration-200",
             open && "rotate-180",
           )}
+          aria-hidden
         />
       </button>
 

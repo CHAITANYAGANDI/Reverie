@@ -3,52 +3,60 @@
 /**
  * The first screen inside a new account.
  *
- * <h2>What an onboarding is allowed to ask for</h2>
+ * <h2>Two questions, and no third</h2>
  *
- * <p>Two questions and a door. Both questions are settings that already exist,
- * that the product actually reads, and that are worth more answered now than
- * discovered later:
+ * <p>A name and the language meetings are usually in. Both are settings that
+ * already exist, that the product actually reads, and that are worth more
+ * answered now than discovered later:
  *
  * <ul>
- *   <li><b>Your name.</b> It is what the account button and My tasks show.
- *       Prefilled from Google where Google knew it, which turns the first step
- *       into a confirmation rather than a question.</li>
- *   <li><b>The language your meetings are in.</b> This one earns its place:
- *       detection is good, and it is fooled by a quiet opening minute — so a
- *       transcript in the wrong language is a real outcome that one tap here
- *       prevents. Auto-detect stays the default, because for most people it is
- *       right.</li>
+ *   <li><b>Your name.</b> It is what the account button and the owner column on
+ *       an action item show. Prefilled where the provider knew it, which turns
+ *       the step into a confirmation rather than a question — and asked of
+ *       everybody, because it is Reverie's own column whoever filled it
+ *       first.</li>
+ *   <li><b>The language your meetings are in.</b> Detection is good and it is
+ *       fooled by a quiet opening minute, so a transcript in the wrong language
+ *       is a real outcome that one tap here prevents. Detect automatically
+ *       stays the default, because for most people it is right.</li>
  * </ul>
  *
- * <p>Nothing else. No company, no team size, no role, no "how did you hear
- * about us" — Reverie has nowhere to put any of it, and a form that collects what
- * it never reads is asking somebody to work for you before you have done
- * anything for them.
+ * <p><b>There is no activation step.</b> The flow this restores ended on "You
+ * are set up" over Record a meeting / Import a recording / Explore Reverie —
+ * three buttons standing in front of a product whose own default page already
+ * offers all three. A menu in front of the thing it is a menu of is a screen
+ * somebody has to get through rather than one that helps.
  *
- * <h2>Why every step can be skipped</h2>
+ * <h2>The count is read off the list</h2>
  *
- * <p>Because the account is already made. This is not a gate — it is the offer
- * of a head start, and holding a working product behind three screens of
- * questions is how a good first minute becomes a closed tab. Skipping leaves
- * the defaults, which are all sound.
+ * <p>"Step 1 of 2", then "Step 2 of 2", then Now — counted from
+ * {@code ONBOARDING_STEPS} rather than written as a literal, so the label
+ * cannot drift from what is on screen. See lib/onboarding.
+ *
+ * <h2>Everything is skippable, and skipping counts as done</h2>
+ *
+ * <p>Because the account is already made. This is the offer of a head start,
+ * not a gate — holding a working product behind questions is how a good first
+ * minute becomes a closed tab. Skipping leaves the defaults, which are sound,
+ * and records the flow as finished so nobody is asked twice.
  *
  * <h2>Where it sits</h2>
  *
- * <p>Inside `AuthGate` — nothing here can be asked before there is a token to
- * save it with — and outside `AppShell`. A sidebar, a folder tree and a usage
- * meter drawn around a welcome screen would be the application saying "you are
- * already here" while the screen says "let us begin".
+ * <p>Inside `AuthGate`, because nothing here can be asked before there is a
+ * token to save it with, and outside `AppShell` — a sidebar and a usage meter
+ * drawn around a welcome screen is the application saying "you are already
+ * here" while the screen says "let us begin".
  */
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, FileUp, Loader2, Mic } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Field, SubmitButton } from "@/components/auth/auth-form";
 import { useAuth } from "@/lib/auth";
 import { useGetLanguagesQuery, useUpdatePreferencesMutation } from "@/lib/api";
-import { identityPermissions } from "@/lib/identity-owner";
+import { ONBOARDING_STEPS, stepLabel } from "@/lib/onboarding";
 import { HOME } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -65,30 +73,38 @@ export default function WelcomePage() {
 
 function Welcome() {
   const router = useRouter();
-  const { mode, profile } = useAuth();
+  const { profile, isLoaded, onboardingCompleted, completeOnboarding } = useAuth();
   const [save] = useUpdatePreferencesMutation();
+  const languages = useGetLanguagesQuery();
 
   /*
-   * The name step exists only where the name is this account's to set.
+   * Already done, so do not ask again.
    *
-   * <p>Signing up with Google means Google holds it -- Settings says exactly
-   * that and disables the field -- so asking for it here would be the product
-   * contradicting itself two screens apart, and saving it would write a copy
-   * into Reverie's column that then outranks Google's everywhere.
+   * <p>Read off the explicit flag and nothing else — never off whether the
+   * account has meetings or a name, both of which somebody can have without
+   * having seen this screen. Somebody who arrives here with a finished
+   * onboarding is sent on rather than being walked through it a second time.
    */
-  const permissions = identityPermissions({
-    mode,
-    provider: profile.provider,
-    hasPassword: profile.hasPassword,
-  });
+  React.useEffect(() => {
+    if (isLoaded && onboardingCompleted) router.replace(HOME);
+  }, [isLoaded, onboardingCompleted, router]);
+
+  /*
+   * Both questions, for every account. This briefly skipped the name where the
+   * provider had supplied one, which meant a Google sign-up went straight to
+   * the language question and was never asked what to call anybody. Google
+   * supplies the name; Reverie's own column owns it from then on — so the step
+   * is asked, and prefilled below from whatever the provider knew.
+   */
+  const steps = ONBOARDING_STEPS;
 
   const [step, setStep] = React.useState(0);
   const [name, setName] = React.useState("");
   const [language, setLanguage] = React.useState(AUTO);
-  const [saving, setSaving] = React.useState(false);
+  const [leaving, setLeaving] = React.useState(false);
 
   /*
-   * Google's name, once it arrives.
+   * The provider's name, once it arrives.
    *
    * `useUser` resolves a moment after this mounts, so seeding state at first
    * render would seed it empty. A ref rather than a dependency on `name` keeps
@@ -101,76 +117,82 @@ function Welcome() {
     setName(profile.name);
   }, [profile.name]);
 
-  const languages = useGetLanguagesQuery();
+  const current = steps[Math.min(step, steps.length - 1)];
+  const last = step >= steps.length - 1;
 
-  /** Save what has been chosen, then leave. Failure is not a reason to trap anybody. */
-  async function finish(destination: string) {
-    setSaving(true);
+  /**
+   * Save what was chosen, record the flow as finished, and go.
+   *
+   * <p>Answered and skipped end the same way. The flag is what stops the next
+   * arrival being asked again, and a skip is a decision — leaving somebody to
+   * be asked once per sign-in because they declined once is the behaviour this
+   * whole screen is trying not to be.
+   *
+   * <p>A failed preference write does not hold anybody here. Both answers have
+   * sound defaults and their own page in Settings; refusing entry to the
+   * product because a preference did not save would be the worst possible first
+   * minute.
+   */
+  async function finish() {
+    setLeaving(true);
     try {
       const patch: { displayName?: string; defaultLanguage?: string } = {};
-      if (permissions.name && name.trim()) patch.displayName = name.trim();
+      if (name.trim()) patch.displayName = name.trim();
       if (language) patch.defaultLanguage = language;
       if (Object.keys(patch).length > 0) await save(patch).unwrap();
     } catch {
-      /*
-       * Deliberately swallowed. Both of these are settings with sound defaults
-       * and their own page in Settings; refusing to let somebody into the
-       * product because a preference did not save would be the worst possible
-       * first minute. They arrive, and the name is still theirs to set.
-       */
+      /* deliberately swallowed — see above */
     }
-    router.push(destination);
+    try {
+      await completeOnboarding();
+    } catch {
+      /* the same reasoning: being asked twice is cheaper than being stuck */
+    }
+    router.replace(HOME);
   }
 
-  /**
-   * The steps this account actually has. Two for a Google sign-in, three for an
-   * account made here — and the marker below counts what is there rather than
-   * what was planned.
-   */
-  const steps = permissions.name
-    ? (["name", "language", "start"] as const)
-    : (["language", "start"] as const);
-  const current = steps[step];
+  /** Forward, or out — whichever this step is. */
+  function advance() {
+    if (last) {
+      void finish();
+      return;
+    }
+    setStep((s) => s + 1);
+  }
 
   return (
     <AuthShell
-      eyebrow={`Step ${step + 1} of ${steps.length}`}
+      eyebrow={stepLabel(step, steps.length)}
       title={
         current === "name"
           ? "What should we call you?"
-          : current === "language"
-            ? "What language are your meetings in?"
-            : "You are set up."
+          : "What language do you usually meet in?"
       }
       subtitle={
-        current === "name" ? (
-          "It appears on your account and beside the tasks assigned to you."
-        ) : current === "language" ? (
-          "Reverie detects this from the audio. Fixing it helps when a meeting opens quietly."
-        ) : (
-          <>Bring in a recording you already have, or make one now.</>
-        )
+        current === "name"
+          ? "It appears on your account, and beside the tasks assigned to you."
+          : "Reverie detects this from the audio. Setting it helps when a meeting opens quietly."
       }
       footer={
         <div className="flex items-center justify-between">
           {/* A real sequence, so the markers carry real information: which of
-              three, and which are done. */}
+              however many there are, and which are done. */}
           <div className="flex items-center gap-1.5" aria-hidden>
             {steps.map((id, i) => (
               <span
                 key={id}
                 className={cn(
                   "h-1 rounded-full transition-all duration-300",
-                  i === step ? "w-6 bg-foreground" : "w-1.5 bg-border",
+                  i === step ? "w-6 bg-ink" : "w-1.5 bg-line-strong",
                 )}
               />
             ))}
           </div>
           <button
             type="button"
-            onClick={() => void finish(HOME)}
-            disabled={saving}
-            className="text-[13px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-60"
+            onClick={() => void finish()}
+            disabled={leaving}
+            className="text-callout text-ink-3 underline-offset-[3px] transition-colors duration-press ease-soft hover:text-ink hover:underline disabled:opacity-60"
           >
             Skip for now
           </button>
@@ -179,10 +201,9 @@ function Welcome() {
     >
       {current === "name" ? (
         <form
-          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            setStep(step + 1);
+            advance();
           }}
         >
           <Field
@@ -193,15 +214,19 @@ function Welcome() {
             onChange={(e) => setName(e.target.value)}
             autoFocus
           />
-          <SubmitButton>
-            Continue <ArrowRight className="h-4 w-4" />
-          </SubmitButton>
+          <div className="mt-6">
+            <SubmitButton busy={leaving && last}>
+              Continue <ArrowRight className="h-4 w-4" />
+            </SubmitButton>
+          </div>
         </form>
-      ) : null}
-
-      {current === "language" ? (
-        <div className="space-y-4">
-          <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
+      ) : (
+        <div>
+          <div
+            role="radiogroup"
+            aria-label="Default meeting language"
+            className="max-h-[280px] space-y-0.5 overflow-y-auto"
+          >
             <LanguageRow
               label="Detect automatically"
               detail="Recommended"
@@ -217,41 +242,17 @@ function Welcome() {
                 onSelect={() => setLanguage(option.code)}
               />
             ))}
-            {languages.isLoading ? (
-              <p className="px-1 py-3 text-[13px] text-muted-foreground">Loading languages…</p>
-            ) : null}
+            {languages.isLoading && (
+              <p className="px-1 py-3 text-callout text-ink-4">Loading languages…</p>
+            )}
           </div>
-          <SubmitButton onClick={() => setStep(step + 1)} type="button">
-            Continue <ArrowRight className="h-4 w-4" />
-          </SubmitButton>
+          <div className="mt-6">
+            <SubmitButton type="button" busy={leaving} onClick={advance}>
+              Continue <ArrowRight className="h-4 w-4" />
+            </SubmitButton>
+          </div>
         </div>
-      ) : null}
-
-      {current === "start" ? (
-        <div className="space-y-3">
-          <StartRow
-            icon={Mic}
-            title="Record a meeting"
-            detail="Capture it in this browser, live."
-            onClick={() => void finish("/record?r=%2Fhome")}
-            busy={saving}
-          />
-          <StartRow
-            icon={FileUp}
-            title="Import a file"
-            detail="Audio or video you already have."
-            onClick={() => void finish("/upload")}
-            busy={saving}
-          />
-          <StartRow
-            icon={ArrowRight}
-            title="Just take me in"
-            detail="Everything is set. You can start any time."
-            onClick={() => void finish(HOME)}
-            busy={saving}
-          />
-        </div>
-      ) : null}
+      )}
     </AuthShell>
   );
 }
@@ -275,56 +276,17 @@ function LanguageRow({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-        "outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        selected ? "bg-accent" : "hover:bg-accent/50",
+        "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left",
+        "transition-colors duration-press ease-soft",
+        selected ? "bg-white/[0.06]" : "hover:bg-white/[0.035]",
       )}
     >
-      <span className="flex-1 text-[14px]">{label}</span>
-      <span className="text-[12px] text-muted-foreground">{detail}</span>
+      <span className="flex-1 text-body text-ink">{label}</span>
+      <span className="text-foot text-ink-4">{detail}</span>
       <Check
-        className={cn("h-4 w-4 shrink-0", selected ? "opacity-100" : "opacity-0")}
+        className={cn("h-4 w-4 shrink-0 text-ink", selected ? "opacity-100" : "opacity-0")}
         aria-hidden
       />
-    </button>
-  );
-}
-
-/** One way to begin. */
-function StartRow({
-  icon: Icon,
-  title,
-  detail,
-  onClick,
-  busy,
-}: {
-  icon: typeof Mic;
-  title: string;
-  detail: string;
-  onClick: () => void;
-  busy: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className={cn(
-        "group flex w-full items-center gap-3.5 rounded-lg border bg-card px-4 py-3.5 text-left",
-        "transition-colors hover:bg-accent",
-        "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        "disabled:opacity-60",
-      )}
-    >
-      {busy ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
-      ) : (
-        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-medium">{title}</span>
-        <span className="block text-[12.5px] text-muted-foreground">{detail}</span>
-      </span>
     </button>
   );
 }

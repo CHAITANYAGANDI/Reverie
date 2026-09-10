@@ -83,13 +83,70 @@ export function ActionItemRow({
 }: ActionItemRowProps) {
   const [open, setOpen] = React.useState(false);
   const [patch, { isLoading: saving }] = usePatchActionItemMutation();
-  const done = item.status === "DONE";
+
+  /*
+   * WHAT THE TICK SHOWS WHILE THE SERVER IS STILL THINKING.
+   *
+   * <p>`checked={item.status === "DONE"}` is a controlled checkbox, so a click
+   * changed nothing until a round trip finished and the invalidated query came
+   * back -- and the box was `disabled` for the duration on top of that.
+   * Measured against the real stack: 120ms after the click the checkbox was
+   * still unchecked, still un-struck, and now greyed out. Clicking a tick and
+   * watching it refuse is indistinguishable from a broken control, which is
+   * exactly how it was reported.
+   *
+   * <p>So the row holds what the reader asked for until the truth arrives.
+   * `null` means "no request outstanding, the prop is the truth".
+   *
+   * <h2>Why here and not in the RTK cache</h2>
+   *
+   * <p>An `onQueryStarted` optimistic patch is the usual answer, and it would
+   * have to find every cached list this item appears in -- `getActionItems`
+   * with whatever arguments each surface passes, plus
+   * `getMeetingActionItems(meetingId)`, whose argument the patch does not even
+   * carry. Walking the cache to patch them all is more machinery than the
+   * defect needs, and getting it half right leaves two lists disagreeing
+   * permanently.
+   *
+   * <p>This cannot: it touches no cache, so nothing can drift. The mutation
+   * already invalidates correctly -- proven at runtime -- so the authoritative
+   * value arrives on its own and this override exists only to cover the gap.
+   */
+  const [pending, setPending] = React.useState<boolean | null>(null);
+  const done = pending ?? item.status === "DONE";
+
+  // The prop caught up: the override has nothing left to say.
+  React.useEffect(() => {
+    setPending(null);
+  }, [item.status]);
 
   async function update(body: Parameters<typeof patch>[0]["body"], failure = "Couldn't update that action item.") {
     try {
       await patch({ id: item.id, body }).unwrap();
     } catch {
       toast.error(failure);
+    }
+  }
+
+  /**
+   * Tick it, or untick it.
+   *
+   * <p>Reconciled against the *response* rather than against what was asked
+   * for, so a server that declines the change is believed immediately instead
+   * of being overridden until the refetch lands. Rolled back on failure, where
+   * `update`'s toast is the explanation.
+   */
+  async function setDone(next: boolean) {
+    setPending(next);
+    try {
+      const updated = await patch({
+        id: item.id,
+        body: { status: next ? "DONE" : "OPEN" },
+      }).unwrap();
+      setPending(updated.status === "DONE");
+    } catch {
+      setPending(null);
+      toast.error("Couldn't update that action item.");
     }
   }
 
@@ -110,17 +167,21 @@ export function ActionItemRow({
             checked={selected}
             aria-label={`Select “${title}”`}
             onChange={(e) => onSelectedChange?.(e.target.checked)}
-            className="mt-1.5 h-4 w-4 shrink-0 accent-[hsl(var(--muted-foreground))]"
+            className="mt-1.5 h-4 w-4 shrink-0 accent-[hsl(var(--ink-4))]"
           />
         )}
 
+        {/* NOT `disabled={saving}`. A tick that goes dead the moment it is
+            pressed is the whole of what "marking it complete does nothing"
+            looked like; the optimistic value above is what makes the press
+            visible, and a second press is a legitimate change of mind rather
+            than something to guard against. */}
         <input
           type="checkbox"
           checked={done}
-          disabled={saving}
           aria-label={`Mark “${title}” complete`}
-          onChange={(e) => update({ status: e.target.checked ? "DONE" : "OPEN" })}
-          className="mt-1.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+          onChange={(e) => void setDone(e.target.checked)}
+          className="mt-1.5 h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
         />
 
         <div className="min-w-0 flex-1">
@@ -137,8 +198,10 @@ export function ActionItemRow({
             {title}
           </p>
 
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
-            <span className="text-muted-foreground">{item.ownerName || "Unassigned"}</span>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-cap">
+            {/* "Unassigned" is a fact the API returns, not a gap being
+                filled in: `ownerName` is null when nobody was named. */}
+            <span className="text-ink-4">{item.ownerName || "Unassigned"}</span>
             {deadline && (
               <>
                 <Separator />
@@ -152,7 +215,7 @@ export function ActionItemRow({
                 <Separator />
                 <Link
                   href={`/meetings/${item.meetingId}`}
-                  className="text-muted-foreground hover:text-primary hover:underline"
+                  className="text-ink-4 transition-colors hover:text-brand-text hover:underline"
                 >
                   {item.meetingTitle}
                 </Link>
@@ -165,7 +228,7 @@ export function ActionItemRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+            className="h-8 gap-1 px-2 text-cap text-ink-4"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
           >
@@ -186,7 +249,7 @@ export function ActionItemRow({
           {/* Said once, where it matters: the fields below hold the words the
               meeting was in, not the ones on the row above. */}
           {translation?.translated && (
-            <p className="ml-7 mt-2 text-xs text-muted-foreground">
+            <p className="ml-7 mt-2 text-foot text-ink-4">
               Editing works on the original wording: “{item.title}”.
             </p>
           )}
@@ -199,7 +262,7 @@ export function ActionItemRow({
 
 function Separator() {
   return (
-    <span className="text-border" aria-hidden>
+    <span className="text-ink-5" aria-hidden>
       ·
     </span>
   );
@@ -260,7 +323,7 @@ function ActionItemDetails({
   }
 
   return (
-    <div className="ml-7 mt-2 space-y-4 border-l pl-4">
+    <div className="ml-7 mt-3 space-y-4 border-l border-line pl-4">
       <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
         <div className="space-y-1.5">
           <Label htmlFor={`title-${item.id}`}>What needs to happen</Label>
@@ -323,7 +386,10 @@ function ActionItemDetails({
 
       {item.sourceSentence && (
         <div className="space-y-1">
-          <blockquote className="border-l-2 border-highlight/40 pl-3 text-sm italic text-muted-foreground">
+          {/* The sentence this was read out of, as evidence. The same
+              1px rule a quotation gets in the brief and a citation gets
+              under a chat answer -- three places, one device. */}
+          <blockquote className="v2-note v2-read italic">
             {item.sourceSentence}
           </blockquote>
           <SourceLink item={item} onOpenSource={onOpenSource} />
@@ -374,7 +440,7 @@ function SourceLink({
   return (
     <Link
       href={`/meetings/${item.meetingId}?t=${Math.floor(at)}`}
-      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+      className="inline-flex items-center gap-1 text-cap text-brand-text hover:underline"
     >
       {label}
     </Link>

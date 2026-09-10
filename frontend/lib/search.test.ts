@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  broaden,
   EMPTY_SEARCH,
+  groupFor,
   highlight,
+  isLocalScope,
   meetingHref,
   presetFrom,
+  SEARCH_SCOPES,
   snippet,
   toQueryArgs,
   totalResults,
@@ -54,22 +58,33 @@ describe("date presets", () => {
 });
 
 describe("request arguments", () => {
-  it("asks for both groups, and for enough of each to be the whole answer", () => {
+  it("asks for every group the panel draws, and for enough of each", () => {
     const args = toQueryArgs(state({ q: "stripe" }), NOW);
 
-    // Named rather than omitted. Absent means every group the server has, and
-    // four of those are no longer rendered — asking for them buys four more
-    // searches whose answers are dropped on arrival.
-    expect(args.groups).toEqual(["meetings", "mentions"]);
+    /*
+     * FOUR, AND IT WAS TWO.
+     *
+     * <p>The API answers with six groups and the panel used to draw two, so
+     * `decisions` and `people` were computed by Postgres on every search and
+     * discarded on arrival. Both are drawn now.
+     *
+     * <p>Still named rather than omitted: absent means every group the server
+     * has, and `risks` and `commitments` are two searches whose answers nothing
+     * renders.
+     */
+    expect(args.groups).toEqual(["meetings", "mentions", "decisions", "people"]);
     // Five was a preview, with "See all results" opening a page that fetched
     // fifty. There is no page: this list is what the search found.
     expect(args.limit).toBe(25);
   });
 
-  it("never asks for a group the page cannot draw", () => {
+  it("never asks for a group the panel cannot draw", () => {
     for (const s of [state({ q: "x" }), state({ q: "x", group: "meetings" })]) {
       for (const g of toQueryArgs(s, NOW).groups ?? []) {
-        expect(["meetings", "mentions"]).toContain(g);
+        expect(["meetings", "mentions", "decisions", "people"]).toContain(g);
+        // The two the API has and nothing renders.
+        expect(g).not.toBe("risks");
+        expect(g).not.toBe("commitments");
       }
     }
   });
@@ -181,11 +196,12 @@ describe("totals", () => {
     mentions: { total: 27, hits: [] },
   } as unknown as SearchResponse;
 
-  it("adds up only the groups the page draws", () => {
-    // The server still answers with people, decisions, commitments and risks.
-    // Counting them would put the page in its "there are results" branch and
-    // then render nothing: an empty screen insisting it found something.
-    expect(totalResults(response)).toBe(39);
+  it("adds up only the groups the panel draws", () => {
+    // Meetings, mentions, decisions and people: 12 + 27 + 3 + 1. The server
+    // still answers with risks and commitments, and counting those would put
+    // the panel in its "there are results" branch and then render nothing — an
+    // empty list insisting it found something.
+    expect(totalResults(response)).toBe(43);
   });
 
   it("is zero when the only matches are in groups that are not shown", () => {
@@ -193,8 +209,11 @@ describe("totals", () => {
       ...response,
       meetings: { total: 0, hits: [] },
       mentions: { total: 0, hits: [] },
+      decisions: { total: 0, hits: [] },
+      people: { total: 0, hits: [] },
     } as unknown as SearchResponse;
 
+    // Risks: 2 and commitments: 4 are still in there, and neither is drawn.
     expect(totalResults(hidden)).toBe(0);
   });
 
@@ -202,4 +221,69 @@ describe("totals", () => {
     expect(totalResults(undefined)).toBe(0);
   });
 
+});
+
+describe("the scope", () => {
+  it("asks the API for the group it names", () => {
+    expect(groupFor("mentions")).toBe("mentions");
+    expect(groupFor("decisions")).toBe("decisions");
+    expect(groupFor("people")).toBe("people");
+    expect(groupFor("meetings")).toBe("meetings");
+  });
+
+  it("still asks for everything when the scope is drawn in the browser", () => {
+    /*
+     * Folders and tags are not result groups on the server — `GET /search`
+     * takes each as a *filter* and never answers with one — so those two scopes
+     * filter lists the panel already holds. Narrowing the request as well would
+     * mean switching to Folders and back re-ran the search for nothing.
+     */
+    expect(isLocalScope("folders")).toBe(true);
+    expect(isLocalScope("tags")).toBe(true);
+    expect(groupFor("folders")).toBe("all");
+    expect(groupFor("tags")).toBe("all");
+    expect(isLocalScope("mentions")).toBe(false);
+  });
+
+  it("offers nothing the panel cannot draw", () => {
+    const values = SEARCH_SCOPES.map((s) => s.value);
+
+    expect(values).toEqual([
+      "all",
+      "mentions",
+      "decisions",
+      "meetings",
+      "people",
+      "folders",
+      "tags",
+    ]);
+    // A scope that empties the panel is worse than one option fewer.
+    expect(values).not.toContain("risks");
+    expect(values).not.toContain("commitments");
+  });
+});
+
+describe("broadening a search that found nothing", () => {
+  it("drops the last word, which is the one being typed", () => {
+    /*
+     * The server ANDs the terms and only the last is a prefix match, so a
+     * two-word search finding nothing says nothing about either word. Dropping
+     * the last one is the same search, wider — which is what makes the zero
+     * state's results real results rather than a guess at something similar.
+     */
+    expect(broaden("onboarding funnel")).toBe("onboarding");
+    expect(broaden("the stripe migration plan")).toBe("the stripe migration");
+  });
+
+  it("has nothing to offer for a single word", () => {
+    // There is no shorter search, and a suggestion engine that invented a
+    // similar-looking term would put words on screen nobody ever said.
+    expect(broaden("onboarding")).toBe("");
+    expect(broaden("  ")).toBe("");
+    expect(broaden("")).toBe("");
+  });
+
+  it("ignores the spacing somebody typed", () => {
+    expect(broaden("  onboarding   funnel  ")).toBe("onboarding");
+  });
 });

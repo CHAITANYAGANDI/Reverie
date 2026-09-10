@@ -23,9 +23,14 @@
  * this is not silent — it is the browser's prompt, it names the site, and it is
  * the only consent gate Reverie relies on.
  *
- * The consent tick going means Reverie no longer has anything to say about
- * consent for a recording, and says nothing rather than something convenient.
- * See where the meeting is created in components/recording-bar.tsx.
+ * The consent tick going means Reverie no longer *asks* about consent, and it
+ * still claims nothing about it — the flag it used to set is not set by
+ * anything here. What it does now is smaller and does not stand in the way: one
+ * line at the foot of the page saying to make sure the room has been told, with
+ * the sentence to read out one keystroke behind it. Nothing to tick, nothing to
+ * dismiss, and no bearing on when the microphone opens. See
+ * `RecordResponsibly`, and where the meeting is created in
+ * components/recording-bar.tsx.
  *
  * The recorder itself lives in the shell too, so navigating away mid-meeting no
  * longer destroys the recording. This page is a view onto it: mount, unmount,
@@ -41,6 +46,7 @@ import type { LiveTurn } from "@/lib/use-live-transcript";
 import { Button } from "@/components/ui/button";
 import { stopwatch } from "@/lib/format";
 import { folderHref, folderIdFrom, returnPath } from "@/lib/routes";
+import { RECORDING_ANNOUNCEMENT } from "@/lib/privacy";
 import { useAllowance, recordRefusal } from "@/lib/allowance";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -187,11 +193,13 @@ export default function RecordPage() {
     // Clearance for the docked control bar is added by the shell, which knows
     // whether one is showing; adding it again here would leave a gap under the
     // setup, where there is no bar.
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-measure space-y-6">
       {!started && refusal && !allowance.loading && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-          <p className="font-medium">There is nothing left to record with</p>
-          <p className="mt-1 text-sm text-muted-foreground">{refusal}</p>
+        <div className="v2-note py-1" data-tone="warning">
+          <p className="text-callout font-headline text-ink">
+            There is nothing left to record with
+          </p>
+          <p className="mt-1 text-callout text-ink-3">{refusal}</p>
         </div>
       )}
 
@@ -228,11 +236,81 @@ export default function RecordPage() {
           onRetry={() => void onStart()}
         />
       )}
+
+      {/* Last, and only ever a footnote. See `RecordResponsibly`. */}
+      <RecordResponsibly />
     </div>
   );
 }
 
 /* --------------------------------- pieces -------------------------------- */
+
+/**
+ * One line about the room, and the words to say to it.
+ *
+ * <h2>What this is not</h2>
+ *
+ * <p>Not the consent gate that used to be here. That was a checkbox somebody
+ * had to tick before Start, it was removed on request, and it is not coming
+ * back: a tick box is a click to get past, and having got past it the product
+ * then claimed the room had been told. Nothing here blocks, gates, focuses
+ * itself, or has to be dismissed. The microphone opens on arrival exactly as it
+ * did, and this renders under the result.
+ *
+ * <p>It also does not say that the browser's permission prompt is consent. It
+ * is a decision by the person at the keyboard, and everybody else in the
+ * conversation is unrepresented in it — which is the entire reason a sentence
+ * has to be read out loud.
+ *
+ * <h2>Why the announcement is behind a disclosure</h2>
+ *
+ * <p>`RECORDING_ANNOUNCEMENT` is three sentences. Standing open, it is a
+ * paragraph of somebody else's words on a page whose whole redesign was about
+ * having no standing paragraphs — and it is only wanted once, at the start,
+ * by somebody who has not thought of what to say. So the line is one sentence
+ * and the words are one keystroke away.
+ *
+ * <p>The region is always rendered and toggled with `hidden`, rather than
+ * mounted on open. `aria-controls` must point at something that exists, and
+ * `hidden` is what keeps the collapsed text out of both the accessibility tree
+ * and a find-in-page.
+ *
+ * <p>The sentence itself is imported, never retyped. It is tested in
+ * lib/privacy.test.ts and it is the one string in this product that is meant to
+ * be read aloud to other people; two copies of that is how one of them comes to
+ * be wrong.
+ */
+function RecordResponsibly() {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    /* The margin note at its quietest: a left hairline and `--ink-4` type. No
+       fill, no icon, no tone colour — a tinted panel with a warning triangle
+       would read as something having gone wrong with the recording. */
+    <div className="v2-note" data-tone="quiet">
+      <p className="text-foot leading-[1.5] text-ink-4">
+        Record responsibly. Make sure everyone who needs to know has been
+        informed before recording.{" "}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls="recording-announcement"
+          className="rounded-sm text-ink-3 underline underline-offset-2 outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          What can I say?
+        </button>
+      </p>
+      <p
+        id="recording-announcement"
+        hidden={!open}
+        className="mt-2 text-foot leading-[1.55] text-ink-3"
+      >
+        “{RECORDING_ANNOUNCEMENT}”
+      </p>
+    </div>
+  );
+}
 
 /**
  * The body of a meeting that is being recorded.
@@ -261,9 +339,9 @@ function InProgress({ state }: { state: string }) {
             away the thing that decision is about. */}
         {hasWords && <Phrases />}
         <Empty>
-          <FileText className="mx-auto h-7 w-7 text-muted-foreground" />
-          <p className="mt-3 font-medium">Recording finished</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <FileText className="mx-auto h-7 w-7 text-ink-4" />
+          <p className="mt-3 text-callout font-headline text-ink">Recording finished</p>
+          <p className="mt-1 text-callout text-ink-3">
             Save it below to transcribe it. Nothing has left this browser yet, so
             closing the tab now would lose the audio.
           </p>
@@ -273,7 +351,7 @@ function InProgress({ state }: { state: string }) {
               and replaces this. Said plainly so nobody reports the difference
               between the two as a bug. */}
           {hasWords && (
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-foot text-ink-4">
               These are the live results. The full transcript is written from
               the recording after you save, and will replace them.
             </p>
@@ -300,7 +378,7 @@ function InProgress({ state }: { state: string }) {
       {hasWords && <Phrases />}
 
       {state === "paused" && hasWords && (
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-callout text-ink-3">
           Paused — nothing is being recorded or transcribed.
         </p>
       )}
@@ -313,12 +391,12 @@ function InProgress({ state }: { state: string }) {
           from the same provider that writes the final transcript, so calling
           them the browser's would be untrue. */}
       {transcript.status === "reconnecting" && (
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-foot text-ink-4">
           Reconnecting live text… the recording is unaffected.
         </p>
       )}
       {transcript.error && (
-        <p className="text-center text-xs text-muted-foreground">{transcript.error}</p>
+        <p className="text-center text-foot text-ink-4">{transcript.error}</p>
       )}
     </div>
   );
@@ -392,18 +470,23 @@ function Turn({ turn, provisional = false }: { turn: LiveTurn; provisional?: boo
     <div className={cn("flex gap-3", provisional && "opacity-60")}>
       <span
         className={cn(
-          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-medium",
-          unknown ? "bg-muted text-muted-foreground" : "bg-primary/15 text-primary",
+          "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-medium",
+          unknown ? "bg-surface-hover text-ink-4" : "bg-brand-fill/25 text-brand-text",
         )}
         aria-hidden
       >
         {unknown ? <User className="h-3.5 w-3.5" /> : initials(turn.speaker)}
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-xs text-muted-foreground">
-          {unknown ? "Identifying speaker" : turn.speaker} · {stopwatch(turn.at)}
+        {/* Sans for who and when, serif for what was said. The same rule the
+            finished transcript follows, because this is the same document
+            arriving a few seconds early. */}
+        <span className="text-cap text-ink-4">
+          {unknown ? "Identifying speaker" : turn.speaker}{" "}
+          <span className="text-ink-5" aria-hidden>·</span>{" "}
+          <span className="tabular font-mono">{stopwatch(turn.at)}</span>
         </span>
-        <p className="mt-0.5 text-[15px] leading-relaxed">{turn.text}</p>
+        <p className="v2-read mt-0.5">{turn.text}</p>
       </div>
     </div>
   );
@@ -422,7 +505,9 @@ function initials(speaker: string): string {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-dashed p-8 text-center">{children}</div>;
+  return (
+    <div className="rounded-md border border-dashed border-line p-8 text-center">{children}</div>
+  );
 }
 
 /**
@@ -437,9 +522,9 @@ function Empty({ children }: { children: React.ReactNode }) {
 function WaitingForPermission() {
   return (
     <Empty>
-      <Loader2 className="mx-auto h-7 w-7 animate-spin text-muted-foreground" />
-      <p className="mt-3 font-medium">Waiting for permission…</p>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <Loader2 className="mx-auto h-7 w-7 animate-spin text-ink-4" />
+      <p className="mt-3 text-callout font-headline text-ink">Waiting for permission…</p>
+      <p className="mt-1 text-callout text-ink-3">
         Allow the microphone to start recording.
       </p>
     </Empty>
@@ -475,8 +560,8 @@ function Opening({
 
   if (refused) {
     return (
-      <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-8 text-center">
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col items-center gap-4 rounded-md border border-dashed border-line p-8 text-center">
+        <p className="text-callout text-ink-3">
           Nothing was recorded. Allow the microphone in your browser, then try again.
         </p>
         <Button className="gap-2" onClick={onRetry}>

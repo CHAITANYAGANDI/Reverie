@@ -32,8 +32,6 @@ import type { SegmentEdit, TranscriptSegment } from "@/lib/types";
 import { timecode } from "@/lib/format";
 import { groupIntoTurns } from "@/lib/turns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { SpeakerAvatar } from "@/components/speaker-avatar";
 import { cn } from "@/lib/utils";
 
 /** What the toolbar outside this component needs to know to draw itself. */
@@ -99,7 +97,19 @@ function AutoTextarea({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       rows={1}
-      className="w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 text-sm leading-relaxed outline-none transition-colors hover:border-border focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30"
+      /*
+        THE SAME WORDS, IN THE SAME PLACE.
+        <p>`v2-read`, because `21-transcript-editing.png` corrects the
+        transcript in the transcript's own type: the serif at reading size, so
+        a line under correction is the line you were reading rather than a form
+        field that replaced it. `text-sm` sans re-set every paragraph the
+        moment the mode opened.
+        <p>`-ml-2` cancels the box's own `px-2`, which is what keeps the text
+        on the reading column's left edge. The padding still exists -- the box
+        just hangs into the 12px grid gap for it, so focusing a line draws a
+        box around the words instead of shifting them 7px right.
+      */
+      className="v2-read -ml-2 w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 outline-none transition-colors hover:border-border focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30"
       {...rest}
     />
   );
@@ -219,14 +229,26 @@ export const TranscriptEditor = React.forwardRef<
   }
 
   return (
-    <Card onKeyDown={onKeyDown}>
-      <CardContent className="space-y-4 pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/40 px-3 py-2">
-          <p className="text-sm">
-            <span className="font-medium">Editing the transcript.</span>{" "}
-            <span className="text-muted-foreground">
-              Fix as many lines as you like, then press Done.
-            </span>
+    /*
+     * ON THE CANVAS, not in a card.
+     *
+     * <p>This was `<Card><CardContent>` — a rounded border round the whole
+     * transcript, with a dashed filled strip inside it. Two surfaces stacked
+     * around a document, on the one screen where the words are the point, and
+     * the V2 rule is that only the thing being operated becomes a surface.
+     * That is the paragraph under the cursor, which has its own focus ring.
+     *
+     * <p>Nothing about the editing changed: same turns from the same
+     * `groupIntoTurns`, same drafts, same per-line undo, same dirty count, same
+     * Save and Cancel, same keyboard handler. See the tests.
+     */
+    <div onKeyDown={onKeyDown} className="space-y-4">
+        {/* One quiet line. It used to be a dashed panel repeating a mode the
+            tab row now names out loud; what is left is the part that says what
+            to do and the count of what is unsaved. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+          <p className="text-callout text-ink-3">
+            Fix as many lines as you like, then press Done.
           </p>
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {dirty === 0
@@ -236,27 +258,43 @@ export const TranscriptEditor = React.forwardRef<
         </div>
 
         {turns.map((turn, i) => (
-          <div key={i} className="flex gap-3">
-            <SpeakerAvatar name={turn.speaker} speakerKey={turn.speakerKey} />
-            <div className="min-w-0 flex-1">
-              {/* Read-only on purpose, and shown rather than hidden: a
-                  correction is easier to make when you can see who the words
-                  are attributed to, and easier to get wrong when you cannot. */}
-              <div className="flex items-baseline gap-2 pb-0.5">
-                <span className="text-sm font-semibold">{turn.speaker}</span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {timecode(turn.start)}
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                {turn.segments.map((s, j) => {
-                  const changed = Boolean(s.id) && dirtyIds.includes(s.id!);
-                  return (
+          /*
+            THE SAME GRID THE READING MODE USES, and that is the point.
+            <p>`3.25rem` gutter, `gap-x-3`, text column — identical to the
+            transcript panel's, so switching into correction mode does not move
+            a single paragraph horizontally. `21-transcript-editing.png` differs
+            from `19-meeting-transcript.png` in exactly one thing: which
+            paragraph has a border round it.
+            <p>No avatar, for the same reason the reading mode dropped it: it
+            carried a colour and nothing else, and the name is the heading.
+          */
+          <div key={i} className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3">
+            {/* Read-only on purpose, and shown rather than hidden: a correction
+                is easier to make when you can see who the words are attributed
+                to, and easier to get wrong when you cannot. */}
+            <span aria-hidden />
+            <span className="block pb-1 text-callout font-headline text-ink">
+              {turn.speaker}
+            </span>
+            {turn.segments.map((s, j) => {
+              const changed = Boolean(s.id) && dirtyIds.includes(s.id!);
+              return (
+                <React.Fragment key={s.id ?? j}>
+                  {/* One per utterance, in the gutter, and brighter on a line
+                      that has been changed — which is where the reference puts
+                      the only difference between the two modes. */}
+                  <span
+                    className={cn(
+                      "tabular h-fit pt-[0.3rem] text-right font-mono text-cap",
+                      changed ? "text-brand-text" : "text-ink-4",
+                    )}
+                  >
+                    {timecode(s.start)}
+                  </span>
                     <div
-                      key={s.id ?? j}
                       className={cn(
-                        "flex items-start gap-1 rounded-md border-l-2 border-transparent pl-1",
-                        changed && "border-primary bg-primary/5",
+                        "flex items-start gap-1 rounded-md pb-2",
+                        changed && "bg-brand/5",
                       )}
                     >
                       {s.id ? (
@@ -297,10 +335,9 @@ export const TranscriptEditor = React.forwardRef<
                         </p>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                </React.Fragment>
+              );
+            })}
           </div>
         ))}
 
@@ -333,7 +370,6 @@ export const TranscriptEditor = React.forwardRef<
             Done{dirty > 0 ? ` (${dirty})` : ""}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 });

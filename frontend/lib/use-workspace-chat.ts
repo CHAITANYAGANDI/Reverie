@@ -3,10 +3,13 @@
 /**
  * The workspace chat's wiring, in one place.
  *
- * Two surfaces ask across the whole workspace — the panel beside the home list
- * and the full AI Chat page — and they share everything except which thread
+ * Two surfaces ask across the whole workspace — the pane Home opens beside its
+ * list and the `/ask` route — and they share everything except which thread
  * each one is currently on. Both also need the same recovery when a thread is
  * deleted underneath them.
+ *
+ * Both surfaces are rendered by `components/chat/workspace-ask`, which is the
+ * one place this hook is called from.
  *
  * Hooks cannot be chosen conditionally, so the alternative to this is each
  * surface repeating nine `use…Mutation` calls and two effects, which is nine
@@ -16,23 +19,35 @@
  *
  * They did, and it was deliberate: the home rail's expand button used to
  * *navigate* to /ask, so the two had to be one conversation or expanding a
- * panel would have abandoned a half-typed question. Expanding widens the rail
- * in place now — see `onExpand` in components/home-chat-panel — so nothing
+ * panel would have abandoned a half-typed question. The pane maximises in
+ * place now — see `toggleSidePaneExpanded` in components/side-pane — so nothing
  * depends on it any more, and what was left was two screens showing each
  * other's questions for no reason anybody could see.
  *
  * So the thread is keyed per surface. What is still shared is the *archive*:
  * one conversation list, one set of endpoints. A thread started
- * on Home is still in /ask's history picker and can be opened there
+ * in Home's pane is still in `/ask`'s history picker and can be opened there
  * deliberately — it just is not adopted by accident.
  *
- * ## And why the thread now outlives a navigation
+ * ## And why the thread does not outlive a navigation
  *
- * `resetOnLeave` was how the sharing was contained: forgetting the thread on
- * unmount meant neither surface could inherit the other's. Keying them apart
- * does that precisely, so the blunt instrument comes out — and Home keeps what
- * you were asking while you go and look at a meeting. Nothing is persisted, so
- * a reload still starts both from a clean sheet.
+ * Opening Ask offers a new chat. It briefly did outlive one, on the reasoning
+ * that Home should keep what you were asking while you went to look at a
+ * meeting — which turned out to be the wrong default in use: the thing people
+ * do is ask about what is in front of them, so arriving somewhere new and
+ * opening Ask to a half-finished exchange from two pages ago is a panel that
+ * has to be cleared before it can be used.
+ *
+ * That rule is **not implemented here**, and the first attempt was: this hook
+ * passed `resetOnLeave`, which cleared the thread when the chat component
+ * unmounted. It gave the right answer on these two surfaces by luck — their
+ * panels unmount exactly when their routes do — and the wrong one on a
+ * meeting, whose panel is a tab. It now lives at the route boundary, in
+ * lib/chat-route.ts, and applies to all three surfaces the same way.
+ *
+ * Forgotten, not deleted. Every conversation is still in the archive and one
+ * click away in the history picker; what is dropped is only which of them this
+ * surface was looking at.
  */
 
 import * as React from "react";
@@ -67,8 +82,9 @@ import type { ChatMode } from "@/lib/types";
 export type ChatSurface = "home" | "ask";
 
 export function useWorkspaceChat(surface: ChatSurface) {
-  // One per surface. Empty on load, and held for as long as this tab lives —
-  // see `lib/active-chat` for both.
+  // One per surface. Empty on load, held while the reader stays on the page,
+  // and forgotten when they leave it — which is the shell's doing rather than
+  // this hook's. See lib/chat-route.ts.
   const [conversationId, setConversationId] = useActiveChat(`workspace:${surface}`);
   const [context, setContext] = React.useState<ChatContext>(NO_CONTEXT);
   const [mode, setMode] = React.useState<ChatMode>("express");

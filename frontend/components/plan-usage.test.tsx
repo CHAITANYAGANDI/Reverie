@@ -7,9 +7,14 @@ import type { UsageResponse } from "@/lib/types";
  *
  * <p>Most of this is about which number it draws, and the answer changed. The
  * allowance was five meetings a calendar month, with minutes tallied and
- * checked against nothing; it is now 100 transcribed minutes and 3 imports for
- * the life of the account. So the bar is on minutes — the number that actually
- * runs out — and the second line is imports.
+ * checked against nothing; it is now 100 minutes and 3 imports for the life of
+ * the account. So the bar is on minutes — the number that actually runs out —
+ * and it is the only figure here.
+ *
+ * <p>The second line used to count the imports and no longer does: this is a
+ * glance inside the account menu, and the allowance almost nobody is near was
+ * spending a row of it to restate a zero. Both figures are still stated in
+ * full, with their own bars, on Settings → Plans.
  *
  * <p>The thing worth guarding is the sentence at the bottom. It used to read
  * "None left until 1 September", which was the useful thing to say about a
@@ -43,16 +48,30 @@ describe("PlanUsage", () => {
 
     expect(screen.getByText("Basic")).toBeInTheDocument();
     expect(screen.getByText("42 of 100")).toBeInTheDocument();
-    expect(screen.getByText(/minutes transcribed/)).toBeInTheDocument();
+    expect(screen.getByText(/minutes used/)).toBeInTheDocument();
   });
 
-  it("shows the imports underneath, which are the other thing that runs out", () => {
+  it("no longer counts the imports here", () => {
+    /*
+     * It read "2 of 3 imports used" under the minutes and it is withdrawn.
+     *
+     * <p>This widget is a glance inside the account menu: one bar and one
+     * number, about the limit somebody is actually near. Imports are the second
+     * allowance and almost nobody is near it, so the line spent a row of the
+     * menu restating a zero.
+     *
+     * <p>Both allowances are still stated in full where somebody is weighing
+     * them up — Settings, Plans, "This account" — each with its own bar against
+     * what has been used. That is asserted in
+     * components/settings/plans-tab.test, which is why removing it here loses
+     * no coverage of the fact itself.
+     */
     render(<PlanUsage />);
 
-    // Three files, ever. It is the allowance somebody hits first and the one
-    // with no way to see it coming — a recording spends minutes it can feel
-    // the length of, an import spends a whole slot whatever the file is.
-    expect(screen.getByText("2 of 3 imports used")).toBeInTheDocument();
+    expect(screen.queryByText(/imports used/i)).toBeNull();
+    expect(screen.queryByText(/2 of 3/)).toBeNull();
+    // And the number it does carry is still there.
+    expect(screen.getByText("42 of 100")).toBeInTheDocument();
   });
 
   it("does not offer a date when the allowance is spent, because there is none", () => {

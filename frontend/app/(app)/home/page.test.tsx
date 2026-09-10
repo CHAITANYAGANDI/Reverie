@@ -1,43 +1,88 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, act } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { MeetingResponse, MeetingListQuery, Page, Project } from "@/lib/types";
+import type {
+  ActionItemListQuery,
+  MeetingListQuery,
+  MeetingResponse,
+  Page,
+} from "@/lib/types";
 
 /**
- * Home, and the picker above the list.
+ * Now — the greeting, the list, and the two screens an empty list can be.
  *
- * <p>It had three options and no effect. "For you" took the twenty newest and
- * described them as unread, which nothing in the product tracks; "My
- * Conversations" and "All Conversations" returned identical rows, because one
- * account per workspace means every meeting is yours. Two of the three were
- * indistinguishable and the third was a lie about a number.
+ * <h2>What left this file, and what it left behind</h2>
  *
- * <p>The distinction it draws now is one that exists: a recording or an import
- * started inside a folder is filed there, so "everything in the workspace" and
- * "what was never filed" are different lists.
+ * <p>There was a scope picker above the list with two options: <i>Recent
+ * Conversations</i> (`unfiled=true` — everything outside your folders) and
+ * <i>All Conversations</i>. It is gone, and so is the parameter: <i>All</i> is
+ * a page now (**Library**), and <i>Recent</i> asks for the newest twenty
+ * <em>wherever they are filed</em>. Roughly half the tests below used to drive
+ * that control or explain what it hid.
  *
- * <p>What is pinned here is mostly that the filter reaches the server. Applied
- * over the fifty rows that came back, "conversations outside a folder" would be
- * answered with whichever of the fifty newest happened to be outside one — right
- * until somebody had more than fifty meetings, which is the version of this bug
- * that is invisible in development.
+ * <p>Three groups went, and each is accounted for:
+ *
+ * <ul>
+ *   <li><b>"the wire says unfiled"</b> — <b>inverted</b>, not dropped. The
+ *       assertion now is that this page never sends the parameter, which is the
+ *       guard that makes every screen below unnecessary: with no filter, no
+ *       filed meeting can be missing from Now.</li>
+ *   <li><b>"a stored choice survives a visit and not a sign-in"</b> — re-asked
+ *       of the date window. The production defect was a value stored under
+ *       session 1 still being reported as ready under session 2, which is a
+ *       property of `useStickyPreference` and not of the scope. The window goes
+ *       through the identical machinery.</li>
+ *   <li><b>"an empty Recent must say which filter emptied it"</b> — the three
+ *       screens that answered this (everything-is-filed, the contradiction, the
+ *       unresolved probe) are <b>unreachable</b>, because the filter they
+ *       explained does not exist. The probe that fed them is gone with them.
+ *       The rule underneath — <i>only a settled, successful, genuinely empty
+ *       response may claim an empty account</i> — is untouched and has a whole
+ *       describe block of its own below. That is the rule the production bug
+ *       was about.</li>
+ * </ul>
+ *
+ * <p>What can no longer be asked here is what happens when All is chosen. That
+ * is `app/(app)/library/page.test.tsx`.
  */
 const query = vi.hoisted(() => ({ last: null as MeetingListQuery | null }));
+/*
+ * EVERY PER-MEETING REQUEST THIS PAGE MAKES.
+ *
+ * <p>Recorded so a list of twenty rows can be asserted to cost the same two
+ * calls as a list of one. The reference draws a sentence of summary under each
+ * title and there is no summary on the list payload, so the tempting fix is a
+ * request per row -- which on Home is twenty round trips before the page is
+ * readable. Entries with `skip` are not requests: a finished meeting opens no
+ * poll, and `useLiveMeetingStatus` passes `skip: done` for exactly that.
+ */
+const perMeeting = vi.hoisted(() => ({ calls: [] as { id: string; skip: boolean }[] }));
+/*
+ * What state the margin's query is in. Its own file drives the component
+ * directly; here it decides which of loading, failed and settled Home is
+ * laying out around -- the geometry has to be the same in all three.
+ */
+const actionItems = vi.hoisted(() => ({
+  state: "ready" as "ready" | "loading" | "error",
+  /* Every query the margin put, not just the last: it asks twice now, and
+     which two questions it asks is the thing that broke. See "asks for the
+     finished action items too". */
+  queries: [] as ActionItemListQuery[],
+}));
 /** The retry button is wired to this. */
 const refetch = vi.hoisted(() => vi.fn());
 
 let rows: MeetingResponse[];
+/** How many exist behind the page. Drives the "showing the newest N" line. */
+let total: number | null;
 let loading: boolean;
-/** How many meetings exist at all, filed or not. Only the empty states ask. */
-let workspaceTotal: number;
-
 /* ---------------------------------------------------------------------------
- * The states the old mock could not express.
+ * The states a naive mock cannot express.
  *
- * It returned `{ data, isLoading }` and nothing else, which is exactly the
- * subset of RTK Query the page used -- so the mock agreed with the bug. A
- * failed request and an empty one were indistinguishable to both, and no test
- * could tell them apart either.
+ * A mock returning `{ data, isLoading }` is exactly the subset of RTK Query the
+ * page used when it had this bug -- so it agreed with the bug. A failed request
+ * and an empty one were indistinguishable to both, and no test could tell them
+ * apart either.
  * ------------------------------------------------------------------------ */
 
 /** A refetch is in flight over whatever is cached. */
@@ -46,21 +91,10 @@ let fetching: boolean;
 let errored: boolean;
 /** Nothing usable is cached -- `data` is undefined, not an empty page. */
 let noData: boolean;
-/** The one-row probe behind the empty states failed. */
-let probeErrored: boolean;
-/** The one-row probe has not answered yet. */
-let probeLoading: boolean;
-
-/*
- * The folders, which the empty state reads as well.
- *
- * "Everything is in a folder" is a claim about these, and production showed it
- * over a sidebar with none -- so the folder list is part of what decides that
- * screen now, and part of what these tests can move.
- */
-let folderRows: Project[];
-let foldersLoading: boolean;
-let foldersErrored: boolean;
+/** What Settings knows about the person. The masthead greets from it. */
+let displayName: string | null;
+/** The standalone action items. Empty unless a test puts something on the list. */
+let tasks: { id: string; title: string; status: string }[];
 
 function aPage(content: MeetingResponse[], total = content.length): Page<MeetingResponse> {
   return { content, page: 0, size: 50, totalElements: total, totalPages: 1 };
@@ -93,8 +127,12 @@ function result<T>(data: T | undefined, opts: {
 vi.mock("@/lib/api", () => ({
   // The per-meeting poll that a processing row runs underneath its socket
   // subscription. Home lists meetings; only the rows that are still being
-  // processed reach for this, and none of these tests is about one.
-  useGetMeetingQuery: () => ({ data: undefined }),
+  // processed reach for this, and none of these tests is about one -- so what
+  // it is here for is to be counted. See `perMeeting` above.
+  useGetMeetingQuery: (id: string, options?: { skip?: boolean }) => {
+    perMeeting.calls.push({ id, skip: options?.skip === true });
+    return { data: undefined };
+  },
   useGetMeetingsQuery: (q: MeetingListQuery, options?: { skip?: boolean }) => {
     if (options?.skip) {
       return {
@@ -108,14 +146,6 @@ vi.mock("@/lib/api", () => ({
         refetch,
       };
     }
-    // The one-row probe behind the empty state: is anything filed elsewhere, or
-    // is this account new? It asks for a count, not for rows.
-    if (q.size === 1) {
-      if (probeErrored) return result<Page<MeetingResponse>>(undefined, { isError: true });
-      if (probeLoading) return result<Page<MeetingResponse>>(undefined, { isLoading: true });
-      return result(aPage([], workspaceTotal));
-    }
-
     query.last = q;
     // Filtering happens in the query, so the mock returns what it was asked
     // for. Asserting on the request is the point: a client-side filter would
@@ -124,27 +154,90 @@ vi.mock("@/lib/api", () => ({
     // An error keeps whatever was cached -- RTK does not throw the last good
     // page away -- so `noData` is what separates "failed with nothing" from
     // "failed over meetings already on screen".
-    const data = noData ? undefined : aPage(rows);
+    const data = noData ? undefined : aPage(rows, total ?? rows.length);
     return result(data, { isFetching: fetching, isError: errored });
   },
-  useGetProjectsQuery: () => {
-    if (foldersLoading) return result<Project[]>(undefined, { isLoading: true });
-    if (foldersErrored) return result<Project[]>(undefined, { isError: true });
-    return result(folderRows);
+  // The masthead's greeting. Settings first, then the identity provider, then
+  // nothing -- never the user id.
+  useGetPreferencesQuery: () => ({ data: displayName === null ? {} : { displayName } }),
+  /*
+   * The margin's own list. It used to live behind `SidePane`, which these tests
+   * stubbed away wholesale; it is part of the page now, so its query has to be
+   * answered.
+   *
+   * <p>Settled, and empty by default, because most of these tests are not
+   * about it — the action items have their own file. Empty no longer decides
+   * Home's composition: the margin is drawn either way now, which is the
+   * correction the describe block at the bottom of this file is about.
+   */
+  useGetActionItemsQuery: (q: ActionItemListQuery) => {
+    actionItems.queries.push(q);
+    const loadingNow = actionItems.state === "loading";
+    const erroredNow = actionItems.state === "error";
+    /*
+     * Answered by status, because the margin asks twice: once for `OPEN_ANY`
+     * and once for `DONE`. Filtering here rather than handing both halves the
+     * same page is the point -- the hook no longer splits one array, so a mock
+     * that ignored the filter would put every task in both views and hide the
+     * bug this arrangement exists to fix.
+     */
+    const half = tasks.filter((t) => (q.status === "DONE" ? t.status === "DONE" : t.status !== "DONE"));
+    return {
+      // Undefined rather than an empty page in both unsettled states, because
+      // that is what RTK holds and it is the distinction `resourceState`
+      // exists to keep: no answer is not the answer "none".
+      data: loadingNow || erroredNow ? undefined : { content: half, totalElements: half.length },
+      isLoading: loadingNow,
+      isFetching: loadingNow,
+      isError: erroredNow,
+      isSuccess: !loadingNow && !erroredNow,
+      isUninitialized: false,
+      refetch: () => {},
+    };
   },
+  usePatchActionItemMutation: () => [vi.fn(), { isLoading: false }],
+  useCreateStandaloneActionItemMutation: () => [vi.fn(), { isLoading: false }],
+  // The margin's row menu. One real action behind a real endpoint, which is
+  // the only reason the menu is drawn -- see components/v2/now/action-items.
+  useDeleteActionItemMutation: () => [
+    vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+    { isLoading: false },
+  ],
 }));
 
-// `isLoaded` and `sessionKey` are not decoration: both filters are remembered
+// `isLoaded` and `sessionKey` are not decoration: the date window is remembered
 // per sign-in, and nothing reads what was remembered until auth says which
 // sign-in this is.
 const auth = vi.hoisted(() => ({ sessionKey: "sess_1" }));
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ userId: "usr_1", sessionKey: auth.sessionKey, isLoaded: true }),
+  useAuth: () => ({
+    userId: "usr_1",
+    mode: "clerk",
+    profile: { name: "", email: "", imageUrl: "" },
+    sessionKey: auth.sessionKey,
+    isLoaded: true,
+  }),
 }));
-vi.mock("@/components/side-pane", () => ({ SidePane: () => null }));
-vi.mock("@/components/home-chat-panel", () => ({ HomeChatPanel: () => null }));
-vi.mock("@/components/action-items-panel", () => ({ ActionItemsPanel: () => null }));
+/*
+ * THE PANE'S STORE IS REAL; ONLY THE PORTAL IS STUBBED.
+ *
+ * <p>Home mounts a pane again -- the launcher opens the workspace chat in it
+ * rather than navigating to `/ask` -- so `useSidePane` and `openSidePane` have
+ * to be the genuine store, or the one thing worth testing about that control
+ * cannot be observed.
+ *
+ * <p>What is replaced is `SidePane` itself, which portals into an element the
+ * shell owns and this file does not render. Stubbing it to null also keeps the
+ * workspace chat's five queries out of a file that mocks none of them: what is
+ * asserted here is that the launcher opens the pane, not what is inside it.
+ * `components/chat/workspace-ask` is where the contents belong.
+ */
+vi.mock("@/components/side-pane", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/side-pane")>()),
+  SidePane: () => null,
+}));
 
+import { resetSidePane } from "@/components/side-pane";
 import HomePage from "@/app/(app)/home/page";
 
 function aMeeting(overrides: Partial<MeetingResponse> = {}): MeetingResponse {
@@ -169,93 +262,210 @@ function lastQuery(): MeetingListQuery | null {
   return query.last;
 }
 
-/** Open the picker and choose a row by its label. */
-async function choose(label: string) {
-  await userEvent.click(screen.getByRole("button", { name: /Conversations/ }));
-  await userEvent.click(screen.getByRole("menuitemradio", { name: new RegExp(label) }));
+/** The per-meeting requests that were actually made, skips excluded. */
+function perMeetingCalls(): { id: string; skip: boolean }[] {
+  return perMeeting.calls.filter((c) => !c.skip);
 }
 
 beforeEach(() => {
   query.last = null;
+  perMeeting.calls = [];
+  actionItems.state = "ready";
   refetch.mockClear();
   loading = false;
   fetching = false;
   errored = false;
   noData = false;
-  probeErrored = false;
-  probeLoading = false;
-  // One folder by default, so "everything is filed" is an explanation the rest
-  // of the screen can support. The tests that remove it are the point.
-  folderRows = [{ id: "prj_1", name: "Client ABC" } as Project];
-  foldersLoading = false;
-  foldersErrored = false;
   rows = [aMeeting()];
-  workspaceTotal = rows.length;
-  // The filters outlive a page now, so without this they would outlive a test
-  // and the order the suite happened to run in would decide what Home opened
-  // on. See lib/preference-store.ts.
+  total = null;
+  displayName = null;
+  tasks = [];
+  actionItems.queries = [];
+  // The window outlives a page now, so without this it would outlive a test and
+  // the order the suite happened to run in would decide what Home opened on.
+  // See lib/preference-store.ts.
   window.localStorage.clear();
   auth.sessionKey = "sess_1";
+  // The pane's open state is a module store, so it outlives an unmount by
+  // design -- see components/side-pane. It must not outlive a test, or whether
+  // the launcher reads as expanded would depend on the order the suite ran in.
+  resetSidePane();
 });
 
-describe("the scope picker", () => {
-  it("offers what is outside a folder and the whole workspace, in that order", async () => {
+/**
+ * The list this page shows, and the parameter it must never send again.
+ *
+ * <p>`unfiled=true` is what Recent used to mean: a folder filter under a name
+ * about time. It made this page lie in a way nobody would report as a bug —
+ * record a meeting inside a folder, and it is filed there and gone from Recent,
+ * which is not what recent means.
+ *
+ * <p>So the assertion is inverted rather than deleted, and it is on the wire
+ * rather than on the label. Both halves have been wrong at different times: a
+ * label reading Recent over a query that fetched everything, and a query
+ * narrowed in the browser over rows that had already come back.
+ *
+ * <p>This test is load-bearing for the whole file. Three empty-state screens
+ * were deleted along with `unfiled`, and a fourth went with the date window,
+ * on the grounds that nothing here can hide a meeting any more. This page now
+ * sends `page` and `size` and nothing else. If any narrowing parameter comes
+ * back, that stops being true and those screens are needed again — so this is
+ * the guard that has to fail first.
+ */
+describe("what Home asks for", () => {
+  it("never asks the server to hide filed conversations", () => {
     render(<HomePage />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Recent Conversations/ }));
-    const menu = screen.getByRole("menu");
-    const options = within(menu).getAllByRole("menuitemradio");
-
-    // Recent first, and Home opens on it -- but they are two decisions, and
-    // they have not always agreed: there was a build where this list led with
-    // Recent and the page opened on All. Ordering asserted here, default
-    // asserted in "the scope Home opens on" below.
-    expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent("Recent Conversations");
-    expect(options[1]).toHaveTextContent("All Conversations");
-    // The label is about folders, not about time, and only the hint says so.
-    expect(within(menu).getByText("everything outside your folders")).toBeInTheDocument();
-    // It counted twenty rows and called them unread. Nothing tracks whether a
-    // meeting has been read.
-    expect(within(menu).queryByText(/For you/)).not.toBeInTheDocument();
+    expect(lastQuery()?.unfiled).toBeUndefined();
   });
 
-  it("starts on what has not been filed", () => {
+  it("keeps showing a conversation that has been filed into a folder", () => {
+    /*
+     * THE GUARANTEE, AS A ROW RATHER THAN AS A SENTENCE.
+     *
+     * <p>This is the bug in the form somebody would actually hit it: record a
+     * meeting inside a folder, and under `unfiled=true` it was filed there and
+     * gone from the page called Recent. `projectId` is what "filed" means on
+     * the wire -- see `MeetingListQuery.unfiled` -- so a row carrying one must
+     * still be on this page.
+     *
+     * <p>The lede used to say so in words and no longer does; the approved
+     * copy is the reference's sentence. This assertion and the two beside it
+     * are what hold the promise now, which is the right place for it: prose
+     * cannot fail when the query changes underneath it.
+     */
+    rows = [
+      aMeeting({ id: "mtg_filed", title: "Filed away", projectId: "prj_1" }),
+      aMeeting({ id: "mtg_loose", title: "Never filed", projectId: null }),
+    ];
     render(<HomePage />);
 
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(query.last?.unfiled).toBe(true);
+    expect(screen.getByRole("link", { name: /Filed away/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Never filed/ })).toBeInTheDocument();
+    // And nothing that could have hidden either of them went over the wire.
+    expect(lastQuery()?.unfiled).toBeUndefined();
+    expect(lastQuery()?.from).toBeUndefined();
+    expect(lastQuery()?.to).toBeUndefined();
+    // The whole query, so a new narrowing parameter cannot arrive unnoticed.
+    expect(Object.keys(lastQuery() ?? {}).sort()).toEqual(["page", "size"]);
   });
 
-  it("asks the server for the whole workspace when All is chosen", async () => {
+  it("asks for a short page, which is what makes it recent", () => {
+    // The bound is the difference between this page and Library — both ask the
+    // same question of the same endpoint, and this one asks for the top of the
+    // answer. A page of fifty here would make the two lists the same list.
     render(<HomePage />);
 
-    await choose("All Conversations");
-
-    // Both options reach the server. All used to narrow the page in the
-    // browser, and narrow it by nothing: the two ran through a function that
-    // returned its argument.
-    expect(query.last?.unfiled).toBe(false);
+    expect(lastQuery()?.size).toBe(20);
+    expect(lastQuery()?.page).toBe(0);
   });
 
-  it("asks for the whole workspace again on the way back", async () => {
+  it("asks for the finished action items too, not only the open ones", () => {
+    /*
+     * THE BUG THAT LOST AN ITEM, AS THE REQUEST THAT CAUSED IT.
+     *
+     * <p>Ticking an item off in the margin struck it through and then it was
+     * gone -- not moved to Completed, not there on a reload, and the Completed
+     * count never left zero.
+     *
+     * <p>Nothing was wrong with the write or with the component. The margin
+     * asked with `status: undefined`, meaning "give me both views", and the
+     * endpoint declares that parameter with `defaultValue = "OPEN_ANY"` -- so
+     * an omitted filter arrives asking for everything *unfinished*. A finished
+     * item was never in the answer to be filed under Completed.
+     *
+     * <p>There is no word for "all of them", so it is two requests -- see
+     * components/v2/now/use-action-items, which is where the pair and their
+     * combined state are covered, and lib/action-item-requests for what each
+     * one puts on the wire.
+     *
+     * <p>Asserted on the request rather than on the rows because that is where
+     * it lived: every rendering test here mocks this query, so a filter that
+     * means the opposite of what the call site intended passes all of them.
+     */
     render(<HomePage />);
-    await choose("Recent Conversations");
 
-    await choose("All Conversations");
-
-    expect(query.last?.unfiled).toBe(false);
+    expect(actionItems.queries.map((q) => q.status).sort()).toEqual(["DONE", "OPEN_ANY"]);
+    // And the rest of it, unchanged: this list is the one nobody's transcript
+    // produced. A meeting's commitments are read on that meeting.
+    for (const q of actionItems.queries) {
+      expect(q.standalone).toBe(true);
+    }
   });
 
-  it("keeps the date window while the scope changes", async () => {
+  it("does not offer a way to widen it to the whole workspace", () => {
+    // That is Library, a place in the band. A second control here doing the
+    // same thing is the duplicate archive this redesign exists to remove.
     render(<HomePage />);
 
-    await choose("Recent Conversations");
+    expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument();
+    expect(screen.queryByText("All Conversations")).not.toBeInTheDocument();
+  });
+});
 
-    // Two filters over one list. Losing one when the other moves is the bug
-    // that follows from rebuilding the query object per control.
-    expect(query.last?.size).toBe(50);
-    expect(query.last?.page).toBe(0);
+/**
+ * The label under the heading, and the line under the list.
+ *
+ * <p>The label used to carry the whole explanation for a list that hid filed
+ * meetings, and the file it lived in said in as many words: <i>do not drop
+ * this line</i>. It has nothing to explain away now — so what it says instead
+ * is the one thing about this list that is not obvious, which is that filing a
+ * conversation does not take it off the page.
+ *
+ * <p>The truncation line is the new load-bearing one. A page showing twenty of
+ * two hundred conversations, with nothing at the bottom saying so, is a list
+ * somebody scrolls to the end of and believes — the same lie as a filter that
+ * does not name itself, one level along.
+ */
+describe("the lines that explain the list", () => {
+  it("says what the page is, in the approved words", () => {
+    /*
+     * MOVED, NOT DROPPED. This used to assert `/wherever they are filed/` in
+     * the lede -- the clause that replaced `unfiled=true`, kept in the copy on
+     * the grounds that it was the page's one statement of the guarantee.
+     *
+     * <p>It was the wrong place for it. A subtitle restating a guarantee does
+     * not hold the guarantee: the query does, and to somebody who never saw
+     * the bug the clause reads as an odd thing to volunteer. So the assertion
+     * is on the real behaviour now, in `what Home asks for` above -- the wire
+     * carries no narrowing parameter, and a conversation that HAS been filed
+     * still appears in the list -- and what is checked here is the copy, which
+     * is the approved sentence exactly.
+     */
+    render(<HomePage />);
+
+    expect(
+      screen.getByText("Recent conversations and anything that needs your attention."),
+    ).toBeInTheDocument();
+  });
+
+  it("no longer claims the list is what is outside your folders", () => {
+    // It was true and is not. Leaving it would describe a filter that was
+    // removed precisely because the description was the only thing carrying it.
+    render(<HomePage />);
+
+    expect(screen.queryByText(/outside your folders/i)).not.toBeInTheDocument();
+  });
+
+  it("admits when it is showing only the newest of many", () => {
+    rows = Array.from({ length: 20 }, (_, i) => aMeeting({ id: `mtg_${i}`, title: `Meeting ${i}` }));
+    total = 214;
+    render(<HomePage />);
+
+    expect(screen.getByText(/Showing the 20 most recent of/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /All of them are in Library/ })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+  });
+
+  it("says nothing about truncation when nothing is truncated", () => {
+    // A page that always claims to be a subset is as uninformative as one that
+    // never does.
+    rows = [aMeeting()];
+    render(<HomePage />);
+
+    expect(screen.queryByText(/most recent of/)).not.toBeInTheDocument();
   });
 });
 
@@ -271,411 +481,161 @@ describe("the list", () => {
   });
 });
 
-describe("when there is nothing to show", () => {
-  it("says the rest is filed once Recent was chosen, and offers the way back", async () => {
-    rows = [];
-    workspaceTotal = 11;
-
+/**
+ * Where you are in the day, and whether anything needs a person.
+ *
+ * <p>The V2 concept had a "Needs you" block here built from cross-meeting
+ * memory, which does not exist — the migrations dropped the tables. What
+ * replaced it is derived from the list already on screen and costs no request,
+ * which is the constraint that makes it impossible for it to be wrong.
+ */
+describe("the masthead", () => {
+  it("greets by first name", async () => {
+    displayName = "Priya Raman";
     render(<HomePage />);
 
-    // Without this the page offers Record and Import to somebody with a
-    // hundred meetings, which reads as an archive that lost them.
-    expect(screen.getByText("Everything is in a folder")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show all conversations" }));
-    expect(query.last?.unfiled).toBe(false);
-  });
-
-  it("offers a first recording to an account with nothing in it", () => {
-    rows = [];
-    workspaceTotal = 0;
-
-    render(<HomePage />);
-
-    // The same empty list, on the same default scope, meaning the opposite
-    // thing. Home opens here, so this is the first screen of a new account:
-    // answering it with "everything is in a folder" and a button to another
-    // empty list would be the worst possible first impression.
-    expect(screen.getByText("No conversations")).toBeInTheDocument();
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-  });
-
-  it("still blames the date window first, since that is the likelier cause", async () => {
-    rows = [];
-
-    render(<HomePage />);
-    await userEvent.click(screen.getByRole("button", { name: /Any time/ }));
-    await userEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /^Today/ }),
+    // First name only. "Good morning, Priya Raman" is a form letter.
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      /^Good (morning|afternoon|evening), Priya\.$/,
     );
+  });
 
-    expect(screen.getByText(/Nothing from Today/)).toBeInTheDocument();
+  it("greets without a name rather than with an id", async () => {
+    // An opaque key in the place a name goes does not read as "you". It reads
+    // as somebody else's account, which is exactly how it was reported.
+    render(<HomePage />);
+
+    const heading = await screen.findByRole("heading", { level: 1 });
+    expect(heading).toHaveTextContent(/^Good (morning|afternoon|evening)\.$/);
+    expect(screen.queryByText(/usr_1/)).not.toBeInTheDocument();
+  });
+
+  it("gathers what is still being made under its own heading", async () => {
+    rows = [
+      aMeeting({ id: "a", status: "TRANSCRIBING" }),
+      aMeeting({ id: "b", status: "SUMMARIZING" }),
+      aMeeting({ id: "c", status: "READY" }),
+    ];
+    render(<HomePage />);
+
+    /*
+     * The count used to be a sentence in the masthead, several sections above
+     * the rows it was counting. It is now the heading over exactly those rows,
+     * which is the one place it cannot drift from them.
+     */
+    expect(await screen.findByRole("heading", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByText("2 conversations are still being made")).toBeInTheDocument();
+  });
+
+  it("puts what failed under Needs attention, and nothing else there", async () => {
+    // The one thing on this screen that genuinely needs a human, and previously
+    // findable only by scrolling for a red badge.
+    rows = [
+      aMeeting({ id: "a", status: "FAILED" }),
+      aMeeting({ id: "b", status: "TRANSCRIBING" }),
+    ];
+    render(<HomePage />);
+
+    expect(await screen.findByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
+    expect(screen.getByText("1 conversation needs attention")).toBeInTheDocument();
+
+    /*
+     * A conversation still being made is the product working. Filing it under a
+     * heading that says it needs a person is how a real failure gets scrolled
+     * past, so the two are counted separately and never merged.
+     */
+    expect(screen.getByRole("heading", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByText("1 conversation is still being made")).toBeInTheDocument();
+  });
+
+  it("says nothing at all when nothing needs anything", async () => {
+    rows = [aMeeting({ status: "READY" })];
+    render(<HomePage />);
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText(/still being made/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Needs attention" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "In progress" })).not.toBeInTheDocument();
+  });
+
+  it("claims nothing before the list has arrived", () => {
+    // `undefined` is not an empty list. A masthead that reports "0 still being
+    // made" from a request that has not answered is the same class of bug as an
+    // empty state over a failed one.
+    loading = true;
+    render(<HomePage />);
+
+    expect(screen.queryByText(/still being made/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Nothing to show, and which of the two reasons it is.
+ *
+ * <p>There were four screens here. Three of them existed to explain
+ * `unfiled=true` — that the meetings were in folders, or that they could not
+ * be because there are none, or that the probe deciding between those had not
+ * answered. The filter is gone and so are they: nothing on this page hides a
+ * conversation, so an empty list means the window is empty or the account is,
+ * and both are known from the response already on screen.
+ *
+ * <p>The rule those screens were built on is a different thing and is not
+ * touched. It has its own block further down: an empty list is a *claim about
+ * the account*, and only a settled, successful, genuinely empty response may
+ * make it.
+ */
+describe("when there is nothing to show", () => {
+  /*
+   * ONE EMPTY SCREEN, WHERE THERE WERE TWO.
+   *
+   * <p>Two tests stood here: a window that emptied the list said "Nothing from
+   * Today" and offered a way to widen it, and only a genuinely empty account
+   * got the first-minute screen. The window is gone, so there is one way for
+   * this list to be empty and it is the account — which is what makes the
+   * remaining assertion unconditional rather than a branch.
+   */
+  it("says the account is empty, because that is the only way it can be", async () => {
+    rows = [];
+
+    render(<HomePage />);
+
+    /*
+     * The first minute, from `09-now-first.html`: the heading carries it rather
+     * than a bordered box in the middle of the page. `find`, because the
+     * greeting waits for a clock the server does not have.
+     */
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      /^Nothing here yet/,
+    );
+    expect(screen.getByRole("link", { name: /Record a meeting/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Import a recording/ })).toBeInTheDocument();
+  });
+
+  it("never claims a folder is hiding anything", () => {
+    // The screen this replaces. It was correct while Recent meant unfiled;
+    // saying it now would send somebody hunting through folders for meetings
+    // that are already on this page.
+    rows = [];
+
+    render(<HomePage />);
+
+    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing outside your folders")).not.toBeInTheDocument();
   });
 
   it("points a genuinely empty account at the two ways to start", () => {
     rows = [];
-    workspaceTotal = 0;
 
     render(<HomePage />);
 
-    expect(screen.getByText("No conversations")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Record/ })).toHaveAttribute(
       "href",
       "/record?r=%2Fhome",
     );
+    expect(screen.getByRole("link", { name: /Import/ })).toHaveAttribute("href", "/upload");
   });
 });
 
-/**
- * A filter you set once.
- *
- * <p>Home is a page people leave and come back to all day — open a meeting,
- * come back, open another — and both controls above the list used to reset
- * every time. Narrowing to last week was work you redid on every return.
- *
- * <p>So the choice is remembered, and the exception is the requirement: signing
- * out puts both back to their defaults. `unmount` then `render` here is
- * literally leaving Home and returning to it; the sign-in changing is somebody
- * signing out and back in.
- */
-describe("filters that stay where you left them", () => {
-  it("opens on the scope you chose last time", async () => {
-    const visit = render(<HomePage />);
-    await choose("All Conversations");
-    expect(query.last?.unfiled).toBe(false);
-    visit.unmount();
-
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /All Conversations/ })).toBeInTheDocument();
-    expect(query.last?.unfiled).toBe(false);
-  });
-
-  it("does not treat the previous sign-in's choice as this one's", async () => {
-    // The half of the production report that was a real defect rather than a
-    // product choice: a stored value belonging to session 1, still reported as
-    // ready under session 2, decided the first query of the new sign-in.
-    const visit = render(<HomePage />);
-    await choose("All Conversations");
-    visit.unmount();
-
-    auth.sessionKey = "sess_2";
-    query.last = null;
-    render(<HomePage />);
-
-    // Read through the helper: TypeScript narrows `query.last` to `never` after
-    // the assignment above, and the assertion is about what happens later.
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("opens on the date window you chose last time", async () => {
-    const visit = render(<HomePage />);
-    await userEvent.click(screen.getByRole("button", { name: /Any time/ }));
-    await userEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /Last 7 days/ }),
-    );
-    expect(query.last?.from).toBeTruthy();
-    visit.unmount();
-
-    render(<HomePage />);
-
-    // The label, and a lower bound actually reaching the server. A restored
-    // label over an unfiltered query is the version of this that looks right.
-    expect(screen.getByRole("button", { name: /Last 7 days/ })).toBeInTheDocument();
-    expect(query.last?.from).toBeTruthy();
-  });
-
-  it("remembers going back to the default just as firmly", async () => {
-    const first = render(<HomePage />);
-    await choose("All Conversations");
-    first.unmount();
-
-    const second = render(<HomePage />);
-    await choose("Recent Conversations");
-    second.unmount();
-
-    // Choosing the default is a choice. Were it treated as "no opinion", the
-    // next visit would reinstate All and the picker would quietly undo what
-    // somebody had just told it.
-    render(<HomePage />);
-    expect(query.last?.unfiled).toBe(true);
-  });
-
-  it("goes back to the defaults after a sign-out and sign-in", async () => {
-    /*
-     * Reported from production twice: signing out and back in landed on All
-     * Conversations. Once because the previous session's stored value was still
-     * being treated as ready under the new session (see lib/preferences.ts),
-     * and once because the default itself was All.
-     *
-     * Both halves are pinned here: the choice below must not survive the
-     * session change, and what replaces it must be Recent.
-     */
-    const visit = render(<HomePage />);
-    await choose("All Conversations");
-    expect(query.last?.unfiled).toBe(false);
-    visit.unmount();
-
-    // A new session is what signing out and back in produces — as the same
-    // person or as somebody else.
-    auth.sessionKey = "sess_2";
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Any time/ })).toBeInTheDocument();
-    expect(query.last?.unfiled).toBe(true);
-  });
-
-  it("asks the server once, with the filters it restored", async () => {
-    const visit = render(<HomePage />);
-    await choose("All Conversations");
-    visit.unmount();
-
-    query.last = null;
-    render(<HomePage />);
-
-    // Storage cannot be read while rendering, so the first render necessarily
-    // holds the defaults. Asking then would fetch the narrowed list and fetch
-    // it again whole -- two requests and a list that changes under the reader.
-    // The query waits instead, and the one request it makes carries the
-    // restored scope rather than the default.
-    expect(lastQuery()?.unfiled).toBe(false);
-  });
-});
-
-/**
- * Where Home starts, and the thing that makes starting there safe.
- *
- * <h2>The bug this default once caused</h2>
- *
- * <p>Recent is `unfiled=true` on the wire — conversations that were never put
- * in a folder — so an account that had filed everything opened Home to a list
- * with nothing in it, and the page said "No conversations" and offered to help
- * with a first recording. The archive-lost screen, over a full archive, reached
- * by doing nothing.
- *
- * <p>The default was only the road there. What made it unrecoverable is that an
- * empty list never said <em>which filter had emptied it</em> — the same screen
- * appeared whether the workspace was empty or merely tidy. Home tells those
- * apart now: an empty Recent asks the server whether the workspace holds
- * anything at all, and the answers get opposite screens.
- *
- * <p>So the default is Recent again, and these are what keep it honest. The
- * pair that matters most is the last two: on the default scope, an empty list
- * over a workspace with meetings must say they are filed, and an empty list
- * over an empty workspace must not.
- */
-describe("the scope Home opens on", () => {
-  it("defaults a fresh visit to Recent Conversations", () => {
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-  });
-
-  it("sends unfiled=true on the very first query", () => {
-    render(<HomePage />);
-
-    // The wire, not the label. A label that reads Recent over a query that
-    // still says unfiled=false is the version of this that looks right.
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("shows what is on the default list rather than hiding it behind a switch", () => {
-    rows = [aMeeting({ id: "mtg_unfiled", title: "Not filed anywhere" })];
-    workspaceTotal = 40;
-
-    render(<HomePage />);
-
-    expect(screen.getByText("Not filed anywhere")).toBeInTheDocument();
-  });
-
-  it("ignores a legacy home.scope left by the old build", () => {
-    /*
-     * The migration, and the reason the key is versioned.
-     *
-     * Written the way the old build wrote it, under the same session stamp, so
-     * this is a real upgrade rather than a simulated one. Under v1 the picker
-     * wrote on every interaction, so a stored value could not be told apart
-     * from never having chosen at all -- and honouring it would let a build
-     * from two defaults ago decide where this one opens.
-     */
-    window.localStorage.setItem(
-      "reverie.prefs",
-      JSON.stringify({ session: "sess_1", values: { "home.scope": "all" } }),
-    );
-
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("does not drift to All when you leave for a meeting and return", async () => {
-    // Home is a page people leave and return to all day, and the default has
-    // moved twice. Whichever way it points, it has to still point there on the
-    // way back.
-    const visit = render(<HomePage />);
-    expect(lastQuery()?.unfiled).toBe(true);
-    visit.unmount();
-
-    query.last = null;
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("still sends unfiled=false when All is chosen deliberately", async () => {
-    // The whole workspace is a click away and has to stay one, or the default
-    // has traded one broken list for a missing one.
-    render(<HomePage />);
-
-    await choose("All Conversations");
-
-    expect(lastQuery()?.unfiled).toBe(false);
-  });
-
-  it("keeps an explicit Recent across a return visit", async () => {
-    // Stickiness survives the version bump for choices made under v2, where a
-    // stored value is unambiguous because it differs from the default.
-    const visit = render(<HomePage />);
-    await choose("Recent Conversations");
-    visit.unmount();
-
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("keeps an explicit All across a return visit", async () => {
-    const visit = render(<HomePage />);
-    await choose("Recent Conversations");
-    await choose("All Conversations");
-    visit.unmount();
-
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /All Conversations/ })).toBeInTheDocument();
-    expect(lastQuery()?.unfiled).toBe(false);
-  });
-
-  it("returns to Recent for a new session, discarding an explicit All", async () => {
-    // Reported from production: signing out and back in landed on All
-    // Conversations. Both halves of that are pinned here -- the previous
-    // sign-in's choice is discarded, and what replaces it is the default.
-    const visit = render(<HomePage />);
-    await choose("All Conversations");
-    expect(lastQuery()?.unfiled).toBe(false);
-    visit.unmount();
-
-    // Signing out and back in -- as the same person or somebody else.
-    auth.sessionKey = "sess_2";
-    render(<HomePage />);
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(lastQuery()?.unfiled).toBe(true);
-  });
-
-  it("offers a first recording, not a folder hint, to an account with nothing in it", () => {
-    // The two empty states mean opposite things and want opposite screens. The
-    // probe is what tells them apart: nothing in the workspace at all, so the
-    // folder screen here would tell a new account its meetings are filed
-    // somewhere and hand it a button to another empty list.
-    rows = [];
-    workspaceTotal = 0;
-
-    render(<HomePage />);
-
-    expect(screen.getByText("No conversations")).toBeInTheDocument();
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-  });
-
-  it("will not say the meetings are filed when there is no folder to file them in", () => {
-    /*
-     * THE production screen, as an assertion: "Everything is in a folder" over
-     * a sidebar with no folders in it.
-     *
-     * Those two cannot both be true -- with no folders, "outside your folders"
-     * and "everything" are the same list -- and Home had every fact needed to
-     * know that and said it anyway. Which one of the two answers is wrong is
-     * not knowable from here, so the screen claims neither.
-     */
-    rows = [];
-    workspaceTotal = 40;
-    folderRows = [];
-
-    render(<HomePage />);
-
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-    expect(screen.getByText(/couldn't show your conversations/i)).toBeInTheDocument();
-  });
-
-  it("offers a retry and the whole list when it cannot explain itself", async () => {
-    rows = [];
-    workspaceTotal = 40;
-    folderRows = [];
-
-    render(<HomePage />);
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-
-    expect(refetch).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Show all conversations" })).toBeInTheDocument();
-  });
-
-  it("says nothing at all while the folder list is still on its way", () => {
-    /*
-     * Every screen this component can draw for an empty Recent makes a claim
-     * about folders -- that the meetings are in one, that there is none to be
-     * in, or that some may be. All three need the folder list, so until it
-     * arrives the honest output is nothing: a sentence that turns out to be
-     * wrong is worse than a blank half-second.
-     */
-    rows = [];
-    workspaceTotal = 40;
-    foldersLoading = true;
-
-    render(<HomePage />);
-
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-    expect(screen.queryByText(/couldn't show your conversations/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Nothing outside your folders")).not.toBeInTheDocument();
-    expect(screen.queryByText("No conversations")).not.toBeInTheDocument();
-  });
-
-  it("does not claim the meetings are filed when the folder list failed", () => {
-    // A failed folder request proves nothing about where the meetings are. The
-    // screen falls back to the one thing still certainly true: this list leaves
-    // filed conversations out, and the wider list is one click away.
-    rows = [];
-    workspaceTotal = 40;
-    foldersErrored = true;
-
-    render(<HomePage />);
-
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-    expect(screen.getByText("Nothing outside your folders")).toBeInTheDocument();
-  });
-
-  it("says the meetings are filed rather than that there are none", () => {
-    /*
-     * THE reason the default can be Recent at all, and the exact screen that
-     * made it a bug last time.
-     *
-     * An account that has filed everything opens Home to an empty Recent. The
-     * old build called that "No conversations" and offered a first recording,
-     * which is a lie told to somebody with forty meetings. It has to name the
-     * filter that emptied the list, and offer the way past it.
-     */
-    rows = [];
-    workspaceTotal = 40;
-
-    render(<HomePage />);
-
-    expect(screen.getByText("Everything is in a folder")).toBeInTheDocument();
-    expect(screen.queryByText("No conversations")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show all conversations" })).toBeInTheDocument();
-  });
-});
 
 /**
  * Never tell somebody their archive is empty because a request failed.
@@ -697,7 +657,11 @@ describe("the scope Home opens on", () => {
  * only a settled, successful, genuinely empty response is allowed to make it.
  */
 describe("what Home shows when the request does not simply succeed", () => {
-  const EMPTY = "No conversations";
+  /* The first-minute screen's own call to action. The heading that used to
+     carry this ("No conversations") is gone — the masthead says it now, and it
+     waits for a clock, which a synchronous assertion cannot. This link does
+     not. */
+  const EMPTY = /Record a meeting/;
   const LOAD_ERROR = /couldn.t load your conversations/i;
 
   it("does not claim an empty account when the request failed and left no data", () => {
@@ -707,7 +671,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
     expect(screen.getByText(LOAD_ERROR)).toBeInTheDocument();
   });
 
@@ -754,7 +718,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("shows the skeleton before the first response, not an empty message", () => {
@@ -762,7 +726,7 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     const { container } = render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
     expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
   });
@@ -771,12 +735,11 @@ describe("what Home shows when the request does not simply succeed", () => {
     // The cached page says zero, but a request that may replace it is running.
     // Announcing an empty account now is a guess that is about to be checked.
     rows = [];
-    workspaceTotal = 0;
     fetching = true;
 
     render(<HomePage />);
 
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("keeps meetings on screen during a background refetch", () => {
@@ -800,18 +763,17 @@ describe("what Home shows when the request does not simply succeed", () => {
 
     expect(screen.getByText("Still here")).toBeInTheDocument();
     expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 
   it("allows the empty screen once the request settles successfully with nothing", () => {
     // The fix must not make the empty state unreachable -- that would trade a
     // false negative for a permanent skeleton on a genuinely new account.
     rows = [];
-    workspaceTotal = 0;
 
     render(<HomePage />);
 
-    expect(screen.getByText(EMPTY)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EMPTY })).toBeInTheDocument();
   });
 
   it("shows meetings on a successful non-empty response", () => {
@@ -820,37 +782,7 @@ describe("what Home shows when the request does not simply succeed", () => {
     render(<HomePage />);
 
     expect(screen.getByText("Tuesday design review")).toBeInTheDocument();
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
-  });
-
-  it("says nothing at all while the folder probe is still in flight", async () => {
-    // "Everything is in a folder" and "you have nothing" are opposite claims
-    // and the probe is what decides between them. A sentence that turns out to
-    // be wrong is worse than a blank half-second.
-    rows = [];
-    probeLoading = true;
-
-    render(<HomePage />);
-    await choose("Recent Conversations");
-
-    expect(screen.queryByText("Everything is in a folder")).not.toBeInTheDocument();
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
-  });
-
-  it("does not treat a failed folder probe as proof the account is empty", async () => {
-    /*
-     * The same rule, one layer down. The probe answers "is anything filed
-     * elsewhere?", and reading a failed probe as zero produces the
-     * first-recording screen for somebody whose meetings are all in folders.
-     */
-    rows = [];
-    probeErrored = true;
-
-    render(<HomePage />);
-    await choose("Recent Conversations");
-
-    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
-    expect(screen.getByText("Nothing outside your folders")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: EMPTY })).not.toBeInTheDocument();
   });
 });
 
@@ -863,16 +795,22 @@ describe("what Home shows when the request does not simply succeed", () => {
  * keeps from the moment it is saved until it is ready.
  */
 describe("a meeting that is still processing", () => {
-  it("says so in its own row, with the stage and how far along", () => {
+  it("says so inline, with the stage, and invents no percentage", () => {
     rows = [aMeeting({ id: "mtg_p", title: "Recording — 8/26/2026", status: "SUMMARIZING" })];
 
     render(<HomePage />);
 
-    // The pill is one word while it runs; the stage is said in full underneath.
+    // "Processing · Generating summary…", on the row's own metadata line, so a
+    // row being made is exactly as tall as a finished one.
     expect(screen.getByText("Processing")).toBeInTheDocument();
     expect(screen.getByText("Generating summary…")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Processing progress" }))
-      .toBeInTheDocument();
+
+    /*
+     * No bar. The one it replaces read a percentage derived from *which stage*
+     * the job was in, which is a figure nobody measured — the server reports a
+     * stage, and the stage is what is shown.
+     */
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
   it("keeps the title, the time and the duration it always had", () => {
@@ -916,10 +854,12 @@ describe("a meeting that is still processing", () => {
     render(<HomePage />);
 
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    // The status, not a cause. A cause invented to fill the line would send
+    // somebody looking for a problem that may not be theirs.
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
-  it("shows one bar per processing meeting and none for the rest", () => {
+  it("marks the rows being made and leaves the rest alone", () => {
     rows = [
       aMeeting({ id: "mtg_a", title: "One", status: "TRANSCRIBING" }),
       aMeeting({ id: "mtg_b", title: "Two", status: "READY" }),
@@ -928,118 +868,442 @@ describe("a meeting that is still processing", () => {
 
     render(<HomePage />);
 
-    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+    // Two of the three, and the finished one carries no state at all.
+    expect(screen.getAllByText("Processing")).toHaveLength(2);
+    expect(screen.getByText("2 conversations are still being made")).toBeInTheDocument();
   });
 });
 
-/**
- * The label has to mean what the filter does.
- *
- * <p>This option was called "Recent Conversations" and sends `unfiled=true` --
- * a folder filter under a name about time. Both options are newest-first and
- * both sit inside the same date window, so "Recent" described nothing the list
- * actually did, and the property it did have was invisible.
- *
- * <p>It is most of why the empty state read as a fault: somebody shown
- * "Everything is in a folder" under a list named after recency has been handed
- * two unrelated sentences and no way to connect them.
- */
-/**
- * The label says "Recent" and the filter is about folders, so the hint is the
- * only thing that explains the list.
- *
- * <p>That is a deliberate choice rather than an oversight -- "Recent" is the
- * product's word for this list -- and it puts the whole weight of the
- * explanation on one line of small text. These hold that line in place. Without
- * it, a meeting recorded ten minutes ago inside a folder is simply absent from
- * a list called Recent, and the "Everything is in a folder" empty state behind
- * it arrives with nothing to connect it to.
- */
-describe("the scope picker explains what it filters on", () => {
-  it("carries the folder meaning in the hint, since the label does not", async () => {
-    render(<HomePage />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Recent Conversations/ }));
-    const recent = screen.getAllByRole("menuitemradio")[0];
-
-    expect(recent).toHaveTextContent(/Recent Conversations/i);
-    expect(recent).toHaveTextContent(/outside your folders/i);
-  });
-
-  it("pairs it with a hint for All, so the two read as two lists", async () => {
-    // "everything outside your folders" / "everything in this workspace".
-    // Said that way round they describe two lists, rather than one list and
-    // one property a meeting either has or does not.
-    render(<HomePage />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Recent Conversations/ }));
-
-    expect(screen.getAllByRole("menuitemradio")[1]).toHaveTextContent(/in this workspace/i);
-  });
-
-  it("sends unfiled=true under that name, so the label and the wire agree", async () => {
-    render(<HomePage />);
-    await choose("Recent Conversations");
-
-    expect(query.last?.unfiled).toBe(true);
-  });
-});
 
 /**
- * A sign-in change under a page that is already open.
+ * The composition Now was corrected to, and the things it must never grow back.
  *
- * <p>The other Home tests here start a fresh render for each session, which is
- * what a full page load does. Production does not always do that: signing out
- * and back in are both client navigations, so Home can be re-rendered under a
- * new `sessionKey` without ever unmounting -- and that is the render in which
- * the previous session's remembered scope was still being reported as ready.
+ * <p>Two shapes were removed and both are the kind that return quietly. The
+ * persistent AI pane beside the list was a second application standing next to
+ * the first — and a second workspace chat, with a whole destination of its own
+ * already in the band. The rounded card per conversation was the V1 list
+ * wearing V2 colours.
+ *
+ * <p>What replaces them is the reference geometry: a measure, a margin, and one
+ * scroll. The margin is part of this page, which is the whole distinction — a
+ * pane has a border and a scrollbar and belongs to the shell; a margin stops
+ * where its content stops.
  */
-describe("when the sign-in changes under an open page", () => {
-  /** Read through a call so TypeScript does not narrow it to the null we just set. */
-  const lastUnfiled = () => query.last?.unfiled;
+describe("the shape of Now", () => {
+  it("lays the page out on Home's own frame, not the reading spread", async () => {
+    /*
+     * `.v2-spread` is built around `--measure`, the 680px reading column, and
+     * this page widened it to 780 with a variable override. Home reads nothing
+     * -- it is a list of rows and a margin -- and at the reference width the
+     * spread put the whole composition in the middle of the window with 236px
+     * of nothing down each side. `.v2-page` is the frame with the reference's
+     * numbers in it; see app/globals.css.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
 
-  it("never asks for the previous session's scope", async () => {
-    // A choice made under one sign-in deciding the first query of the next is
-    // the defect, whichever way the choice pointed. Here it is All, because
-    // that is what production reported: signing out and back in landed on All
-    // Conversations rather than on the default.
-    const view = render(<HomePage />);
-    await choose("All Conversations");
-    expect(query.last?.unfiled).toBe(false);
-
-    const asked: Array<boolean | undefined> = [];
-    query.last = null;
-    auth.sessionKey = "sess_2";
-    await act(async () => {
-      view.rerender(<HomePage />);
-    });
-    asked.push(lastUnfiled());
-
-    // Whatever it asked for, it was not the previous sign-in's filter.
-    expect(asked).not.toContain(false);
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
+    expect(container.querySelector(".v2-spread")).toBeNull();
+    // And no `--measure` override left behind on it.
+    expect(container.innerHTML).not.toContain("--measure:");
   });
 
-  it("starts the new sign-in on Recent Conversations", async () => {
-    const view = render(<HomePage />);
-    await choose("All Conversations");
+  it("puts the two regions in one grid row, so neither spans the other", async () => {
+    /*
+     * The masthead used to carry `min-[1160px]:col-span-2`, which is why the
+     * margin began under the Ask launcher rather than beside the greeting --
+     * and why the drawing before that needed a 186px spacer to fake the
+     * alignment by hand. Both are gone, and both must stay gone: the alignment
+     * is the grid's now and cannot drift.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
 
-    auth.sessionKey = "sess_2";
-    await act(async () => {
-      view.rerender(<HomePage />);
-    });
-
-    expect(screen.getByRole("button", { name: /Recent Conversations/ })).toBeInTheDocument();
-    expect(query.last?.unfiled).toBe(true);
+    const frame = container.querySelector(".v2-page");
+    expect(frame).toBeInTheDocument();
+    expect(frame!.innerHTML).not.toContain("col-span-2");
+    // Two children, and the second is the margin.
+    expect(frame!.children).toHaveLength(2);
+    expect(frame!.children[1].hasAttribute("data-page-margin")).toBe(true);
   });
 
-  it("keeps an explicit choice while the sign-in does not change", async () => {
-    const view = render(<HomePage />);
-    await choose("Recent Conversations");
+  it("lays one wash behind the whole page rather than one per column", async () => {
+    /*
+     * A gradient per region puts a seam down the middle of the page, and a
+     * fill behind the margin makes it a panel -- which is the one thing this
+     * composition is not. One element, before the frame, so ordinary paint
+     * order puts it underneath without a `z-index` anywhere.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
 
-    await act(async () => {
-      view.rerender(<HomePage />);
+    const washes = container.querySelectorAll(".v2-ambient");
+    expect(washes).toHaveLength(1);
+    expect(washes[0].getAttribute("aria-hidden")).toBe("true");
+    expect(washes[0].className).toContain("pointer-events-none");
+    // Behind, not inside: the frame is its next sibling.
+    expect(washes[0].nextElementSibling?.className).toContain("v2-page");
+  });
+
+  /**
+   * What the control that opens Ask is called.
+   *
+   * <p>Longer than what is drawn. The visible label is `Ask Reverie` — the
+   * same words the meeting page's button carries, so one name opens one panel
+   * — and a hidden continuation makes the accessible name "Ask Reverie about
+   * your conversations". The visible text is contained in the spoken name, so
+   * a person reading and a person listening are told the same thing.
+   *
+   * <p>CHANGED TWICE, and this is the second time. It read "Ask Reverie about
+   * your meetings…" when it was a full-width field, which was the placeholder
+   * of a box that could not be typed into. Then `AI`, because the band's third
+   * place was itself called `Ask Reverie` and two controls with one name — one
+   * of which navigates away and one of which does not — is a distinction
+   * nobody should have to learn by pressing.
+   *
+   * <p>That place is `Reverie AI` now: a noun naming a destination beside a
+   * verb naming an action, which states the distinction instead of avoiding
+   * it. Which leaves nothing holding `AI` up — a label that names a technology
+   * where every other control in this product names what it does.
+   */
+  const LAUNCHER = /^Ask Reverie about your conversations$/;
+
+  it("keeps the margin from becoming a second application", async () => {
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    /*
+     * The pane is back and the tab bar is not, which is the distinction. What
+     * was wrong was never that Home had a chat -- it is that the chat and the
+     * action items shared a 400px column behind two tabs, so reading one hid
+     * the other and the margin was an application of its own. The items are on
+     * the page; Ask is in the shell's pane, summoned.
+     */
+    expect(screen.queryByRole("tab", { name: /Ask Reverie/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /AI Chat/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Action Items/i })).not.toBeInTheDocument();
+  });
+
+  it("opens Ask beside the list rather than navigating away from it", async () => {
+    /*
+     * CHANGED DELIBERATELY. This used to assert a `<Link>` to `/ask`, on the
+     * reasoning that there is one workspace Ask and it has a page. That was
+     * right about there being one and wrong about where it appears: pressing
+     * it left Home, so asking about your conversations meant losing the list
+     * of them. It opens the pane now, which is how the same question is asked
+     * from inside a meeting.
+     */
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    // A disclosure, not a link and not a composer: it starts no thread here
+    // and it has no address to navigate to.
+    expect(launcher).not.toHaveAttribute("href");
+    expect(launcher).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("textbox", { name: /ask/i })).not.toBeInTheDocument();
+
+    await userEvent.click(launcher);
+
+    expect(launcher).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("leaves Ask open when the launcher is pressed again", async () => {
+    // Not a toggle. A control labelled with a question that shuts the answer
+    // in your face is worse than one that does nothing -- the same rule as the
+    // meeting page's Ask. Closing is the pane's own dismissal.
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    await userEvent.click(launcher);
+    await userEvent.click(launcher);
+
+    expect(launcher).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("draws no glyph in the launcher and no keyboard badge", async () => {
+    /*
+     * NO MARK AT ALL, which is the fourth answer this control has had. It was a
+     * `Waypoints`, then the `Sparkles` every product in the category spends on
+     * the same claim, then the Reverie lens, then the approved AI orb — and it
+     * is now the words alone, in the accent. Withdrawn on request; the colour
+     * carries what the mark was carrying, and `--brand-text` in this product
+     * already means "Reverie is doing this".
+     *
+     * <p>The keycap half is unchanged and is its own rule: the reference put a
+     * mark at each end of this control and a `⌘ J` inside it, and a keycap
+     * promises a shortcut that does not exist.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    expect(launcher.querySelectorAll("img")).toHaveLength(0);
+    expect(launcher.querySelectorAll("svg")).toHaveLength(0);
+    expect(launcher.querySelector("kbd")).toBeNull();
+    expect(container.querySelector("kbd")).toBeNull();
+  });
+
+  it("says it is an AI surface in the accent, not with a mark", async () => {
+    /*
+     * INVERTED DELIBERATELY, AND THE RULE IT HELD IS WORTH KEEPING IN VIEW.
+     *
+     *     the Reverie mark    which product am I using
+     *     the Reverie AI orb  where is Reverie's assistant
+     *
+     * <p>This control is the second question, so it carried the orb — and
+     * before that an 18px `BrandMark`, which said the first thing in a place
+     * that has to say the second. The orb is withdrawn on request and the
+     * accent moved onto the label.
+     *
+     * <p>Which does not abandon the distinction, it restates it. The V2
+     * palette's own rule is that azure means "Reverie noticed this, or Reverie
+     * is doing this" — the mark, an AI surface, a citation, the focus ring —
+     * and it is why the primary button in this product is ink. So an azure
+     * `Ask Reverie` is the same claim the orb was making, and it is the only
+     * azure word on Home.
+     *
+     * <p>`--brand-text` specifically, not `--brand`: the palette documents the
+     * first as azure-as-a-word at 8.59:1 and the second as the tier for fills
+     * and marks at 5.98. A 15px label belongs in the text tier.
+     */
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const launcher = screen.getByRole("button", { name: LAUNCHER });
+    expect(launcher.querySelector("[data-ai-mark]")).toBeNull();
+
+    const word = [...launcher.querySelectorAll("span")].find(
+      (el) => el.textContent === "Ask Reverie",
+    )!;
+    expect(word).toBeDefined();
+    expect(word.className).toContain("text-brand-text");
+    // The accent is on the word, not on the button: a filled azure control
+    // would be the loudest thing on the page and the palette forbids it.
+    expect(launcher.className).not.toMatch(/bg-brand/);
+  });
+
+  it("keeps your own list on the page rather than behind a tab", async () => {
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+  });
+
+  it("keeps the margin at zero items, and does not re-centre the page", async () => {
+    /*
+     * INVERTED, DELIBERATELY. This used to assert the opposite: no standalone
+     * items drew no margin at all and the conversation list re-centred, on the
+     * grounds that a column existing to say it is empty is worse than no
+     * column.
+     *
+     * <p>That gave Home two different compositions decided by a list most
+     * accounts' is empty -- so adding the first action item moved every row on
+     * the screen, and the page somebody uses twenty times a day changed shape
+     * under them. The column is part of Home's frame now. What is empty is the
+     * list inside it, and the sentence says so.
+     */
+    tasks = [];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    // Both counts, at zero. They are facts about the list, and true ones.
+    expect(screen.getByRole("button", { name: /Open \(0\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Completed \(0\)/ })).toBeInTheDocument();
+    // The frame is the same frame, with the margin in it either way.
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
+  });
+
+  it("keeps the margin while the list is still loading, and when it fails", async () => {
+    // The geometry has to be stable across every state this column can be in,
+    // or the page moves as answers arrive.
+    tasks = [];
+    actionItems.state = "loading";
+    const { container, unmount } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    expect(container.querySelector("[data-page-margin]")).toBeInTheDocument();
+    // Nothing is claimed about the counts before an answer arrives.
+    expect(screen.queryByRole("button", { name: /Open \(/ })).not.toBeInTheDocument();
+    unmount();
+
+    actionItems.state = "error";
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't load your action items/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open \(/ })).not.toBeInTheDocument();
+  });
+
+  it("carries no filter row where the reference draws one", async () => {
+    /*
+     * The reference puts Recent / My conversations / Shared with me / Starred
+     * between the launcher and the list. None of them exists: Home asks for
+     * the newest RECENT_SIZE conversations and Library is the archive with the
+     * filtering in it.
+     *
+     * <p>Asserted as controls rather than as words, because "Recent
+     * conversations..." is the subtitle and must survive.
+     */
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    for (const label of [/^Recent$/, /My conversations/, /Shared with me/, /Starred/]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: label })).not.toBeInTheDocument();
+    }
+  });
+
+  it("sells nothing in the margin", async () => {
+    // The reference ends the margin with "Stay on top of your work" and a
+    // "Learn more" link. Marketing inside the product, standing where
+    // whitespace belongs.
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.queryByText(/stay on top of your work/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/learn more/i)).not.toBeInTheDocument();
+    /* And no link to a page of all action items. The reference ends the column
+       with one; `app/(app)` has no action-items route, so it would go nowhere.
+       Re-audited for this correction -- see the report. */
+    expect(screen.queryByText(/view all action items/i)).not.toBeInTheDocument();
+  });
+
+  it("puts no card, fill or border behind either region", async () => {
+    /*
+     * The page feels full because of geometry, type and two hairlines. A panel
+     * behind the margin would make it the bordered side pane this composition
+     * replaced, and a card behind the list would bring back the V1 shape.
+     */
+    tasks = [{ id: "ai_1", title: "Book the room", status: "OPEN" }];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const margin = container.querySelector("[data-page-margin]")!;
+    for (const banned of ["rounded-", "bg-surface", "bg-white/", "border ", "border-"]) {
+      expect(margin.getAttribute("class") ?? "").not.toContain(banned);
+    }
+  });
+
+  it("says nothing the product cannot do", async () => {
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    /*
+     * The reference fills this page with the memory layer: "What Reverie
+     * noticed", a decision reversed, a promise slipped twice, a risk open
+     * thirteen days. None of it exists. The composition was taken and the
+     * content was not.
+     */
+    for (const word of [
+      /\bmemory\b/i,
+      /decision reversed/i,
+      /decision drift/i,
+      /decision history/i,
+      /commitment/i,
+      /promise/i,
+      /slipped/i,
+      /since (your |the )?last meeting/i,
+      /what reverie noticed/i,
+    ]) {
+      expect(container.textContent ?? "").not.toMatch(word);
+    }
+  });
+
+  it("draws conversations as rows rather than as cards", async () => {
+    rows = [aMeeting({ id: "mtg_a", title: "Tuesday design review" })];
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    // A hairline between rows, not a border around each one. `rounded-lg
+    // border` per row is the V1 list shape that this correction removed.
+    expect(row.className).not.toContain("border");
+    // And it still goes where it always went.
+    expect(row).toHaveAttribute("href", "/meetings/mtg_a");
+    expect(container.querySelector(".v2-page")).toBeInTheDocument();
+  });
+
+  it("shows no clock on a row, and still the way in", async () => {
+    /*
+     * The time used to sit at the far end of every row, opposite the title, in
+     * mono. On a real screen that column was the loudest thing in the list --
+     * competing with the titles for a fact almost nobody opens Home for. The
+     * day heading above the group says which day and the rows are in order
+     * within it, so the clock was carrying very little and charging a lot.
+     *
+     * <p>Removed rather than moved. Dropping the old `trailingTime` prop alone
+     * would have pushed the time back into the metadata line, which is where
+     * it lives in Library -- so the row now decides by size, and this asserts
+     * the time is nowhere on the row at all. `chevron` stays: it is what says
+     * the row is a way in.
+     *
+     * <p>Asserted against a fixed `createdAt` so the time being looked for is
+     * a known string rather than whatever the clock said when the suite ran.
+     */
+    rows = [
+      aMeeting({
+        id: "mtg_a",
+        title: "Tuesday design review",
+        createdAt: "2026-09-07T14:26:00Z",
+        durationSeconds: 1920,
+      }),
+    ];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    // Whatever this machine renders 14:26Z as, in either 12- or 24-hour form.
+    const at = new Date("2026-09-07T14:26:00Z").toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
     });
+    expect(row.textContent).not.toContain(at);
+    expect(row.querySelector("[data-row-time]")).toBeNull();
+    // The duration is a different fact and stays.
+    expect(row.textContent).toContain("32m 0s");
+    // Two glyphs and no more: the source icon, and the chevron.
+    expect(row.querySelectorAll("svg")).toHaveLength(3); // icon, clock-in-meta, chevron
+  });
 
-    expect(query.last?.unfiled).toBe(true);
+  it("draws its rows at Home's size, which Library's are not", async () => {
+    /*
+     * `size="home"`: a glyph in a column of its own, a `.v2-page-title` and
+     * 14px of air above and below. The archive keeps its 12px padding and no
+     * glyph column, and the default on the component is `"list"`, so this
+     * assertion is what would fail if Home stopped asking.
+     */
+    // With a duration, because the metadata line is drawn only when there is
+    // a fact to put in it -- a row with nothing to say renders no empty line.
+    rows = [aMeeting({ id: "mtg_a", title: "Tuesday design review", durationSeconds: 1920 })];
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const row = screen.getByRole("link", { name: /Tuesday design review/ });
+    expect(row.className).toContain("py-3.5");
+    expect(row.querySelector("[data-row-title]")?.className).toContain("v2-page-title");
+    expect(row.querySelector("[data-row-meta]")?.className).toContain("v2-page-meta");
+    // A glyph in a column of its own, which is Home's indent.
+    expect(row.querySelector("svg")?.getAttribute("class")).toContain("h-4");
+  });
+
+  it("asks for nothing per row, so a wide list is still one request", async () => {
+    /*
+     * The reference draws a sentence of summary under every title. There is no
+     * summary on `MeetingResponse` and no speaker count either, and the only
+     * ways to put them on screen are a request per row or an invention. This
+     * is the guard against the first: twenty rows, and the page still makes
+     * exactly the two calls it makes with one.
+     */
+    rows = Array.from({ length: 20 }, (_, i) => aMeeting({ id: `mtg_${i}`, title: `Meeting ${i}` }));
+    render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(perMeetingCalls()).toHaveLength(0);
   });
 });

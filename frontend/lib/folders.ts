@@ -11,9 +11,18 @@ import type { Project } from "@/lib/types";
 
 export type FolderSort = "name" | "updated";
 
+/**
+ * The two orders, named for what they actually sort by.
+ *
+ * <p>The V2 reference labels this chip "Recently used", which `updatedAt` does
+ * not mean: the column moves when the folder is renamed, starred, or has a
+ * meeting filed into it, and not when somebody opens it. Nothing records being
+ * used. "Recently updated" is the same sort under a name that will not send
+ * anybody looking for a history they do not have.
+ */
 export const SORTS: { value: FolderSort; label: string }[] = [
+  { value: "updated", label: "Recently updated" },
   { value: "name", label: "Name" },
-  { value: "updated", label: "Last Updated" },
 ];
 
 /**

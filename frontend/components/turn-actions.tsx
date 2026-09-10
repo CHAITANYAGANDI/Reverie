@@ -24,7 +24,6 @@ import {
   Bookmark,
   Copy,
   Link2,
-  MessageSquarePlus,
   SmilePlus,
   ThumbsUp,
 } from "lucide-react";
@@ -78,7 +77,6 @@ export interface TurnActionsProps {
   busy?: boolean;
   onReact: (emoji: string) => void;
   onBookmark: () => void;
-  onComment: () => void;
   onCopy: () => void;
   onShare: () => void;
 }
@@ -123,7 +121,6 @@ export function TurnActions({
   busy,
   onReact,
   onBookmark,
-  onComment,
   onCopy,
   onShare,
 }: TurnActionsProps) {
@@ -210,9 +207,11 @@ export function TurnActions({
 
       <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
 
-      <Action label="Add a note here" onClick={onComment} disabled={busy}>
-        <MessageSquarePlus className="h-4 w-4" />
-      </Action>
+      {/* NO `Add a note here`. The other way in was the selection menu's
+          `Add note`, and both are withdrawn together -- a turn-level note and
+          a passage note were the same dialog and the same kind of moment, so
+          keeping one of the two entrances open would have withdrawn nothing.
+          Notes already written still draw under their words. */}
       <Action
         label={bookmarked ? "Remove bookmark" : "Bookmark this moment"}
         onClick={onBookmark}

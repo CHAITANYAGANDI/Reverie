@@ -43,6 +43,24 @@ import { cn } from "@/lib/utils";
  *
  * Takes the full height it is given and never more, so the page behind it does
  * not gain a scrollbar because somebody asked a lot of questions.
+ *
+ * <h2>NOTHING RENDERS THIS ANY MORE</h2>
+ *
+ * <p>All three surfaces use `components/chat/ask-panel` instead, which is these
+ * same three regions plus the one thing this could not do: measure itself, so
+ * the evidence sits beside the answer where there is room for it and under it
+ * where there is not. `ChatDock` below is still shared by all three and is
+ * unchanged.
+ *
+ * <p>Left here rather than deleted, deliberately. It is a presentational
+ * component with its own passing tests and no data of its own, so it costs
+ * nothing but the file — and the redesign it was replaced by is not yet
+ * approved. Deleting it in the same change that replaces it would mean
+ * reverting two things to reverse one.
+ *
+ * <p>It should go in the sweep once the panel is settled: this comment, the
+ * component, and the `ChatRail` block of chat-shell.test.tsx, together. The
+ * note in `ask-panel` explains what took its place and why.
  */
 export function ChatRail({
   header,

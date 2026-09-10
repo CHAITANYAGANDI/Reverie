@@ -14,10 +14,15 @@ import { render, screen } from "@testing-library/react";
  * And only the open tab is mounted. Plans reads usage; somebody changing their
  * name should not pay for it.
  *
- * There were six tabs and there are two. Four went with the features they
- * configured, and the URLs of all four still have to resolve — a settings link
- * somebody bookmarked should show them settings rather than a blank pane, which
- * is what a catch-all route renders for a path it does not recognise.
+ * There were six tabs, then two, and there are four. The four that went took
+ * their features with them, and their URLs still have to resolve — a settings
+ * link somebody bookmarked should show them settings rather than a blank pane,
+ * which is what a catch-all route renders for a path it does not recognise.
+ *
+ * <p>Email and Data Retention are the two that came back: they were sections at
+ * the foot of General, each with a query on them, so every visit to General
+ * paid for both. The lazy-mount claim below is the whole reason the split is
+ * worth anything.
  */
 const { rendered } = vi.hoisted(() => ({ rendered: vi.fn() }));
 
@@ -33,6 +38,8 @@ function stub(name: string) {
 }
 
 vi.mock("@/components/settings/general-tab", () => ({ GeneralTab: stub("general") }));
+vi.mock("@/components/settings/email-tab", () => ({ EmailTab: stub("email") }));
+vi.mock("@/components/settings/retention-tab", () => ({ RetentionTab: stub("data") }));
 vi.mock("@/components/settings/plans-tab", () => ({ PlansTab: stub("plans") }));
 
 import { AccountSettings } from "@/components/settings/account-settings";
@@ -48,13 +55,45 @@ describe("the frame", () => {
     expect(screen.getByRole("heading", { name: "Account Settings" })).toBeInTheDocument();
   });
 
-  it("shows both tabs, whichever one is open", () => {
+  it("shows all four tabs, whichever one is open", () => {
     pathname = "/settings/plans";
     render(<AccountSettings />);
 
-    for (const label of ["General", "Plans"]) {
+    for (const label of ["General", "Email", "Data Retention", "Plans"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
+  });
+
+  it("mounts only the open tab, which is what the split bought", () => {
+    /*
+     * Email reads the preferences and Data Retention reads the privacy
+     * overview. Both were sections of General, so both queries ran on every
+     * visit to the page somebody opens to edit one field.
+     */
+    pathname = "/settings/email";
+    render(<AccountSettings />);
+
+    expect(rendered).toHaveBeenCalledTimes(1);
+    expect(rendered).toHaveBeenCalledWith("email");
+    expect(screen.queryByTestId("tab-data")).toBeNull();
+    expect(screen.queryByTestId("tab-general")).toBeNull();
+  });
+
+  it("opens Data Retention on its own path", () => {
+    pathname = "/settings/data";
+    render(<AccountSettings />);
+
+    expect(rendered).toHaveBeenCalledTimes(1);
+    expect(rendered).toHaveBeenCalledWith("data");
+  });
+
+  it("draws the same wash every other page in the shell has", () => {
+    // Settings was the last page without it, after `/ask`: near-black from the
+    // band to the footer, which is how a page comes to look like a different
+    // application from the one it is inside.
+    const { container } = render(<AccountSettings />);
+
+    expect(container.querySelector(".v2-ambient")).not.toBeNull();
   });
 
   it("offers none of the four tabs that were removed", () => {
@@ -134,14 +173,17 @@ describe("which tab is open", () => {
     expect(rendered).toHaveBeenCalledWith("plans");
   });
 
-  it("still opens settings under the old /privacy URL", () => {
-    // RETENTION_APPLIED notifications still link there and those rows cannot be
-    // rewritten. Security is gone, so it lands on General — which is settings,
-    // rather than the blank pane a catch-all renders for a path it does not
-    // recognise.
+  it("opens Data Retention under the old /privacy URL", () => {
+    /*
+     * `RETENTION_APPLIED` notifications still link there and those rows cannot
+     * be rewritten. It landed on General while the retention dials were a
+     * section of General; now that they have a tab it points at them, which is
+     * what somebody following that link came for — the schedule that took their
+     * recording, not a page about their display name.
+     */
     pathname = "/privacy";
     render(<AccountSettings />);
-    expect(screen.getByTestId("tab-general")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-data")).toBeInTheDocument();
   });
 
   it("opens Plans under the old /billing URL", () => {

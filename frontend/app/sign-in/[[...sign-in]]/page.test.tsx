@@ -117,15 +117,42 @@ describe("signing in", () => {
   });
 
   it("does not strand somebody on a step it cannot draw", async () => {
-    // A second factor, most likely. Owning the form means owning the states it
-    // does not handle, and saying so beats a button that silently does nothing.
-    clerk.create.mockResolvedValue({ status: "needs_second_factor" });
+    // Owning the form means owning the states it does not handle, and saying so
+    // beats a button that silently does nothing.
+    clerk.create.mockResolvedValue({
+      status: "needs_second_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
     render(<SignInPage />);
     await screen.findByRole("button", { name: "Sign in" });
 
     await signIn();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/another step/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/two-step/i);
+  });
+
+  it("says an account has no password rather than telling them to reset one", async () => {
+    /*
+     * The reported bug. Every blocked outcome used to produce one sentence —
+     * "needs another step … Continue with Google, or reset your password" —
+     * which named two remedies without saying which applied. Somebody whose
+     * account was created with Google went to reset a password that does not
+     * exist. Clerk says which factors would work; this reads them.
+     */
+    clerk.create.mockResolvedValue({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "oauth_google" }],
+    });
+    render(<SignInPage />);
+    await screen.findByRole("button", { name: "Sign in" });
+
+    await signIn();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/no password/i);
+    expect(alert).toHaveTextContent(/Continue with Google/i);
+    // And specifically not the advice that sent people in circles.
+    expect(alert).not.toHaveTextContent(/reset your password/i);
   });
 });
 
@@ -168,7 +195,7 @@ describe("a forgotten password", () => {
     render(<SignInPage />);
     await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
 
-    await userEvent.click(screen.getByRole("button", { name: "Forgot?" }));
+    await userEvent.click(screen.getByRole("button", { name: "Forgot it?" }));
 
     expect(clerk.create).not.toHaveBeenCalled();
     // The address survives the change of step -- retyping it would be the form
@@ -181,7 +208,7 @@ describe("a forgotten password", () => {
     clerk.attemptFirstFactor.mockResolvedValue({ status: "complete", createdSessionId: "sess_2" });
     render(<SignInPage />);
     await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
-    await userEvent.click(screen.getByRole("button", { name: "Forgot?" }));
+    await userEvent.click(screen.getByRole("button", { name: "Forgot it?" }));
     await userEvent.click(screen.getByRole("button", { name: "Send code" }));
 
     await userEvent.type(await screen.findByLabelText("Code"), "123456");
@@ -193,7 +220,7 @@ describe("a forgotten password", () => {
 
   it("comes back to the sign-in form", async () => {
     render(<SignInPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Forgot?" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Forgot it?" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Back to sign in" }));
 

@@ -16,21 +16,20 @@
 
 import * as React from "react";
 import {
+  Eraser,
   Highlighter,
   Copy,
-  MessageSquarePlus,
-  Sparkles,
   ListPlus,
   Link2,
   UserRoundCog,
   FileText,
 } from "lucide-react";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { cn } from "@/lib/utils";
 
 export type SelectionAction =
   | "highlight"
   | "copy"
-  | "note"
   | "ask"
   | "summarize"
   | "action-item"
@@ -44,6 +43,33 @@ interface Item {
 }
 
 /**
+ * THE ORB, AT A MENU ROW'S SIZE.
+ *
+ * <p>`Ask Reverie` here is the same invocation as the launcher on Home and the
+ * control on a meeting's mode row, reached from a passage instead of from the
+ * page — so it carries the same identity. It was a `Sparkles`.
+ *
+ * <p>A component rather than an entry in the table because the orb takes a
+ * size and the table holds glyphs that take a class. It deliberately drops the
+ * `className` the row passes it: that class is `h-4 w-4` and a muted grey,
+ * neither of which applies to a mark that carries its own dimensions and its
+ * own colour, and a CSS height on an `svg` would silently override the size and
+ * collapse the sphere.
+ *
+ * <p>22px, up a step with the rest of them, and still the smallest the
+ * approved artwork is drawn at anywhere. Rasterised at true device pixels it
+ * carries the sphere, the rim light and a bright waveform core down to 20; by
+ * 16 the waveform has gone and only the orb is left.
+ *
+ * <p>22 is a 26px element in a row whose text line is 20, so `-my-[3px]`
+ * absorbs the six pixels that would otherwise make this one row taller than
+ * the six around it.
+ */
+function AskGlyph() {
+  return <ReverieAiMark size={22} className="-my-[3px]" />;
+}
+
+/**
  * Order is deliberate: the two that need no thought and no network round-trip
  * come first, the two that spend a model call sit together in the middle, and
  * the two that create something elsewhere in the app are last. Nothing here is
@@ -52,8 +78,16 @@ interface Item {
 const ITEMS: Item[] = [
   { action: "highlight", label: "Highlight", icon: Highlighter },
   { action: "copy", label: "Copy", icon: Copy },
-  { action: "note", label: "Add note", icon: MessageSquarePlus },
-  { action: "ask", label: "Ask Reverie", icon: Sparkles },
+  /*
+   * NO `Add note`. It was the third item, and it is withdrawn -- the whole
+   * path, not just the row: `note` is gone from `SelectionAction`, so nothing
+   * can ask for it and no handler has to pretend to serve it.
+   *
+   * <p>Notes already written are untouched. They still draw under the words
+   * they are about and still carry their own delete control; withdrawing the
+   * way in is not a reason to make somebody's own words unreachable.
+   */
+  { action: "ask", label: "Ask Reverie", icon: AskGlyph },
   { action: "summarize", label: "Summarize", icon: FileText },
   { action: "action-item", label: "Create action item", icon: ListPlus },
   { action: "share", label: "Copy link to moment", icon: Link2 },
@@ -71,6 +105,17 @@ export interface SelectionMenuProps {
   onAction: (action: SelectionAction) => void;
   /** Hidden while a mark is being saved, so a double click cannot double-save. */
   busy?: boolean;
+  /**
+   * The selection already lands on a highlight.
+   *
+   * <p>Turns the first item into the way out of one. There was no way out:
+   * highlighting was a one-way action, so selecting highlighted words offered
+   * `Highlight` again -- which either did nothing visible or stacked a second
+   * mark over the first. The undo for every other kind of mark is where the
+   * mark is; a passage highlight is drawn as a tint on the words themselves,
+   * so the only place it can be is here, on the words.
+   */
+  highlighted?: boolean;
 }
 
 /**
@@ -107,7 +152,12 @@ const MENU_WIDTH = 210;
 const MENU_HEIGHT = 300;
 const GAP = 8;
 
-export function SelectionMenu({ anchor, onAction, busy }: SelectionMenuProps) {
+export function SelectionMenu({
+  anchor,
+  onAction,
+  busy,
+  highlighted,
+}: SelectionMenuProps) {
   if (!anchor) return null;
 
   // Flip above the selection when there is no room below, and never let the
@@ -136,18 +186,57 @@ export function SelectionMenu({ anchor, onAction, busy }: SelectionMenuProps) {
       // so the page recognises the menu by attribute instead.
       onMouseDown={(e) => e.preventDefault()}
     >
-      {ITEMS.map(({ action, label, icon: Icon }) => (
-        <button
-          key={action}
-          role="menuitem"
-          disabled={busy}
-          onClick={() => onAction(action)}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
-        >
-          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-          {label}
-        </button>
+      {ITEMS.map((item) => (
+        <MenuItem
+          key={item.action}
+          item={item}
+          /* The only item that reads its own state. See `highlighted`. */
+          highlighted={item.action === "highlight" && Boolean(highlighted)}
+          busy={busy}
+          onAction={onAction}
+        />
       ))}
     </div>
+  );
+}
+
+/**
+ * One row of the menu.
+ *
+ * <p>Its own component only because one of the eight reads state: `Highlight`
+ * becomes `Remove highlight` over words that already carry one. Branching on
+ * that inside the `map` would have put a conditional in every row to serve a
+ * single case.
+ */
+function MenuItem({
+  item: { action, label, icon: Icon },
+  highlighted,
+  busy,
+  onAction,
+}: {
+  item: Item;
+  /** This row is the highlight row, and the selection is already highlighted. */
+  highlighted: boolean;
+  busy?: boolean;
+  onAction: (action: SelectionAction) => void;
+}) {
+  return (
+    <button
+      role="menuitem"
+      disabled={busy}
+      onClick={() => onAction(action)}
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+    >
+      {/* An eraser rather than a struck-through highlighter: lucide has no
+          "off" variant of this glyph, and the two shapes are hard to tell
+          apart at 16px, which is exactly the size at which a destructive
+          action must not be mistakable for the one that creates it. */}
+      {highlighted ? (
+        <Eraser className="h-4 w-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      {highlighted ? "Remove highlight" : label}
+    </button>
   );
 }

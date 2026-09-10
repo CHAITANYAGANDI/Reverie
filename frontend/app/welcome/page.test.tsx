@@ -3,171 +3,267 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
- * The first screen inside a new account.
+ * The two questions, and the ones it must never ask.
  *
- * <p>An onboarding earns its place by being skippable and by only asking for
- * things the product reads. Both of those are asserted here, and the second one
- * is the assertion that will fail first if somebody adds a "what is your role"
- * step later.
+ * <h2>What this flow is not any more</h2>
+ *
+ * <p>It ended on a third screen — "You are set up" over Record a meeting /
+ * Import a recording / Explore Reverie — which is three buttons standing in
+ * front of a product whose own default page already offers all three. Those are
+ * asserted absent, because an activation step is exactly the kind of thing that
+ * comes back when somebody wants somewhere to put a call to action.
+ *
+ * <h2>And what the flag is for</h2>
+ *
+ * <p>Completion is recorded explicitly, and skipping records it too — a skip is
+ * a decision, and being asked once per sign-in because you declined once is the
+ * behaviour this screen is trying not to be. It is never inferred from whether
+ * the account has meetings or a name.
  */
 
-const save = vi.hoisted(() => vi.fn());
-const nav = vi.hoisted(() => ({ push: vi.fn() }));
-const identity = vi.hoisted(() => ({
-  mode: "clerk",
-  profile: { name: "", email: "", imageUrl: "", provider: "", hasPassword: true },
+const { push, replace, save, completeOnboarding } = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  save: vi.fn(),
+  completeOnboarding: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push }) }));
+/** What the identity provider gave us, and whether it owns the name. */
+let provider: string | null;
+let providerName: string;
+let completed: boolean;
 
-vi.mock("@/components/auth-gate", () => ({
-  // The gate has its own tests. Here it would only stop anything rendering.
-  AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace }),
 }));
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => identity }));
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({
+    mode: "clerk",
+    userId: "usr_1",
+    sessionKey: "sess_1",
+    isSignedIn: true,
+    isLoaded: true,
+    onboardingCompleted: completed,
+    completeOnboarding,
+    deleteIdentity: vi.fn(),
+    profile: {
+      name: providerName,
+      email: "",
+      imageUrl: "",
+      provider,
+      hasPassword: provider === null,
+    },
+  }),
+}));
 
 vi.mock("@/lib/api", () => ({
   useUpdatePreferencesMutation: () => [save],
   useGetLanguagesQuery: () => ({
     data: [
-      { code: "en", name: "English", nativeName: "English", rightToLeft: false },
-      { code: "ja", name: "Japanese", nativeName: "日本語", rightToLeft: false },
+      { code: "en", name: "English", nativeName: "English" },
+      { code: "de", name: "German", nativeName: "Deutsch" },
     ],
     isLoading: false,
   }),
+}));
+
+// The gate is about tokens, not about this screen.
+vi.mock("@/components/auth-gate", () => ({
+  AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 import WelcomePage from "@/app/welcome/page";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  identity.mode = "clerk";
-  // An account made here, which owns its name. The Google case is its own test.
-  identity.profile = { name: "", email: "", imageUrl: "", provider: "", hasPassword: true };
   save.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+  completeOnboarding.mockResolvedValue(undefined);
+  provider = null;
+  providerName = "";
+  completed = false;
 });
 
-describe("what it asks", () => {
-  it("asks for a name and a language, and nothing else", async () => {
+/** Past the name question, which now comes first for every account. */
+async function reachLanguage() {
+  await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+  return screen.findByRole("radio", { name: /Detect automatically/ });
+}
+
+describe("how many steps there are", () => {
+  it("asks for a name first where Reverie owns it", async () => {
     render(<WelcomePage />);
 
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
-    // Nothing that Reverie has nowhere to put.
-    expect(screen.queryByLabelText(/company|team|role|how did you hear/i)).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
-    expect(screen.getByRole("radio", { name: /Detect automatically/ })).toBeInTheDocument();
+    expect(await screen.findByText("Step 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "What should we call you?",
+    );
   });
 
-  it("fills the name in rather than asking for it twice", async () => {
-    // An account made here can be given a name at sign-up time by other means;
-    // where one is known, this step is a confirmation.
-    identity.profile = { ...identity.profile, name: "Ada Lovelace" };
+  it("asks a Google account too, prefilled with what Google knew", async () => {
+    provider = "google";
+    providerName = "Maya Chen";
     render(<WelcomePage />);
 
-    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Ada Lovelace"));
-  });
-
-  it("does not ask a Google account for a name Google already holds", async () => {
     /*
-     * Settings tells this person their name comes from Google and disables the
-     * field. Asking for it here would be the product contradicting itself two
-     * screens apart -- and saving it would write a copy into Reverie's column
-     * that then outranks Google's on every screen.
+     * The reported bug: signing up with Google went straight to the language
+     * question and nobody was ever asked what to call them. Reverie's
+     * `display_name` is its own column — Google fills it first and owns nothing
+     * after that, and the server never rewrites it — so the step is asked, and
+     * prefilled, which makes it a confirmation rather than an interrogation.
      */
-    identity.profile = {
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      imageUrl: "",
-      provider: "google",
-      hasPassword: false,
-    };
-    render(<WelcomePage />);
-
-    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
-    // Straight to the question it does not already know the answer to.
-    expect(screen.getByRole("radio", { name: /Detect automatically/ })).toBeInTheDocument();
-    expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
+    expect(await screen.findByText("Step 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "What should we call you?",
+    );
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Maya Chen"));
   });
 
-  it("never saves a name for an account that does not own one", async () => {
-    identity.profile = {
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      imageUrl: "",
-      provider: "google",
-      hasPassword: false,
-    };
+  it("moves from the name to the language, and counts it", async () => {
     render(<WelcomePage />);
-    await userEvent.click(await screen.findByRole("radio", { name: /Japanese/ }));
+
+    await userEvent.type(await screen.findByLabelText("Name"), "Ada Lovelace");
     await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
-    await userEvent.click(await screen.findByRole("button", { name: /Just take me in/ }));
 
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ defaultLanguage: "ja" }));
-  });
-
-  it("keeps auto-detect as the default language", () => {
-    render(<WelcomePage />);
-    void userEvent.click(screen.getByRole("button", { name: /Continue/ }));
-
-    // Detection is right for most people; this step is for the case where a
-    // quiet opening minute would fool it.
-    return waitFor(() =>
-      expect(screen.getByRole("radio", { name: /Detect automatically/ })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      ),
+    expect(await screen.findByText("Step 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "What language do you usually meet in?",
     );
   });
 });
 
-describe("getting out of it", () => {
-  it("can be skipped from the first step", async () => {
+describe("what it must never show", () => {
+  it("has no activation step, on either path", async () => {
+    for (const owns of [null, "google"]) {
+      provider = owns;
+      providerName = owns ? "Maya Chen" : "";
+      const { container, unmount } = render(<WelcomePage />);
+      await screen.findByRole("heading", { level: 1 });
+
+      for (const gone of [
+        /start with your first conversation/i,
+        /record a meeting/i,
+        /import audio or video/i,
+        /explore reverie/i,
+        /you are set up/i,
+      ]) {
+        expect(container.textContent ?? "").not.toMatch(gone);
+      }
+      unmount();
+    }
+  });
+});
+
+describe("the language step", () => {
+  it("defaults to detecting automatically", async () => {
+    provider = "google";
+    providerName = "Maya Chen";
     render(<WelcomePage />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/home"));
+    const auto = await reachLanguage();
+    expect(auto).toHaveAttribute("aria-checked", "true");
   });
 
-  it("saves what was chosen on the way through", async () => {
+  it("stores no language when the default is kept, and still finishes", async () => {
+    provider = "google";
+    providerName = "Maya Chen";
     render(<WelcomePage />);
-    await userEvent.type(screen.getByLabelText("Name"), "Ada Lovelace");
-    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
-    await userEvent.click(await screen.findByRole("radio", { name: /Japanese/ }));
+
+    await reachLanguage();
     await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
-    await userEvent.click(await screen.findByRole("button", { name: /Just take me in/ }));
+    /*
+     * Auto-detect is the absence of a stored choice, so there is nothing to
+     * write for it. The name confirmed on the way past is another matter — it
+     * is an answer somebody gave, even by pressing Continue on a prefill.
+     */
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith({ displayName: "Maya Chen" });
+    expect(save.mock.calls[0][0]).not.toHaveProperty("defaultLanguage");
+    expect(replace).toHaveBeenCalledWith("/home");
+  });
+
+  it("saves a language that was chosen", async () => {
+    provider = "google";
+    providerName = "Maya Chen";
+    render(<WelcomePage />);
+
+    await reachLanguage();
+    await userEvent.click(screen.getByRole("radio", { name: /German/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
     await waitFor(() =>
-      expect(save).toHaveBeenCalledWith({ displayName: "Ada Lovelace", defaultLanguage: "ja" }),
+      expect(save).toHaveBeenCalledWith({ displayName: "Maya Chen", defaultLanguage: "de" }),
     );
-    expect(nav.push).toHaveBeenCalledWith("/home");
+    expect(replace).toHaveBeenCalledWith("/home");
   });
+});
 
-  it("lets somebody in even when the preference will not save", async () => {
-    /*
-     * Both of these have sound defaults and their own page in Settings.
-     * Refusing to open the product because a preference failed would be the
-     * worst possible first minute.
-     */
-    save.mockReturnValue({ unwrap: () => Promise.reject(new Error("offline")) });
+describe("finishing", () => {
+  it("records completion and goes to Now", async () => {
     render(<WelcomePage />);
-    await userEvent.type(screen.getByLabelText("Name"), "Ada");
 
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/home"));
-  });
-
-  it("offers a first recording, an import, or straight in", async () => {
-    render(<WelcomePage />);
+    await userEvent.type(await screen.findByLabelText("Name"), "Ada");
     await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
 
-    expect(await screen.findByRole("button", { name: /Record a meeting/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Import a file/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Just take me in/ })).toBeInTheDocument();
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ displayName: "Ada" }));
+    expect(completeOnboarding).toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/home");
+  });
+
+  it("treats a skip as finished", async () => {
+    render(<WelcomePage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
+
+    /*
+     * A skip is a decision. Recording it is what stops the next sign-in asking
+     * again, which is the behaviour this screen exists not to be.
+     */
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalled());
+    // Nothing was answered, so nothing is written: the defaults stand.
+    expect(save).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/home");
+  });
+
+  it("does not trap anybody when the preference will not save", async () => {
+    save.mockReturnValue({ unwrap: () => Promise.reject(new Error("nope")) });
+    render(<WelcomePage />);
+
+    await userEvent.type(await screen.findByLabelText("Name"), "Ada");
+    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+
+    /*
+     * Both answers have sound defaults and their own page in Settings. Refusing
+     * entry to the product because a preference did not save would be the worst
+     * possible first minute.
+     */
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/home"));
+    expect(completeOnboarding).toHaveBeenCalled();
+  });
+});
+
+describe("somebody who has already done this", () => {
+  it("is sent on rather than asked again", async () => {
+    completed = true;
+    render(<WelcomePage />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/home"));
+  });
+
+  it("stays and is asked when the flag is not set", async () => {
+    /*
+     * The other half of the same rule, and the end of the partial-deletion
+     * lifecycle: an identity whose Reverie data was deleted but which survived
+     * has had its flag cleared, so the next sign-in provisions an empty row and
+     * lands here rather than being waved through into it.
+     */
+    completed = false;
+    render(<WelcomePage />);
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(replace).not.toHaveBeenCalled();
   });
 });

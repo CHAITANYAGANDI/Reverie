@@ -1,6 +1,5 @@
 package com.reverie.export;
 
-import com.reverie.domain.ExportFormat;
 import org.openpdf.text.Document;
 import org.openpdf.text.DocumentException;
 import org.openpdf.text.Element;
@@ -36,7 +35,7 @@ import java.io.ByteArrayOutputStream;
  * the state of the task should be.
  */
 @Component
-public class PdfRenderer implements DocumentRenderer {
+public class PdfRenderer {
 
     private static final Color INK = new Color(0x1F, 0x23, 0x28);
     private static final Color MUTED = new Color(0x5F, 0x63, 0x68);
@@ -50,12 +49,6 @@ public class PdfRenderer implements DocumentRenderer {
         this.fonts = fonts;
     }
 
-    @Override
-    public ExportFormat format() {
-        return ExportFormat.PDF;
-    }
-
-    @Override
     public byte[] render(ExportDocument doc) {
         PdfFonts.Palette palette = fonts.paletteFor(doc.language());
         boolean rtl = doc.rightToLeft();

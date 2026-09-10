@@ -29,8 +29,23 @@ import { useGetUsageQuery } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { planLabel, quotaCount, usageFraction } from "@/lib/plan";
+import { cn } from "@/lib/utils";
 
-export function PlanUsage({ onNavigate }: { onNavigate?: () => void }) {
+/**
+ * @param className replaces the outer spacing and surface, not just adds to it.
+ *   This used to be the footer of a navigation rail and carried `mx-3 mb-3`
+ *   accordingly; it is now inside the account menu, where an outer margin is a
+ *   gap between the card and a popover edge that has its own padding. The
+ *   measurements travel with the caller because only the caller knows what it
+ *   is sitting in.
+ */
+export function PlanUsage({
+  onNavigate,
+  className,
+}: {
+  onNavigate?: () => void;
+  className?: string;
+}) {
   const { data, isError } = useGetUsageQuery();
 
   // Nothing at all if it cannot be read. A rail footer is not the place to
@@ -41,7 +56,9 @@ export function PlanUsage({ onNavigate }: { onNavigate?: () => void }) {
   // Held space rather than nothing, because this sits under a `flex-1` folder
   // tree: appearing late would shove the account menu down at the moment
   // somebody was reaching for it.
-  if (!data) return <Skeleton className="mx-3 mb-3 h-[4.75rem] rounded-lg" />;
+  if (!data) {
+    return <Skeleton className={cn("mx-3 mb-3 h-[4.75rem] rounded-lg", className)} />;
+  }
 
   const { minutesUsed: used, minutesLimit: limit } = data;
   const spent = limit >= 0 && used >= limit;
@@ -50,7 +67,10 @@ export function PlanUsage({ onNavigate }: { onNavigate?: () => void }) {
     <Link
       href="/settings/plans"
       onClick={onNavigate}
-      className="mx-3 mb-3 block rounded-lg border bg-muted/40 p-3 transition-colors hover:bg-accent"
+      className={cn(
+        "mx-3 mb-3 block rounded-lg border bg-muted/40 p-3 transition-colors hover:bg-accent",
+        className,
+      )}
     >
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold">{planLabel(data.plan)}</span>
@@ -72,18 +92,35 @@ export function PlanUsage({ onNavigate }: { onNavigate?: () => void }) {
             like an allowance barely touched rather than one that cannot run
             out. No plan has that any more, and the branch stays because -1 is
             still what the field means and a row can still carry it. */}
-        minutes transcribed{limit < 0 ? " — no limit" : ""}
+        {/* "used", not "transcribed". The number counts minutes spent, and
+            recording spends them as well as importing -- so "transcribed"
+            named one of the two ways the allowance goes and read as though a
+            recording were free until it was processed. */}
+        minutes used{limit < 0 ? " — no limit" : ""}
       </p>
 
-      <p className="mt-0.5 text-[11px] text-muted-foreground">
-        {spent
-          ? // What it means, rather than a statistic, at the one moment it
-            // means something. There is no date to wait for — this is the
-            // account's whole allowance — and nothing already transcribed goes
-            // away now that it is spent.
-            "That is the whole allowance. Nothing already transcribed is removed."
-          : `${quotaCount(data.importsUsed, data.importsLimit)} imports used`}
-      </p>
+      {/*
+        NO IMPORT COUNT.
+
+        <p>It read "0 of 3 imports used" under the minutes, and it is
+        withdrawn. This widget is a glance inside the account menu: one bar and
+        one number about the limit somebody is actually near. Imports are the
+        second allowance and almost nobody is near it, so the line spent a row
+        of the menu restating a zero.
+
+        <p>Both allowances are still stated in full where somebody is weighing
+        them up -- Settings, Plans, "This account", where each has its own bar
+        against what has been used. Nothing was removed from there.
+
+        <p>What survives is the sentence for the one moment it means something:
+        the minutes have run out, and it says there is no date to wait for and
+        that nothing already transcribed goes away. That is not a statistic.
+      */}
+      {spent && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          That is the whole allowance. Nothing already transcribed is removed.
+        </p>
+      )}
     </Link>
   );
 }

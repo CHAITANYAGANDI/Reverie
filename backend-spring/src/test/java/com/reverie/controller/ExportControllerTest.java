@@ -1,8 +1,6 @@
 package com.reverie.controller;
 
 import com.reverie.common.ApiException;
-import com.reverie.domain.ExportFormat;
-import com.reverie.domain.ExportOptions;
 import com.reverie.dto.AudioDownloadResponse;
 import com.reverie.dto.AudioExportResponse;
 import com.reverie.export.ExportFile;
@@ -33,6 +31,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -79,9 +78,11 @@ class ExportControllerTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(USER, null, AuthorityUtils.NO_AUTHORITIES));
 
-        when(exports.render(anyString(), anyString(), any(ExportFormat.class),
-                any(ExportOptions.class), any(), any()))
-                .thenReturn(new ExportFile("sprint-planning.txt", "text/plain",
+        when(exports.summaryPdf(anyString(), anyString(), any(), any()))
+                .thenReturn(new ExportFile("sprint-planning-summary.pdf", "application/pdf",
+                        "rendered".getBytes(StandardCharsets.UTF_8)));
+        when(exports.transcriptPdf(anyString(), anyString(), any(), any()))
+                .thenReturn(new ExportFile("sprint-planning-transcript.pdf", "application/pdf",
                         "rendered".getBytes(StandardCharsets.UTF_8)));
         when(exports.audio(anyString(), anyString()))
                 .thenReturn(new AudioDownloadResponse("https://r2/signed", "a.webm", "audio/webm", 900));
@@ -95,10 +96,89 @@ class ExportControllerTest {
     }
 
     @Test
-    @DisplayName("the document export resolves")
-    void documentExportResolves() throws Exception {
-        mvc.perform(get("/api/v1/meetings/{id}/export", MEETING).param("format", "txt"))
+    @DisplayName("the summary export resolves, as a PDF")
+    void summaryExportResolves() throws Exception {
+        mvc.perform(get("/api/v1/meetings/{id}/export/summary", MEETING))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString(".pdf")))
+                // Rendered from live data: a summary corrected a minute ago has
+                // to be in the next download, not the one after it.
+                .andExpect(header().string("Cache-Control", "no-store"));
+
+        verify(exports).summaryPdf(eq(USER), eq(MEETING), any(), any());
+        verify(exports, never()).transcriptPdf(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("the transcript export resolves, as a PDF")
+    void transcriptExportResolves() throws Exception {
+        mvc.perform(get("/api/v1/meetings/{id}/export/transcript", MEETING))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Cache-Control", "no-store"));
+
+        verify(exports).transcriptPdf(eq(USER), eq(MEETING), any(), any());
+        verify(exports, never()).summaryPdf(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("the old flexible endpoint is gone, in every format it used to write")
+    void theFlexibleEndpointIsGone() throws Exception {
+        /*
+         * THE POINT OF THE REFACTOR, ASSERTED.
+         *
+         * <p>`/export?format=docx` is not a route any more, and neither is the
+         * bare `/export`. Leaving it registered would have kept DOCX, Markdown
+         * and plain text reachable by URL after the product stopped offering
+         * them -- an undocumented second contract, which is the thing that
+         * makes a simplification cosmetic.
+         */
+        for (String format : new String[]{"pdf", "docx", "md", "txt"}) {
+            mvc.perform(get("/api/v1/meetings/{id}/export", MEETING).param("format", format))
+                    .andExpect(status().isNotFound());
+        }
+        mvc.perform(get("/api/v1/meetings/{id}/export", MEETING))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("neither document endpoint takes an option that changes what is in it")
+    void thereAreNoContentParameters() throws Exception {
+        /*
+         * Passing the old parameters must not narrow anything. Spring ignores
+         * unbound query parameters, so this cannot fail by binding -- what it
+         * guards is somebody reintroducing them as @RequestParams later. The
+         * service is called with language and tz only.
+         */
+        mvc.perform(get("/api/v1/meetings/{id}/export/summary", MEETING)
+                        .param("sections", "decisions")
+                        .param("actionItems", "false")
+                        .param("format", "docx"))
                 .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/meetings/{id}/export/transcript", MEETING)
+                        .param("speakers", "false")
+                        .param("timestamps", "false")
+                        .param("combine", "all"))
+                .andExpect(status().isOk());
+
+        verify(exports).summaryPdf(USER, MEETING, null, null);
+        verify(exports).transcriptPdf(USER, MEETING, null, null);
+    }
+
+    @Test
+    @DisplayName("the language being read is carried through to both documents")
+    void theReadingLanguageIsCarried() throws Exception {
+        // The one thing left on the query string that reaches the document, and
+        // it is about the reader rather than about the content.
+        mvc.perform(get("/api/v1/meetings/{id}/export/summary", MEETING)
+                .param("language", "ja").param("tz", "Asia/Tokyo"));
+        mvc.perform(get("/api/v1/meetings/{id}/export/transcript", MEETING)
+                .param("language", "ja").param("tz", "Asia/Tokyo"));
+
+        verify(exports).summaryPdf(USER, MEETING, "ja", "Asia/Tokyo");
+        verify(exports).transcriptPdf(USER, MEETING, "ja", "Asia/Tokyo");
     }
 
     @Test
@@ -133,12 +213,13 @@ class ExportControllerTest {
         // The regression. All three read the caller from one place and the
         // meeting from one place; a difference between them is the only way the
         // documents can export while the MP3 reports the meeting missing.
-        mvc.perform(get("/api/v1/meetings/{id}/export", MEETING).param("format", "txt"));
+        mvc.perform(get("/api/v1/meetings/{id}/export/summary", MEETING));
+        mvc.perform(get("/api/v1/meetings/{id}/export/transcript", MEETING));
         mvc.perform(get("/api/v1/meetings/{id}/audio", MEETING));
         mvc.perform(get("/api/v1/meetings/{id}/audio/mp3", MEETING));
 
-        verify(exports).render(eq(USER), eq(MEETING), any(ExportFormat.class),
-                any(ExportOptions.class), any(), any());
+        verify(exports).summaryPdf(eq(USER), eq(MEETING), any(), any());
+        verify(exports).transcriptPdf(eq(USER), eq(MEETING), any(), any());
         verify(exports).audio(USER, MEETING);
         // Positional, so a swapped (meetingId, userId) fails here rather than
         // in production as a 404 nobody can explain.
@@ -153,11 +234,12 @@ class ExportControllerTest {
         // one and succeed for the other -- which is precisely the reported
         // symptom.
         for (String id : new String[]{"mtg_1", "mtg_ABC-123", "01J8Z9Q0000000000000000000"}) {
-            mvc.perform(get("/api/v1/meetings/{id}/export", id).param("format", "txt"));
+            mvc.perform(get("/api/v1/meetings/{id}/export/summary", id));
+            mvc.perform(get("/api/v1/meetings/{id}/export/transcript", id));
             mvc.perform(get("/api/v1/meetings/{id}/audio/mp3", id));
 
-            verify(exports).render(eq(USER), eq(id), any(ExportFormat.class),
-                    any(ExportOptions.class), any(), any());
+            verify(exports).summaryPdf(eq(USER), eq(id), any(), any());
+            verify(exports).transcriptPdf(eq(USER), eq(id), any(), any());
             verify(exports).audioAsMp3(USER, id);
         }
     }

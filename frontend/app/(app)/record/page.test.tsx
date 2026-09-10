@@ -69,6 +69,7 @@ vi.mock("@/lib/recording-context", () => ({
 }));
 
 import RecordPage from "@/app/(app)/record/page";
+import { RECORDING_ANNOUNCEMENT } from "@/lib/privacy";
 import type { UseSaveJob } from "@/lib/use-save-job";
 import type { UseRecorder } from "@/lib/use-recorder";
 import type { LiveTurn, UseLiveTranscript } from "@/lib/use-live-transcript";
@@ -511,8 +512,10 @@ describe("RecordPage live text", () => {
     expect(screen.getByText("Hello, hello, hello.")).toBeInTheDocument();
     expect(screen.getByText("Shall we start?")).toBeInTheDocument();
     // Who said it, which the browser-speech preview could not answer at all.
-    expect(screen.getByText(/Speaker 1 \u00b7/)).toBeInTheDocument();
-    expect(screen.getByText(/Speaker 2 \u00b7/)).toBeInTheDocument();
+    // Matched on the name alone: the separator is its own element now, so it
+    // is decoration between two facts rather than part of either.
+    expect(screen.getByText("Speaker 1")).toBeInTheDocument();
+    expect(screen.getByText("Speaker 2")).toBeInTheDocument();
     // The provider's own timeline, and the one the finished transcript uses.
     expect(screen.getByText(/0:04/)).toBeInTheDocument();
     expect(screen.getByText(/0:20/)).toBeInTheDocument();
@@ -761,5 +764,93 @@ describe("what is left of the allowance", () => {
 
     await waitFor(() => expect(start).not.toHaveBeenCalled());
     expect(stop).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The responsibility line, and the words behind it.
+ *
+ * <p>The page deliberately carries no standing explanation — see "carries no
+ * standing explanation before a recording" above, which holds the two
+ * paragraphs that were removed. This is the exception, added on request, and
+ * these cases are about the shape of it rather than the sentence: it must not
+ * gate, must not need dismissing, and must not be in the way of the microphone.
+ */
+describe("RecordPage responsibility notice", () => {
+  it("says to tell the room, without asking anything", () => {
+    renderPage();
+
+    expect(
+      screen.getByText(/Make sure everyone who needs to know has been informed before recording/i),
+    ).toBeInTheDocument();
+    // Not the consent gate that was removed: nothing to tick, nothing to
+    // confirm, and no second button standing between arrival and recording.
+    expect(document.querySelector("input[type=checkbox]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /I have|confirm|agree/i })).not.toBeInTheDocument();
+  });
+
+  it("does not delay the microphone by one frame", async () => {
+    renderPage();
+
+    // The notice renders in the same pass as everything else and the effect
+    // that opens the microphone is unchanged. Asserted together so a future
+    // "ask first" cannot be introduced quietly.
+    await waitFor(() => expect(start).toHaveBeenCalledWith());
+    expect(
+      screen.getByText(/Make sure everyone who needs to know has been informed/i),
+    ).toBeInTheDocument();
+  });
+
+  it("does not call the browser's permission prompt consent", () => {
+    renderPage();
+
+    // The prompt is a decision by the person at the keyboard. Everybody else in
+    // the conversation is unrepresented in it, which is the whole reason there
+    // is a sentence to read out.
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/permission (is|means|counts as) consent/i);
+    expect(text).not.toMatch(/everyone has consented|consent (has been )?given/i);
+  });
+
+  it("keeps the announcement folded away until it is asked for", async () => {
+    renderPage();
+
+    const toggle = screen.getByRole("button", { name: "What can I say?" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Rendered but hidden, so `aria-controls` points at something real and the
+    // three sentences are out of the accessibility tree until wanted.
+    const region = document.getElementById("recording-announcement")!;
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute("hidden");
+    expect(toggle).toHaveAttribute("aria-controls", "recording-announcement");
+  });
+
+  it("reveals the sentence from lib/privacy, not a second copy of it", async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "What can I say?" }));
+
+    const toggle = screen.getByRole("button", { name: "What can I say?" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const region = document.getElementById("recording-announcement")!;
+    expect(region).not.toHaveAttribute("hidden");
+    // The constant itself. It is tested in lib/privacy.test.ts and it is the
+    // one string here meant to be read aloud to other people; two copies of
+    // that is how one of them comes to be wrong.
+    expect(region.textContent).toContain(RECORDING_ANNOUNCEMENT);
+
+    // And it folds away again, because it is a disclosure rather than a step.
+    await userEvent.click(toggle);
+    expect(document.getElementById("recording-announcement")).toHaveAttribute("hidden");
+  });
+
+  it("stays out of the way of a recording in progress", () => {
+    renderPage({ state: "recording" });
+
+    // Still there — somebody may not have said it yet — and still last on the
+    // page, under the words rather than over them.
+    const notice = screen.getByText(/Make sure everyone who needs to know has been informed/i);
+    expect(notice).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "What can I say?" })).toBeInTheDocument();
   });
 });

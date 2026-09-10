@@ -10,6 +10,10 @@ const badgeVariants = cva(
         default: "border-transparent bg-primary/10 text-primary",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         outline: "text-foreground",
+        /* "This is in effect", which in this palette is the accent and not
+           green. Added for the plan badge, which was `success` and was not
+           reporting one -- see components/settings/plans-tab. */
+        brand: "border-brand/30 bg-brand/15 text-brand-text",
         success: "border-transparent bg-success/15 text-success",
         warning: "border-transparent bg-warning/15 text-warning",
         destructive: "border-transparent bg-destructive/15 text-destructive",

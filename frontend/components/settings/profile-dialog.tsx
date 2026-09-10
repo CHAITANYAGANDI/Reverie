@@ -142,12 +142,10 @@ export function ProfileDialog({
 
   /** See {@link ProfilePatch}: what may be sent, rather than what is on screen. */
   function submitted(): ProfilePatch {
-    // The photo is Reverie's own column and is nobody else's business, so it is
-    // always sent. The name goes only where this account owns it, and the
-    // address goes nowhere at all -- it is not editable on any screen.
-    const patch: ProfilePatch = { avatarUrl: form.avatarUrl };
-    if (permissions.name) patch.displayName = form.displayName;
-    return patch;
+    // The photo and the name are both Reverie's own columns and nobody else's
+    // business, so both are always sent. The address goes nowhere at all -- it
+    // is not editable here by any kind of account.
+    return { avatarUrl: form.avatarUrl, displayName: form.displayName };
   }
 
   return (
@@ -224,18 +222,23 @@ export function ProfileDialog({
               <Input
                 id="profile-name"
                 value={form.displayName}
-                disabled={!permissions.name}
                 placeholder="Priya Raman"
                 onChange={(e) => set("displayName", e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                {permissions.name ? (
+                Spell it the way your transcripts do — that is what action items are matched
+                against.
+                {/* It was disabled for a Google account, over a rewrite that
+                    does not happen: the server refreshes the address from the
+                    token on every request and never the display name. Said out
+                    loud all the same, because the two fields under it really
+                    are somebody else's. */}
+                {permissions.owner === "external" && (
                   <>
-                    Spell it the way your transcripts do — that is what action items are matched
-                    against.
+                    {" "}
+                    {permissions.ownerLabel} supplied the first one; changing it here does not
+                    change your {permissions.ownerLabel} account.
                   </>
-                ) : (
-                  <>Your name comes from {permissions.ownerLabel}. Change it there.</>
                 )}
               </p>
             </div>

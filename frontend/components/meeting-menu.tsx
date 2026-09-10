@@ -73,6 +73,8 @@ import {
   FolderInput,
   Languages,
   Link2,
+  Tag as TagIcon,
+  Upload,
   Loader2,
   MoreHorizontal,
   RefreshCw,
@@ -101,7 +103,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { FOLDERS } from "@/lib/routes";
+import { LIBRARY } from "@/lib/routes";
 import { useAllowance, spentNote } from "@/lib/allowance";
 
 export interface MeetingMenuProps {
@@ -135,6 +137,60 @@ export interface MeetingMenuProps {
   working?: boolean;
 
   onCopySummary: () => void;
+  /**
+   * Open the export dialog.
+   *
+   * <p>Export was a standalone button beside this menu, drawn into the shell's
+   * header row. That row is full width, so over a centred 680px document it sat
+   * hard right of the window and read as application chrome; and two action
+   * surfaces for one document is what the V2 reference reduces to one `⋯`.
+   *
+   * <p>It was promoted to a button once so that a control named Export did
+   * only what it says — copying and erasing moved out of it and into here.
+   * That was an argument about its name, which still holds, and not about its
+   * place.
+   */
+  onExport: () => void;
+  /**
+   * Opens the meeting's navigator: topics, voices and marks in one list.
+   *
+   * <p>Here rather than on the mode row, which `18-meeting-brief.png` keeps to
+   * the two reading modes, Ask and this menu. Gated on a transcript because
+   * every row in it is a place in one -- a failed meeting has nowhere to jump.
+   */
+  /**
+   * Which reading mode is on screen.
+   *
+   * <p>The menu is one surface for the whole meeting, and two of its items act
+   * on a document that may not be the one being read: Copy summary and
+   * Regenerate summary belong to the brief. They are drawn on `"summary"`
+   * only, which is what the approved transcript menu shows.
+   */
+  mode: "summary" | "transcript";
+  /**
+   * Reveal the tag input on the meeting's facts line.
+   *
+   * <p>The masthead used to carry a dashed `+ Tag` pill on every meeting,
+   * tagged or not. Tags that exist still show there, because a tag is a fact
+   * about the document; adding one is an action, and this is where the actions
+   * are.
+   */
+  onAddTag: () => void;
+  /**
+   * Items belonging to whichever reading mode is open.
+   *
+   * <p>The summary's template and the transcript's own tools — find, the marks
+   * index, the speaker stats, and correcting the words — used to be permanent
+   * controls above the document: a picker on the mode row and a three-toggle
+   * row above the first spoken line. The reference has neither. They are real
+   * capabilities and they are rare, which is what a menu is for.
+   *
+   * <p>Handed in as nodes rather than as a dozen props because the state they
+   * act on belongs to the page and to the panel, and because what is in here
+   * changes with the mode: a template item over a transcript would do nothing
+   * to what is on screen.
+   */
+  extra?: React.ReactNode;
   onCopyTranscript: () => void;
   onRegenerateSummary: () => void;
   onTranslate: () => void;
@@ -200,10 +256,35 @@ export function MeetingMenu(props: MeetingMenuProps) {
           <DropdownMenuItem onSelect={() => void copyLink()}>
             <Link2 /> Copy link
           </DropdownMenuItem>
+          {/* Up: out of Reverie. Not disabled by anything — a failed meeting
+              still exports whatever was kept, and the dialog itself is what
+              says which parts exist. */}
+          <DropdownMenuItem onSelect={props.onAddTag}>
+            <TagIcon /> Add a tag
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={props.onExport}>
+            <Upload /> Export…
+          </DropdownMenuItem>
 
-          {/* The transcript: what was said, who said it, and what language you
-              read it in. Together because they are one subject, and above the
-              summary because the summary is written from them. */}
+          {/* Whatever this reading mode brought with it. First, because it is
+              what somebody on that mode came to this menu for. */}
+          {props.extra ? (
+            <>
+              <DropdownMenuSeparator />
+              {props.extra}
+            </>
+          ) : null}
+
+          {/* The transcript: what was said, and what language you read it in.
+              Together because they are one subject, and above the summary
+              because the summary is written from them.
+
+              NO "Jump to…" HERE ANY MORE. It was first in this group, with its
+              `⌘.` keycap beside it. The navigator itself is untouched and the
+              shortcut still opens it — see the keydown handler on the meeting
+              page — but the item is gone from the menu at the request of the
+              approved list, and the outline it mostly answered for is now a
+              permanent region of the margin. */}
           <DropdownMenuSeparator />
 
           <DropdownMenuItem disabled={!props.hasTranscript} onSelect={props.onCopyTranscript}>
@@ -221,18 +302,28 @@ export function MeetingMenu(props: MeetingMenuProps) {
 
           {/* The brief, and the one control that rewrites it — which is what
               you reach for after correcting a name above, or to have it
-              written in the language you just switched to. */}
-          <DropdownMenuSeparator />
+              written in the language you just switched to.
 
-          <DropdownMenuItem disabled={!props.hasSummary} onSelect={props.onCopySummary}>
-            <ClipboardCopy /> Copy summary
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!props.hasSummary || props.working || spent !== null}
-            onSelect={props.onRegenerateSummary}
-          >
-            <Sparkles /> Regenerate summary
-          </DropdownMenuItem>
+              <p>ON THE SUMMARY ONLY. Both act on a document that is not on
+              screen while somebody is reading the transcript, and the approved
+              transcript menu has neither. They are not removed: the mode that
+              owns them still offers them, which is the same rule `extra`
+              already follows for find, speakers and correcting the words. */}
+          {props.mode === "summary" && (
+            <>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem disabled={!props.hasSummary} onSelect={props.onCopySummary}>
+                <ClipboardCopy /> Copy summary
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!props.hasSummary || props.working || spent !== null}
+                onSelect={props.onRegenerateSummary}
+              >
+                <Sparkles /> Regenerate summary
+              </DropdownMenuItem>
+            </>
+          )}
 
           <DropdownMenuSeparator />
 
@@ -342,7 +433,7 @@ function MoveDialog({
               You have no projects yet, so there is nowhere to move this to.
             </p>
             <Button variant="outline" size="sm" asChild>
-              <Link href={FOLDERS}>Create one →</Link>
+              <Link href={LIBRARY}>Create one →</Link>
             </Button>
           </div>
         ) : (

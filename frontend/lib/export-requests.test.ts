@@ -97,7 +97,7 @@ afterEach(() => {
 
 describe("the requests an export makes", () => {
   it("asks for the document at /meetings/{id}/export", async () => {
-    await fetchExportFile("mtg_1", "txt", {}, 0);
+    await fetchExportFile("mtg_1", "transcript", {}, 0);
 
     expect(seen[0].url).toContain("/api/v1/meetings/mtg_1/export");
   });
@@ -110,7 +110,7 @@ describe("the requests an export makes", () => {
 
   it("names the same meeting in both", async () => {
     // The first of the two candidates for "Meeting not found": a different id.
-    await fetchExportFile("mtg_abc123", "txt", {}, 0);
+    await fetchExportFile("mtg_abc123", "transcript", {}, 0);
     await store().dispatch(api.endpoints.getMp3Export.initiate("mtg_abc123"));
 
     for (const request of seen) {
@@ -124,7 +124,7 @@ describe("the requests an export makes", () => {
     // the MP3 path goes through RTK Query's `prepareHeaders`; both call
     // `buildAuthHeaders`, and this is the only test that proves the second one
     // does.
-    await fetchExportFile("mtg_1", "txt", {}, 0);
+    await fetchExportFile("mtg_1", "transcript", {}, 0);
     await store().dispatch(api.endpoints.getMp3Export.initiate("mtg_1"));
 
     expect(seen[0].headers["x-dev-user"]).toBe("usr_probe");
@@ -142,7 +142,7 @@ describe("the requests an export makes", () => {
   });
 
   it("hits the same origin in both", async () => {
-    await fetchExportFile("mtg_1", "txt", {}, 0);
+    await fetchExportFile("mtg_1", "transcript", {}, 0);
     await store().dispatch(api.endpoints.getMp3Export.initiate("mtg_1"));
 
     const origin = (url: string) => new URL(url).origin;
@@ -153,7 +153,7 @@ describe("the requests an export makes", () => {
     // The two paths are assembled differently — a template literal here, RTK
     // Query's `joinUrls` there — so a base URL with a trailing slash would
     // break them in different ways.
-    await fetchExportFile("mtg_1", "txt", {}, 0);
+    await fetchExportFile("mtg_1", "transcript", {}, 0);
     await store().dispatch(api.endpoints.getMp3Export.initiate("mtg_1"));
 
     for (const request of seen) {

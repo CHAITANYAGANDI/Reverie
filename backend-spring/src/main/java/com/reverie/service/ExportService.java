@@ -1,8 +1,6 @@
 package com.reverie.service;
 
 import com.reverie.common.ApiException;
-import com.reverie.domain.ExportFormat;
-import com.reverie.domain.ExportOptions;
 import com.reverie.domain.Language;
 import com.reverie.domain.SourceType;
 import com.reverie.domain.SummarySection;
@@ -14,8 +12,8 @@ import com.reverie.entity.MeetingActionItem;
 import com.reverie.entity.MeetingSummary;
 import com.reverie.entity.TranscriptSegment;
 import com.reverie.export.AudioDerivatives;
-import com.reverie.export.DocumentRenderer;
 import com.reverie.export.Downloads;
+import com.reverie.export.PdfRenderer;
 import com.reverie.export.ExportDocument;
 import com.reverie.export.ExportFile;
 import com.reverie.export.ExportLabels;
@@ -34,7 +32,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -74,7 +71,16 @@ public class ExportService {
     private final TranslationService translations;
     private final StorageService storage;
     private final AiClient ai;
-    private final Map<ExportFormat, DocumentRenderer> renderers = new EnumMap<>(ExportFormat.class);
+    /**
+     * One renderer, held directly.
+     *
+     * <p>This was a {@code Map<ExportFormat, DocumentRenderer>} populated from
+     * an injected list, which is the right shape for four formats and pure
+     * ceremony for one: an enum with a single constant, an interface with a
+     * single implementation, a lookup that cannot miss, and a
+     * "no renderer for PDF" branch that could never run. Reverie exports PDF.
+     */
+    private final PdfRenderer pdf;
 
     public ExportService(MeetingRepository meetings,
                          MeetingSummaryRepository summaries,
@@ -83,7 +89,7 @@ public class ExportService {
                          TranslationService translations,
                          StorageService storage,
                          AiClient ai,
-                         List<DocumentRenderer> renderers) {
+                         PdfRenderer pdf) {
         this.meetings = meetings;
         this.summaries = summaries;
         this.actionItems = actionItems;
@@ -91,11 +97,27 @@ public class ExportService {
         this.translations = translations;
         this.storage = storage;
         this.ai = ai;
-        renderers.forEach(r -> this.renderers.put(r.format(), r));
+        this.pdf = pdf;
     }
 
     /**
-     * Render the meeting.
+     * Which of the two documents a meeting can be taken out as.
+     *
+     * <p>Not a set of flags. The two are different documents with different
+     * readers -- a summary somebody attaches to a reply, a transcript somebody
+     * searches -- and every combination the old option object allowed was
+     * either one of these two or a file nobody asked for.
+     */
+    private enum Part { SUMMARY, TRANSCRIPT }
+
+    /**
+     * The complete summary, as a PDF.
+     *
+     * <p>Complete is the contract: every section the template wrote, in the
+     * order it wrote them, plus what people agreed to do. There is no section
+     * filter any more -- the old endpoint took a comma-separated list of keys,
+     * and a reader choosing which parts of a summary to keep was configuration
+     * standing in for an editor.
      *
      * @param rawLanguage a language the meeting has already been translated
      *                    into, or null for the meeting's own words
@@ -103,33 +125,43 @@ public class ExportService {
      *                    the date they saw in the app; UTC when unparseable
      */
     @Transactional(readOnly = true)
-    public ExportFile render(String userId, String meetingId, ExportFormat format,
-                             boolean includeTranscript, String rawLanguage, String zone) {
-        return render(userId, meetingId, format,
-                ExportOptions.withTranscript(includeTranscript), rawLanguage, zone);
+    public ExportFile summaryPdf(String userId, String meetingId, String rawLanguage, String zone) {
+        return render(userId, meetingId, Part.SUMMARY, "summary", rawLanguage, zone);
     }
 
-    public ExportFile render(String userId, String meetingId, ExportFormat format,
-                             ExportOptions options, String rawLanguage, String zone) {
+    /**
+     * The whole transcript, as a PDF, with who said it and when.
+     *
+     * <p>Both were switches and neither is now. A transcript without speakers
+     * is a wall of text nobody can attribute, and one without timestamps
+     * cannot be checked against the recording -- which are the two things a
+     * transcript is for. The old {@code combine} modes are gone with them: the
+     * utterances come out as they were spoken.
+     */
+    @Transactional(readOnly = true)
+    public ExportFile transcriptPdf(String userId, String meetingId,
+                                    String rawLanguage, String zone) {
+        return render(userId, meetingId, Part.TRANSCRIPT, "transcript", rawLanguage, zone);
+    }
+
+    private ExportFile render(String userId, String meetingId, Part part,
+                              String suffix, String rawLanguage, String zone) {
+        // Ownership first, and by the same query as before: a meeting that is
+        // not this user's is not found rather than forbidden, so the endpoint
+        // cannot be used to discover which ids exist.
         Meeting meeting = meetings.findByIdAndUserId(meetingId, userId)
                 .orElseThrow(() -> ApiException.notFound("Meeting not found"));
-
-        if (options.empty()) {
-            throw ApiException.badRequest("Choose at least one thing to export.");
-        }
 
         TranslationResponse translation = rawLanguage == null || rawLanguage.isBlank()
                 ? null
                 : translations.get(userId, meetingId, rawLanguage);
 
-        ExportDocument document = assemble(meeting, translation, options, zoneOf(zone));
-        DocumentRenderer renderer = renderers.get(format);
-        if (renderer == null) {
-            throw ApiException.badRequest("No renderer for " + format);
-        }
-
-        String filename = Downloads.slug(meeting.getTitle()) + "." + format.extension();
-        return new ExportFile(filename, format.mediaType(), renderer.render(document));
+        ExportDocument document = assemble(meeting, translation, part, zoneOf(zone));
+        // `product-weekly-summary.pdf`, not `product-weekly.pdf`. Two documents
+        // come out of one meeting now, and a reader who downloads both wants to
+        // be able to tell them apart in a downloads folder.
+        String filename = Downloads.slug(meeting.getTitle()) + "-" + suffix + ".pdf";
+        return new ExportFile(filename, "application/pdf", pdf.render(document));
     }
 
     /**
@@ -269,7 +301,7 @@ public class ExportService {
     /* ------------------------------ assembly ------------------------------ */
 
     private ExportDocument assemble(Meeting meeting, TranslationResponse translation,
-                                    ExportOptions options, ZoneId zone) {
+                                    Part part, ZoneId zone) {
         Language language = translation != null
                 ? Language.find(translation.language()).orElse(null)
                 : Language.find(meeting.getLanguage()).orElse(null);
@@ -280,15 +312,20 @@ public class ExportService {
                 .orElse(null);
         List<MeetingActionItem> tasks = actionItems.findByMeetingId(meeting.getId());
 
+        /*
+         * Each document is only itself.
+         *
+         * <p>The old endpoint could produce any combination, including a
+         * summary with a transcript appended -- which is why the frontend had
+         * to offer checkboxes to say which. Two files means neither can
+         * accidentally carry the other, and the tests assert exactly that.
+         */
         List<ExportDocument.Block> blocks = new ArrayList<>();
-        if (options.summary()) {
-            blocks.addAll(summaryBlocks(summary, translation, labels, options));
-        }
-        if (options.actionItems()) {
+        if (part == Part.SUMMARY) {
+            blocks.addAll(summaryBlocks(summary, translation, labels));
             blocks.addAll(taskBlocks(tasks, translation, labels));
-        }
-        if (options.transcript()) {
-            blocks.addAll(transcriptBlocks(meeting.getId(), translation, labels, options));
+        } else {
+            blocks.addAll(transcriptBlocks(meeting.getId(), translation, labels));
         }
 
         return new ExportDocument(
@@ -310,8 +347,7 @@ public class ExportService {
      */
     private List<ExportDocument.Block> summaryBlocks(MeetingSummary summary,
                                                      TranslationResponse translation,
-                                                     ExportLabels labels,
-                                                     ExportOptions options) {
+                                                     ExportLabels labels) {
         List<SummarySection> sections = translation != null
                 ? orEmpty(translation.sections())
                 : (summary == null ? List.of() : orEmpty(summary.getSections()));
@@ -319,12 +355,8 @@ public class ExportService {
         List<ExportDocument.Block> blocks = new ArrayList<>();
         if (!sections.isEmpty()) {
             for (SummarySection section : sections) {
-                // Filtered by the caller's choice, but only when they made one:
-                // a request naming no sections wants the whole brief, not an
-                // empty one. See ExportOptions.wants.
-                if (!options.wants(section.key())) {
-                    continue;
-                }
+                // Every section, unconditionally. `options.wants(key)` used to
+                // stand here and drop the ones a caller had not named.
                 blocks.add(new ExportDocument.Block.Heading(1, section.title()));
                 switch (section.kind() == null ? "" : section.kind()) {
                     case "prose" -> blocks.add(section.text() == null || section.text().isBlank()
@@ -420,8 +452,7 @@ public class ExportService {
      */
     private List<ExportDocument.Block> transcriptBlocks(String meetingId,
                                                         TranslationResponse translation,
-                                                        ExportLabels labels,
-                                                        ExportOptions options) {
+                                                        ExportLabels labels) {
         List<TranscriptSegment> lines = segments.findByMeetingIdOrderByStartTimeAsc(meetingId);
         if (lines.isEmpty()) {
             return List.of();
@@ -439,66 +470,15 @@ public class ExportService {
                     ? "Speaker" : line.getSpeaker();
             String text = words.getOrDefault(
                     line.getId(), line.getText() == null ? "" : line.getText());
+            // Both always filled. They were suppressible by emptying the
+            // field, which is how a "transcript" with no names and no times
+            // used to be reachable.
             utterances.add(new ExportDocument.Utterance(
-                    // Suppressed by emptying the field rather than by a flag on
-                    // the block: a renderer that has to ask what to draw ends up
-                    // with four copies of the same decision, one per format.
-                    options.timestamps() ? timecode(line.getStartTime()) : "",
-                    options.speakerNames() ? speaker : "",
-                    text));
+                    timecode(line.getStartTime()), speaker, text));
         }
 
         return List.of(new ExportDocument.Block.Heading(1, labels.transcript()),
-                new ExportDocument.Block.Transcript(combine(utterances, options.combine())));
-    }
-
-    /**
-     * Merge consecutive utterances according to the caller's choice.
-     *
-     * <p>Worth having because diarisation splits a turn at every pause: one
-     * person talking for a minute arrives as a dozen fragments, each with its
-     * own timestamp and name, and a transcript read as a document rather than
-     * scrubbed through is far harder to follow that way than it needs to be.
-     *
-     * <p>A merged block keeps the timestamp and speaker of its <em>first</em>
-     * utterance, which is when that person started talking — the one moment in
-     * the block a reader might want to jump to.
-     */
-    private static List<ExportDocument.Utterance> combine(List<ExportDocument.Utterance> lines,
-                                                          ExportOptions.Combine mode) {
-        if (mode == ExportOptions.Combine.NONE || lines.size() < 2) {
-            return lines;
-        }
-        if (mode == ExportOptions.Combine.ALL) {
-            String all = lines.stream()
-                    .map(ExportDocument.Utterance::text)
-                    .filter(t -> t != null && !t.isBlank())
-                    .collect(Collectors.joining(" "));
-            // No speaker and no time: this is one block of prose by
-            // construction, and labelling it with the first speaker's name
-            // would attribute the whole meeting to whoever opened it.
-            return List.of(new ExportDocument.Utterance("", "", all));
-        }
-
-        List<ExportDocument.Utterance> merged = new ArrayList<>();
-        for (ExportDocument.Utterance line : lines) {
-            ExportDocument.Utterance last = merged.isEmpty() ? null : merged.get(merged.size() - 1);
-            // Compared on the speaker as it will be printed. With names
-            // suppressed every label is blank, so this would fold the entire
-            // transcript into one block — which is the other mode, chosen
-            // deliberately, not something to arrive at by accident.
-            boolean sameSpeaker = last != null
-                    && !last.speaker().isBlank()
-                    && last.speaker().equals(line.speaker());
-            if (sameSpeaker) {
-                merged.set(merged.size() - 1, new ExportDocument.Utterance(
-                        last.timecode(), last.speaker(),
-                        (last.text() + " " + line.text()).strip()));
-            } else {
-                merged.add(line);
-            }
-        }
-        return merged;
+                new ExportDocument.Block.Transcript(utterances));
     }
 
     /* ------------------------------- details ------------------------------ */

@@ -35,14 +35,11 @@ import Link from "next/link";
 import {
   Bell,
   CheckCheck,
-  Loader2,
   Mic,
-  FileText,
-  Sparkles,
+  Hourglass,
+  Captions,
+  ScrollText,
   AlertTriangle,
-  Mail,
-  Clock,
-  AlarmClock,
   AtSign,
   Eye,
   Trash2,
@@ -79,11 +76,48 @@ const PAGE_SIZE = 20;
 /** Everything, or only what has not been read. */
 type Filter = "inbox" | "unread";
 
+/**
+ * THE GLYPH IS THE ONE ON THE THING THE ROW IS ABOUT.
+ *
+ * <p>Not chosen here. Every one of these announces something that has a glyph
+ * somewhere else in the app, and the row's job is to be recognised in a
+ * quarter of a second from six inches of peripheral vision — which only works
+ * if `Summary ready` carries the mark that is on the Summary panel. Three of
+ * them did not.
+ *
+ * <ul>
+ *   <li><b>Summary</b> was a `Sparkles`. A summary is written, not conjured,
+ *       and a star beside it says "AI did something" rather than "your summary
+ *       is ready" — the same star that has come off the meeting header, the
+ *       chat history and the empty chat. It is `ScrollText`, which is what the
+ *       Summary panel is labelled with in the meeting's mode row.</li>
+ *   <li><b>Transcript</b> was a `FileText`, a generic page — and the generic
+ *       page is also what `Summarize` uses on the selection menu, so the two
+ *       most common rows in this panel were a document and a star. It is
+ *       `Captions`, which is the Transcript panel's own mark and the one the
+ *       export dialog puts on a transcript file.</li>
+ *   <li><b>Processing started</b> was a `Loader2` — a spinner, drawn static.
+ *       It is a broken arc at 16px, and a spinner in a list of things that
+ *       have already happened is telling you to wait for the past.
+ *       `Hourglass` says the same thing without asking anybody to wait.</li>
+ * </ul>
+ *
+ * <p>The other four were already right and are left alone: `Mic` is the
+ * Record control's own glyph, `AlertTriangle` is what the failure banner on
+ * the meeting itself draws, `AtSign` is a mention in every interface there has
+ * ever been, and `Eye` is somebody having looked.
+ *
+ * <p>Both retired kinds keep a glyph. Nothing emits `RECORDING_STARTED` or
+ * `PROCESSING_STARTED` any more — see `NotificationKind` on the server — but
+ * rows emitted before they were retired are still in people's inboxes, and a
+ * `Record` of every kind is what stops a future kind from arriving with
+ * nothing.
+ */
 const ICONS: Record<NotificationKind, React.ComponentType<{ className?: string }>> = {
   RECORDING_STARTED: Mic,
-  PROCESSING_STARTED: Loader2,
-  TRANSCRIPT_READY: FileText,
-  SUMMARY_READY: Sparkles,
+  PROCESSING_STARTED: Hourglass,
+  TRANSCRIPT_READY: Captions,
+  SUMMARY_READY: ScrollText,
   PROCESSING_FAILED: AlertTriangle,
   MENTIONED_IN_MEETING: AtSign,
   SHARE_VIEWED: Eye,
@@ -154,24 +188,36 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
         if (!next) setFilter("inbox");
       }}
     >
-      {/* An icon in the wordmark row, not a row of its own.
-          There is no width for a written label beside "Reverie", so the name
-          lives in aria-label and in the tooltip and the count goes back to the
-          corner of the icon. That is the cost of the move, and it is paid
-          knowingly: the row it left was below the fold on a short window with a
-          few folders open, and a bell nobody scrolls to is a bell that does not
-          work. The number is kept rather than reduced to a dot — "3" and "9+"
-          are different amounts of reason to stop what you are doing. */}
+      {/* An icon in the band, not a row of its own.
+          There is no width for a written label there, so the name lives in
+          aria-label and in the tooltip and the count sits in the corner of the
+          icon. That is the cost of the move, and it is paid knowingly: the row
+          it left was below the fold on a short window with a few folders open,
+          and a bell nobody scrolls to is a bell that does not work. The number
+          is kept rather than reduced to a dot -- "3" and "9+" are different
+          amounts of reason to stop what you are doing. */}
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
           title="Notifications"
           className={cn(
-            "relative ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
-            open || unread > 0 ? "text-foreground" : "text-muted-foreground",
-            "hover:bg-accent hover:text-accent-foreground",
-            open && "bg-accent",
+            /*
+              36px, matching `BandIcon`.
+
+              <p>It was 32, on the reasoning that a 48px band leaves that much
+              after its own padding -- true, and it was fine while this sat on
+              its own past a rule with only the avatar beside it. It is the
+              third glyph in a run of three now, and 32 between two 36s reads
+              as a misalignment rather than as a smaller control.
+
+              <p>No `ml-auto` either: that was placing this against the right
+              edge of a rail row, and in the band the layout says where it goes.
+            */
+            "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors",
+            open || unread > 0 ? "text-ink" : "text-ink-3",
+            "hover:bg-surface-hover hover:text-ink",
+            open && "bg-surface-hover",
           )}
         >
           <Bell className="h-[18px] w-[18px]" />
@@ -179,7 +225,7 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
               number, and announcing it twice is how a badge becomes noise. */}
           {unread > 0 && (
             <span
-              className="absolute right-0.5 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
+              className="absolute -right-0.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-fill px-1 text-[10px] font-bold leading-none text-white"
               aria-hidden
             >
               {unread > BADGE_MAX ? `${BADGE_MAX}+` : unread}
@@ -188,22 +234,24 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
         </button>
       </DropdownMenuTrigger>
 
-      {/* Downwards now. Out to the side was for a trigger halfway down the
-          rail, where a panel opening below it ran off the bottom of a short
-          window; from the top row the whole window is underneath. The rail is
-          16rem and the panel is 24rem, so it covers the page either way —
-          `collisionPadding` is what keeps it on screen on a narrow one. Radix
-          portals this to the body, so the rail's own overflow scrolling never
-          clips it. */}
+      {/* Downwards, and anchored to its right edge. Out to the side was for a
+          trigger halfway down a navigation rail, where a panel opening below it
+          ran off the bottom of a short window; this one is in the top row, so
+          the whole window is underneath it. `align="end"` because the trigger
+          is now near the right edge of the screen and a 24rem panel growing
+          rightwards from `start` would hang off it -- `collisionPadding` would
+          drag it back, which is a panel that shifts under the pointer rather
+          than one that opens where it belongs. Radix portals this to the body,
+          so nothing above can clip it. */}
       <DropdownMenuContent
         side="bottom"
-        align="start"
+        align="end"
         sideOffset={8}
         collisionPadding={16}
         className="w-[min(24rem,calc(100vw-2rem))] p-0"
       >
         <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-2.5">
-          <span className="text-base font-semibold">Notifications</span>
+          <span className="text-title-3 font-headline text-ink">Notifications</span>
           {/* Disabled rather than hidden when there is nothing unread. A control
               that vanishes teaches nobody it exists; one that is greyed out
               says both what it does and that there is nothing to do. */}

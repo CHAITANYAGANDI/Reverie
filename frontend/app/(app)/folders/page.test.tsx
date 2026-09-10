@@ -1,220 +1,88 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
 import type { Project } from "@/lib/types";
 
 /**
- * The folder list.
+ * /folders is a page again.
  *
- * <p>The row is the whole page: a name, how much is in it, when it last changed,
- * and the two things you can do to it. Two of those are worth guarding.
+ * <h2>Why this file is one assertion and a shape</h2>
  *
- * <p><i>Deleting a folder must never read as deleting its meetings.</i> The
- * confirmation says what survives, because "delete" over a folder full of
- * recordings reads as worse than it is — and somebody who believes it keeps
- * folders they do not want.
+ * <p>The route was `redirect(LIBRARY)`. It is a real page now — folders came
+ * out of the document and into the Library margin, and the margin is a glance
+ * with a door rather than a management surface, so the full list needs
+ * somewhere to be: `design-demo/final/16-folders.html`.
  *
- * <p><i>The star outranks the sort.</i> Whichever column header was last
- * clicked, a starred folder is first; it is the only thing on this page that is
- * a statement about what somebody is working on rather than about the data.
+ * <p>Everything the list does is pinned in `components/folder-list.test.tsx` —
+ * the count in the title, the two groups, the sort, rename, delete and the
+ * four-way loading/error/empty/ready rule. What is left for this file is the
+ * thing that would regress silently: somebody restoring the redirect, or
+ * wrapping the list in a second layout. So it asserts the route renders the
+ * list and nothing else.
+ *
+ * <p>The band is not tested here. Which destination stays lit on this URL is
+ * `placeFor` in lib/places.ts, tested in lib/chrome.test.ts, where the rule
+ * lives for all three routes at once.
  */
-const { update, remove, confirm } = vi.hoisted(() => ({
-  update: vi.fn(),
-  remove: vi.fn(),
-  confirm: vi.fn(),
-}));
 
-let folders: Project[];
+let folders: Project[] | undefined;
 
 vi.mock("@/lib/api", () => ({
-  useGetProjectsQuery: () => ({ data: folders, isLoading: false }),
-  useUpdateProjectMutation: () => [
-    (arg: unknown) => {
-      update(arg);
-      return { unwrap: () => Promise.resolve({}) };
-    },
-    { isLoading: false },
-  ],
-  useDeleteProjectMutation: () => [
-    (id: string) => {
-      remove(id);
-      return { unwrap: () => Promise.resolve({ unfiledMeetings: 3 }) };
-    },
-    { isLoading: false },
-  ],
-  useCreateProjectMutation: () => [() => ({ unwrap: () => Promise.resolve({}) }), { isLoading: false }],
+  useGetProjectsQuery: () => ({
+    data: folders,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: folders !== undefined,
+    isUninitialized: false,
+    refetch: vi.fn(),
+  }),
+  useUpdateProjectMutation: () => [() => ({ unwrap: () => Promise.resolve({}) }), {}],
+  useDeleteProjectMutation: () => [() => ({ unwrap: () => Promise.resolve({}) }), {}],
+  useCreateProjectMutation: () => [() => ({ unwrap: () => Promise.resolve({}) }), {}],
 }));
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import FoldersPage from "@/app/(app)/folders/page";
 
-function folder(over: Partial<Project> = {}): Project {
-  return {
-    id: "prj_1",
-    name: "Meetings",
-    description: "",
-    color: "",
-    favorite: false,
-    meetingCount: 1,
-    createdAt: "2026-07-01T09:00:00Z",
-    updatedAt: "2026-08-01T09:00:00Z",
-    ...over,
-  };
-}
+describe("the route", () => {
+  it("renders the folders rather than redirecting away from them", () => {
+    /*
+     * The regression this guards: `redirect(LIBRARY)` throws during render, so
+     * a reinstated redirect fails here rather than quietly sending everybody to
+     * a page that no longer holds the list.
+     */
+    folders = [
+      {
+        id: "prj_1",
+        name: "Beta Launch",
+        description: "",
+        color: "",
+        favorite: false,
+        meetingCount: 9,
+        createdAt: "2026-07-01T09:00:00Z",
+        updatedAt: "2026-08-01T09:00:00Z",
+      },
+    ];
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  folders = [folder()];
-  window.confirm = confirm;
-  confirm.mockReturnValue(true);
-});
-
-describe("the list", () => {
-  it("shows each folder and how much is in it", () => {
     render(<FoldersPage />);
 
-    expect(screen.getByText("Meetings")).toBeInTheDocument();
-    expect(screen.getByText("1 conversation")).toBeInTheDocument();
-  });
-
-  it("counts in the plural when it should", () => {
-    folders = [folder({ meetingCount: 4 })];
-    render(<FoldersPage />);
-
-    expect(screen.getByText("4 conversations")).toBeInTheDocument();
-  });
-
-  it("links a folder to itself", () => {
-    render(<FoldersPage />);
-
-    expect(screen.getByRole("link", { name: /Meetings/ })).toHaveAttribute(
+    // "Folders", not "1 folder": the count is stated over the list now rather
+    // than as the name of the page. See components/folder-list.test.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Folders");
+    expect(screen.getByRole("link", { name: /Beta Launch/ })).toHaveAttribute(
       "href",
       "/folder/prj_1",
     );
   });
 
-  it("lists only folders — loose meetings are Home's job", () => {
-    render(<FoldersPage />);
-
-    // This page was once the only meeting list there was. Home lists everything
-    // now, filed or not, so nothing is hidden by leaving them out of here.
-    expect(screen.queryByText(/No folder/)).not.toBeInTheDocument();
-  });
-
-  it("says what a folder is for when there are none", () => {
+  it("offers the way back to Library rather than a fourth destination", () => {
     folders = [];
     render(<FoldersPage />);
 
-    expect(screen.getByText("No folders yet")).toBeInTheDocument();
-  });
-});
-
-describe("ordering", () => {
-  it("opens on what changed most recently", () => {
-    folders = [
-      folder({ id: "old", name: "Older", updatedAt: "2026-01-01T09:00:00Z" }),
-      folder({ id: "new", name: "Newer", updatedAt: "2026-08-10T09:00:00Z" }),
-    ];
-    render(<FoldersPage />);
-
-    const names = screen.getAllByRole("link").map((el) => el.textContent);
-    expect(names[0]).toContain("Newer");
-  });
-
-  it("sorts by name when the column is clicked", async () => {
-    folders = [
-      folder({ id: "b", name: "Beta", updatedAt: "2026-08-10T09:00:00Z" }),
-      folder({ id: "a", name: "Alpha", updatedAt: "2026-01-01T09:00:00Z" }),
-    ];
-    render(<FoldersPage />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Name/ }));
-
-    expect(screen.getAllByRole("link")[0].textContent).toContain("Alpha");
-  });
-
-  it("puts a starred folder first whichever column is sorted", () => {
-    folders = [
-      folder({ id: "recent", name: "Recent", updatedAt: "2026-08-10T09:00:00Z" }),
-      folder({ id: "pinned", name: "Pinned", favorite: true, updatedAt: "2026-01-01T09:00:00Z" }),
-    ];
-    render(<FoldersPage />);
-
-    expect(screen.getAllByRole("link")[0].textContent).toContain("Pinned");
-  });
-});
-
-describe("the row menu", () => {
-  async function openMenu() {
-    render(<FoldersPage />);
-    await userEvent.click(screen.getByRole("button", { name: "Actions for Meetings" }));
-  }
-
-  it("stars a folder", async () => {
-    await openMenu();
-
-    await userEvent.click(screen.getByRole("menuitem", { name: /Star folder/ }));
-
-    expect(update).toHaveBeenCalledWith({ id: "prj_1", body: { favorite: true } });
-  });
-
-  it("offers to take the star off one that has it", async () => {
-    folders = [folder({ favorite: true })];
-    await openMenu();
-
-    await userEvent.click(screen.getByRole("menuitem", { name: /Remove star/ }));
-
-    expect(update).toHaveBeenCalledWith({ id: "prj_1", body: { favorite: false } });
-  });
-
-  it("opens the rename form on the folder it was opened from", async () => {
-    await openMenu();
-
-    await userEvent.click(screen.getByRole("menuitem", { name: /Rename Folder/ }));
-
-    expect(await screen.findByRole("heading", { name: "Rename folder" })).toBeInTheDocument();
-  });
-
-  it("says the meetings survive before deleting the folder", async () => {
-    await openMenu();
-
-    await userEvent.click(screen.getByRole("menuitem", { name: /Delete Folder/ }));
-
-    await waitFor(() => expect(remove).toHaveBeenCalledWith("prj_1"));
-    // The sentence people read at the moment they are deciding.
-    expect(confirm.mock.calls[0][0]).toMatch(/are kept/);
-  });
-
-  it("deletes nothing when the confirmation is declined", async () => {
-    confirm.mockReturnValue(false);
-    await openMenu();
-
-    await userEvent.click(screen.getByRole("menuitem", { name: /Delete Folder/ }));
-
-    expect(remove).not.toHaveBeenCalled();
-  });
-});
-
-describe("creating", () => {
-  it("does not put a New folder button above the list", () => {
-    render(<FoldersPage />);
-
-    // It is in the top bar on this page, where Import and Record sit
-    // everywhere else. Two of them a centimetre apart, doing the same thing,
-    // is the state this asserts against.
-    expect(screen.queryByRole("button", { name: /New folder/ })).not.toBeInTheDocument();
-  });
-
-  it("keeps one in the empty state, where it is being explained", async () => {
-    folders = [];
-    render(<FoldersPage />);
-
-    // The header button is off-screen for this component, and somebody reading
-    // "a folder groups meetings by the work they belong to" is going to press
-    // the thing directly under it.
-    await userEvent.click(screen.getByRole("button", { name: /New folder/ }));
-
-    expect(await screen.findByRole("heading", { name: "Create a folder" })).toBeInTheDocument();
+    // The band still has three places in it. This page is inside Library, and
+    // says so.
+    expect(screen.getByText("Library · folders")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Library/ })).toHaveAttribute("href", "/library");
   });
 });

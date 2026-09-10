@@ -331,33 +331,197 @@ describe("text handed over from elsewhere on the page", () => {
 
 
 /**
+ * The effort menu, and the three controls it shares a line with.
+ *
+ * <h2>What went wrong</h2>
+ *
+ * <p>The menu was `left-0` — its left edge on the picker's, growing rightward.
+ * The picker sits at the right-hand end of the bar beside Send, so a 256px menu
+ * opening rightward ran off the panel: in the 383px side pane both hints were
+ * cut mid-word, "Answers from the str…". It was reported from a screenshot.
+ *
+ * <p>Asserted as classes rather than as geometry, and that is the honest level
+ * here: jsdom lays nothing out, so a width and an overflow cannot be measured
+ * in it. What the rendered page does was measured in a browser at 1440 and in
+ * the 383px rail — menu fully inside both, no hint clipped, 12px of clearance
+ * over Send. What these hold is the decision that produced it, so a later
+ * `left-0` fails here rather than in somebody's screenshot.
+ */
+describe("the effort menu", () => {
+  async function open() {
+    render(<ChatComposer onSend={vi.fn()} modes={modes} />);
+    await userEvent.click(screen.getByRole("button", { name: /quick/i }));
+    return screen.getByRole("menu");
+  }
+
+  it("grows away from the edge the picker sits on", async () => {
+    /*
+     * THIS HAS BEEN BOTH, AND THE FLIP IS THE POINT.
+     *
+     * <p>`left-0` first, when the picker sat at the right-hand end of a one-row
+     * composer beside Send: a 256px menu growing rightward from there ran off
+     * the panel and cut both hints mid-word in the 383px rail. So it became
+     * `right-0`, growing leftward.
+     *
+     * <p>The picker is at the *left* edge of its own row now, so `right-0`
+     * would grow it off the other side. `left-0` again — with 256px of composer
+     * to its right at every width the panel has.
+     *
+     * <p>Asserted as the pair rather than as one class, because what must hold
+     * is that the anchor and the trigger's edge agree. Whichever way the layout
+     * moves next, exactly one of these is right.
+     */
+    const menu = await open();
+
+    expect(menu.className).toContain("left-0");
+    expect(menu.className).not.toContain("right-0");
+  });
+
+  it("clears the bar it opens over", async () => {
+    // `mb-3`. At `mb-2` the menu's bottom corner nearly touched Send and the
+    // two read as one object; twelve pixels reads as a menu above the bar.
+    const menu = await open();
+
+    expect(menu.className).toContain("mb-3");
+  });
+
+  it("marks the mode in effect with the accent, not a grey fill", async () => {
+    /*
+     * It was `bg-accent/60` — a grey wash that read as a hover that had got
+     * stuck. In this product the accent means "this is what is happening",
+     * which is exactly what the chosen effort level is.
+     */
+    await open();
+
+    const chosen = screen
+      .getAllByRole("menuitemradio")
+      .find((b) => b.getAttribute("aria-checked") === "true")!;
+    expect(chosen.className).toContain("bg-brand/12");
+    expect(chosen.className).not.toContain("bg-accent");
+  });
+
+  it("still chooses a mode, which is the only thing it is for", async () => {
+    // The styling changed; the behaviour must not have.
+    const onModeChange = vi.fn();
+    render(<ChatComposer onSend={vi.fn()} modes={modes} onModeChange={onModeChange} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /quick/i }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: /Thorough/ }));
+
+    expect(onModeChange).toHaveBeenCalledWith("advanced");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("gives the two rows' controls one height each", async () => {
+    /*
+     * REWRITTEN FOR THREE ROWS. It asserted `h-8` on all three controls,
+     * because all three shared the text's line and three different heights on
+     * one line is what made that bar read as unaligned.
+     *
+     * <p>They are on two rows now — `Add context` above the text, the effort
+     * level and Send below it — so what has to hold is that each row's controls
+     * agree with each other, not that all three agree. 36px, up from 32: none
+     * of them is squeezed beside a line of text any more, and 36 is the touch
+     * target they should always have had.
+     */
+    const { container } = render(<ChatComposer onSend={vi.fn()} modes={modes} />);
+    const composer = container.querySelector("[data-composer]")!;
+
+    for (const sel of [
+      'button[aria-label="Add context"]',
+      'button[aria-haspopup="menu"]',
+      'button[aria-label="Send"]',
+    ]) {
+      const el = composer.querySelector(sel)!;
+      expect(el, sel).not.toBeNull();
+      expect(el.className, sel).toMatch(/\bh-9\b/);
+    }
+    // And they are round, which is what makes them read as controls rather
+    // than as small boxes.
+    expect(container.querySelectorAll(".rounded-full").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
  * The box itself.
  *
- * Two defects that are invisible in a diff and obvious on screen. The rows
- * disagreed about their own left edge — chips at 12px, the text at 16px, the
- * mode picker back at 12px — so the placeholder started a quarter-inch right of
- * the chip above it. And the ceiling on the box's height lived only inside a
- * `useEffect`, so anything that stopped the effect running left a box that grew
- * until it had eaten the conversation above it, with no scrollbar because there
- * was no overflow to scroll.
+ * <p>It is one row now — the context glyph, the text, the mode picker and Send
+ * on a single line, with the chips above only when there are any. Empty, that
+ * is 48px rather than the 110 three stacked strips took.
+ *
+ * <p>What the rest of this block guards is the defect that is invisible in a
+ * diff and obvious on screen: the ceiling on the box's height lived only inside
+ * a `useEffect`, so anything that stopped the effect running left a box that
+ * grew until it had eaten the conversation above it — with no scrollbar,
+ * because there was no overflow to scroll. Both the ceiling and the floor are
+ * real CSS, and these assertions are why.
  */
 describe("the box", () => {
   function box() {
     return screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
   }
 
-  /** The `px-*` class a row is using, whatever it happens to be. */
-  function padding(el: Element): string | undefined {
-    return el.className.split(/\s+/).find((c) => c.startsWith("px-"));
-  }
+  it("gives the text the whole width, with the controls above and below it", () => {
+    /*
+     * THE REPORTED BUG, AS A STRUCTURE.
+     *
+     * <p>Everything shared one row: the context glyph, the textarea, the mode
+     * picker and Send. So a paragraph wrapped inside about two thirds of the
+     * box and left the rest of every line empty — on `/ask` at 1440 that is a
+     * 680px box typing in roughly 520 of it, which is the "lot of space in the
+     * right side" that was reported.
+     *
+     * <p>Three rows now, which is the approved layout: context above, the text
+     * across the full width, the effort level and Send below. Asserted as the
+     * textarea being a direct child of the box with nothing beside it, because
+     * that is the property the wasted space followed from — any control that
+     * rejoins its row takes the width back.
+     */
+    render(<ChatComposer onSend={vi.fn()} modes={modes} />);
 
-  it("lines its rows up on one left edge", () => {
-    render(<ChatComposer scope="This meeting" onSend={vi.fn()} />);
+    const composer = box().closest("[data-composer]")!;
+    expect(box().parentElement).toBe(composer);
+    expect(box().className).toContain("w-full");
+    expect(box().className).not.toMatch(/\bflex-1\b/);
 
-    const rows = Array.from(box().parentElement!.children);
-    const paddings = new Set(rows.map(padding));
-    expect(paddings.size).toBe(1);
-    expect([...paddings][0]).toBeDefined();
+    // Above: the context control. Below: the effort level and Send.
+    const rows = Array.from(composer.children);
+    const textIndex = rows.indexOf(box());
+    expect(rows[textIndex - 1].querySelector('button[aria-label="Add context"]')).not.toBeNull();
+    const last = rows[textIndex + 1];
+    expect(last.querySelector('button[aria-haspopup="menu"]')).not.toBeNull();
+    expect(last.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    // Send at the right edge, the effort level at the left.
+    expect(last.className).toContain("justify-between");
+  });
+
+  it("keeps the context control and its chips on one row above the text", () => {
+    /*
+     * CHANGED WITH THE LAYOUT. The chips used to be a row that appeared only
+     * when it had something in it, above a control row that held the context
+     * glyph — so `Add context` and the chips it produces were in two places.
+     *
+     * <p>They are one row now, always drawn, which is both the approved layout
+     * and the truer grouping: the button and the chips are one subject. The row
+     * has a floor height so the text below it does not shift as chips come and
+     * go, and in a meeting chat — where there is no control, only a fixed scope
+     * chip — it holds the chip alone.
+     */
+    const { container, rerender } = render(<ChatComposer onSend={vi.fn()} />);
+
+    const composer = container.querySelector("[data-composer]")!;
+    const top = composer.firstElementChild!;
+    expect(top.querySelector('button[aria-label="Add context"]')).not.toBeNull();
+    expect(top).not.toContainElement(box());
+    // Held open, so adding a chip does not move the text.
+    expect(top.className).toMatch(/min-h-/);
+
+    // A fixed scope has no control and puts its chip on that same row.
+    rerender(<ChatComposer scope="This meeting" onSend={vi.fn()} />);
+    const withChip = container.querySelector("[data-composer]")!;
+    expect(withChip.firstElementChild!).toContainElement(screen.getByTitle("This meeting"));
+    expect(withChip.querySelector('button[aria-label="Add context"]')).toBeNull();
+    expect(withChip.firstElementChild).not.toContainElement(box());
   });
 
   it("cannot grow past its ceiling however much is typed", () => {
@@ -422,7 +586,12 @@ describe("the box", () => {
     // The textarea sets `outline-none` and put nothing in its place, so tabbing
     // into the chat gave no sign of having arrived anywhere. The ring is on the
     // box rather than the textarea because the box is what looks like the input.
-    expect(box().parentElement!.className).toContain("focus-within:ring-2");
+    //
+    // Found by `data-composer` rather than by walking up one parent: the
+    // textarea sits inside the control row now, so the ring is its grandparent
+    // and a test that counts parents breaks every time the box is rearranged.
+    const composer = box().closest("[data-composer]")!;
+    expect(composer.className).toContain("focus-within:ring-2");
 
     await userEvent.tab();
     expect(box()).toHaveFocus();

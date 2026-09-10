@@ -91,7 +91,12 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
     hasTranscript: true,
     hasSummary: true,
     canTranslate: true,
+    // Summary by default, because that is the mode a meeting opens on -- and
+    // the mode that carries the two summary actions.
+    mode: "summary" as const,
     onCopySummary: vi.fn(),
+    onExport: vi.fn(),
+    onAddTag: vi.fn(),
     onCopyTranscript: vi.fn(),
     onRegenerateSummary: vi.fn(),
     onTranslate: vi.fn(),
@@ -103,6 +108,67 @@ function menu(over: Partial<React.ComponentProps<typeof MeetingMenu>> = {}) {
   return props;
 }
 
+describe("Jump to", () => {
+  it("is not in this menu any more", async () => {
+    /*
+     * It was the first row of the transcript group, with a `⌘.` keycap beside
+     * it, and it was `disabled` on a meeting with no transcript.
+     *
+     * <p>The navigator itself is untouched: `JumpTo` and its suite are where
+     * they were, and the meeting page still binds `⌘.` to it. What went is
+     * this way in, from the approved menu -- so the assertion is inverted
+     * rather than deleted, because a menu item quietly coming back is exactly
+     * the kind of drift this file exists to catch.
+     */
+    menu();
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.queryByRole("menuitem", { name: /Jump to/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("the two actions that belong to the brief", () => {
+  it("are offered while the summary is being read", async () => {
+    menu({ mode: "summary" });
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: "Copy summary" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Regenerate summary" })).toBeInTheDocument();
+  });
+
+  it("are not offered over the transcript, which is a different document", async () => {
+    /*
+     * Both act on a brief that is not on screen. The approved transcript menu
+     * has neither, and this is the same rule the mode items already follow in
+     * the other direction: find, speakers and correcting the words are drawn
+     * over a transcript and nowhere else.
+     */
+    menu({ mode: "transcript" });
+
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.queryByRole("menuitem", { name: "Copy summary" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Regenerate summary" }),
+    ).not.toBeInTheDocument();
+    // Everything that acts on the meeting itself stays.
+    for (const label of ["Move…", "Copy link", "Add a tag", "Export…", "Copy transcript",
+      "Change language", "Reprocess meeting", "Delete this meeting"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
+  });
+});
+
+/**
+ * Export lives in here now.
+ *
+ * <p>It was a standalone button beside this menu, drawn into the shell's
+ * full-width header row -- so over a centred 680px document it sat hard right
+ * of the window, reading as application chrome. One action surface per
+ * document; the V2 reference has one `⋯`.
+ */
 async function open(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByLabelText("More actions"));
 }
@@ -117,6 +183,44 @@ beforeEach(() => {
 });
 
 describe("MeetingMenu", () => {
+  it("carries Add a tag, since the masthead no longer offers one", async () => {
+    /*
+     * The masthead had a dashed `+ Tag` pill on every meeting, tagged or not.
+     * Tags that exist still show there -- a tag is a fact about the document --
+     * and adding one is an action, so it is here with the other actions.
+     */
+    const user = userEvent.setup();
+    const props = menu();
+    await open(user);
+
+    await user.click(screen.getByRole("menuitem", { name: /Add a tag/ }));
+
+    expect(props.onAddTag).toHaveBeenCalled();
+  });
+
+  it("carries Export, so a meeting has one action surface", async () => {
+    const user = userEvent.setup();
+    const props = menu();
+    await open(user);
+
+    await user.click(screen.getByRole("menuitem", { name: /Export/ }));
+
+    expect(props.onExport).toHaveBeenCalled();
+  });
+
+  it("offers Export whatever the meeting's state", async () => {
+    // A failed meeting still exports whatever was kept, and the dialog itself
+    // is what says which parts exist.
+    const user = userEvent.setup();
+    menu({ hasTranscript: false, hasSummary: false });
+    await open(user);
+
+    expect(screen.getByRole("menuitem", { name: /Export/ })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
   it("gathers every operation into one list", async () => {
     const user = userEvent.setup();
     menu();
@@ -125,6 +229,8 @@ describe("MeetingMenu", () => {
     for (const label of [
       "Move…",
       "Copy link",
+      "Add a tag",
+      "Export…",
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -151,6 +257,9 @@ describe("MeetingMenu", () => {
     ).toEqual([
       "Move…",
       "Copy link",
+      "Add a tag",
+      "Export…",
+      // The shortcut rides in the row, which is why it is in the label here.
       "Copy transcript",
       "Change language",
       "Copy summary",
@@ -520,6 +629,9 @@ describe("MeetingMenu when the minutes are gone", () => {
     expect(screen.getAllByRole("menuitem").map((el) => el.textContent?.trim())).toEqual([
       "Move…",
       "Copy link",
+      "Add a tag",
+      "Export…",
+      // The shortcut rides in the row, which is why it is in the label here.
       "Copy transcript",
       "Change language",
       "Copy summary",

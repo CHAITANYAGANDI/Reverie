@@ -45,10 +45,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSignUp } from "@clerk/nextjs";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { AtSign, Lock, Mail } from "lucide-react";
 import {
+  CodeField,
   Field,
   FormError,
   GoogleButton,
+  Notice,
   OrDivider,
   SubmitButton,
 } from "@/components/auth/auth-form";
@@ -144,9 +147,10 @@ export default function SignUpPage() {
       await signUp.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
-        // New accounts land on the welcome flow. Somebody who already had one
-        // and pressed the wrong button lands there too and skips through it in
-        // two clicks, which is better than being told off.
+        // Into the two questions, then the product. Somebody who already had
+        // an account and pressed the wrong button lands there too and is sent
+        // straight on, because the screen reads the completion flag — which is
+        // better than being told off.
         redirectUrlComplete: WELCOME,
       });
     } catch (cause) {
@@ -216,14 +220,24 @@ export default function SignUpPage() {
 
   return (
     <AuthShell
-      eyebrow={stage === "details" ? "Create account" : "Check your email"}
-      title={stage === "details" ? "Start with Reverie." : "Confirm it is you."}
+      /*
+       * "Step 1 of 2", not "of 3".
+       *
+       * The approved artifact says "Step 2 of 3", counting onboarding as the
+       * third. Onboarding numbers its own steps and has either one or two of
+       * them depending on whether the provider owns the name, so "of 3" here
+       * would be a number nothing backs and would be contradicted by the very
+       * next screen. This form has two steps and says so.
+       */
+      eyebrow={stage === "details" ? "Step 1 of 2" : "Step 2 of 2"}
+      title={stage === "details" ? "Start with Reverie." : "Check your email."}
       subtitle={
         stage === "details" ? (
           <>100 transcription minutes and 3 imports, for the life of the account. No card.</>
         ) : (
           <>
-            We sent a six-digit code to <span className="text-foreground">{email}</span>.
+            An address and a password is the whole form. Reverie has nowhere to put a company
+            name or a team size, so it does not ask for either.
           </>
         )
       }
@@ -232,14 +246,14 @@ export default function SignUpPage() {
           Already have an account?{" "}
           <Link
             href="/sign-in"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
+            className="font-headline text-ink underline underline-offset-[3px]"
           >
             Sign in
           </Link>
         </>
       }
     >
-      <div className="space-y-6">
+      <div>
         {stage === "details" ? (
           <>
             <GoogleButton label="Continue with Google" onClick={withGoogle} busy={busy === "google"} />
@@ -247,17 +261,8 @@ export default function SignUpPage() {
           </>
         ) : null}
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit}>
           <FormError>{error}</FormError>
-
-          {sent ? (
-            <p
-              role="status"
-              className="rounded-lg border bg-card px-3.5 py-2.5 text-[13px] text-muted-foreground"
-            >
-              A new code is on its way. The older one no longer works.
-            </p>
-          ) : null}
 
           {stage === "details" ? (
             <>
@@ -265,6 +270,7 @@ export default function SignUpPage() {
                 label="Email"
                 type="email"
                 autoComplete="email"
+                icon={AtSign}
                 placeholder="you@company.com"
                 required
                 value={email}
@@ -274,6 +280,7 @@ export default function SignUpPage() {
                 label="Password"
                 type="password"
                 autoComplete="new-password"
+                icon={Lock}
                 hint="At least 8 characters"
                 required
                 minLength={8}
@@ -282,15 +289,29 @@ export default function SignUpPage() {
               />
             </>
           ) : (
-            <Field
-              label="Code"
-              autoComplete="one-time-code"
-              inputMode="numeric"
-              placeholder="123456"
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
+            <>
+              {/* The address is restated because the commonest reason a code
+                  never arrives is that it went somewhere else, and the way to
+                  fix that is to see it and change it — which is why both are
+                  offered under the button rather than left to support. */}
+              <Notice icon={Mail} role={sent ? "status" : undefined}>
+                {sent ? (
+                  <>
+                    A new code is on its way to{" "}
+                    <b className="font-headline text-ink">{email}</b>. The older one no longer
+                    works.
+                  </>
+                ) : (
+                  <>
+                    A six-digit code is on its way to{" "}
+                    <b className="font-headline text-ink">{email}</b>. It expires in ten minutes.
+                  </>
+                )}
+              </Notice>
+              <div className="mt-[26px]">
+                <CodeField label="Code" value={code} onChange={setCode} />
+              </div>
+            </>
           )}
 
           {/*
@@ -300,19 +321,21 @@ export default function SignUpPage() {
           */}
           <div id="clerk-captcha" />
 
-          <SubmitButton busy={busy === "form"} disabled={!isLoaded || busy === "resend"}>
-            {stage === "details" ? "Create account" : "Confirm and continue"}
-          </SubmitButton>
+          <div className={stage === "details" ? "mt-6" : "mt-[26px]"}>
+            <SubmitButton busy={busy === "form"} disabled={!isLoaded || busy === "resend"}>
+              {stage === "details" ? "Create account" : "Verify and continue"}
+            </SubmitButton>
+          </div>
 
           {stage === "verify" ? (
-            <div className="flex items-center justify-between text-[13px] text-muted-foreground">
+            <div className="mt-[18px] flex items-center justify-center gap-5 text-callout text-ink-3">
               <button
                 type="button"
                 onClick={resend}
                 disabled={busy !== null}
-                className="underline-offset-4 hover:text-foreground hover:underline disabled:opacity-60 disabled:hover:no-underline"
+                className="underline underline-offset-[3px] hover:text-ink disabled:opacity-60"
               >
-                {busy === "resend" ? "Sending…" : "Send another code"}
+                {busy === "resend" ? "Sending…" : "Send another"}
               </button>
               <button
                 type="button"
@@ -322,13 +345,13 @@ export default function SignUpPage() {
                   setSent(false);
                   setCode("");
                 }}
-                className="underline-offset-4 hover:text-foreground hover:underline"
+                className="underline underline-offset-[3px] hover:text-ink"
               >
-                Use a different email
+                Change the address
               </button>
             </div>
           ) : (
-            <p className="text-[12px] leading-relaxed text-muted-foreground">
+            <p className="mt-4 text-foot leading-[1.5] text-ink-4">
               By creating an account you agree that recordings you upload are processed to produce
               transcripts and summaries. You can delete any of it, at any time.
             </p>

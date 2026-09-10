@@ -15,7 +15,7 @@
  * empty result are different facts and now read differently.
  */
 
-import { Sparkles } from "lucide-react";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -29,17 +29,17 @@ export function ProcessingSummary({ stage }: { stage: "waiting" | "generating" }
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-11/12" />
       <Skeleton className="h-4 w-4/5" />
-      <p className="pt-1 text-sm text-muted-foreground">
+      <p className="pt-1 text-callout text-ink-3">
         {stage === "waiting" ? (
           <>
-            <span className="font-medium text-foreground">
+            <span className="font-headline text-ink">
               Summary is waiting for the transcript.
             </span>{" "}
             We&rsquo;ll generate it once transcription finishes.
           </>
         ) : (
           <>
-            <span className="font-medium text-foreground">Generating summary…</span> The
+            <span className="font-headline text-ink">Generating summary…</span> The
             transcript is ready and can be read now.
           </>
         )}
@@ -107,7 +107,13 @@ export function ProcessingActionItems({ ready }: { ready: boolean }) {
 export function ProcessingChatRail() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-      <Sparkles className="h-5 w-5 text-muted-foreground" aria-hidden />
+      {/* The orb, the same identity the panel will carry once there is a
+          transcript to answer from. It was a `Sparkles`; this is the AI
+          surface, announcing itself as unavailable rather than as unnamed.
+          44px, up a step with the rest of them, and still smaller than the
+          resting orb was — the sentence under it is the message here and the
+          mark is not. */}
+      <ReverieAiMark size={44} />
       <p className="text-sm font-medium">AI Chat will be available once the transcript is ready.</p>
       <p className="max-w-xs text-xs text-muted-foreground">
         It answers from this meeting&rsquo;s transcript, so there is nothing for it to read yet.

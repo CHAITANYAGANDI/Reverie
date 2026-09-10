@@ -93,6 +93,23 @@ export function relativeDay(iso: string, now: Date = new Date()): string {
 }
 
 /**
+ * The same relative day, as the tail of "Updated ...".
+ *
+ * <p>{@link relativeDay} returns four shapes: a time today ("5:46 PM"), the
+ * word "Yesterday", a short weekday this week ("Sat"), and a date beyond it
+ * ("Aug 30"). Three of those are proper nouns or figures and read correctly
+ * capitalised inside a sentence; "Yesterday" is an ordinary word and does not.
+ *
+ * <p>So exactly that one is lowered, and nothing else. Lowercasing the whole
+ * string -- which the folder list did briefly -- gives "Updated 5:46 pm" and
+ * "Updated aug 30", which is worse than the capital it was fixing.
+ */
+export function updatedPhrase(iso: string, now: Date = new Date()): string {
+  const when = relativeDay(iso, now);
+  return when === "Yesterday" ? "yesterday" : when;
+}
+
+/**
  * Group a list into days, newest first, keeping each day's own order.
  *
  * `now` is taken once by the caller rather than read per row, so a list rendered

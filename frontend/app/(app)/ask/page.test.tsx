@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatConversation, ChatMessage } from "@/lib/types";
 
@@ -104,7 +104,8 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 let conversations: ChatConversation[] = [];
 
-import { resetActiveChats, setActiveChat } from "@/lib/active-chat";
+import { activeChat, resetActiveChats, setActiveChat } from "@/lib/active-chat";
+import { forgetChatsLeftBehind } from "@/lib/chat-route";
 import { resetPromptRotation } from "@/lib/use-rotating-prompts";
 
 import AskPage from "@/app/(app)/ask/page";
@@ -123,9 +124,8 @@ function message(over: Partial<ChatMessage> = {}): ChatMessage {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // The thread a surface is on outlives a component, by design — it is what
-  // lets the home rail and this page share a conversation. It must not outlive
-  // a test.
+  // The thread a surface is on is module state, so that a question still being
+  // answered survives a re-render. It must not outlive a test.
   resetActiveChats();
   // The suggestion row rotates, and its offset is module state that outlives an
   // unmount. Without this each test starts further into the pool than the last.
@@ -195,8 +195,12 @@ describe("AskPage conversation state", () => {
     // worse than resuming it openly.
     render(<AskPage />);
 
+    // Found by its accessible name, not by a placeholder. The composer's
+    // placeholder sentence is withdrawn -- it read "Ask anything about your
+    // conversations" and spent the line somebody types on saying that the
+    // box is a box. `aria-label="Ask a question"` is the name it always had.
     await userEvent.type(
-      screen.getByPlaceholderText(/ask/i),
+      screen.getByLabelText("Ask a question"),
       "What is still open?{Enter}",
     );
 
@@ -368,5 +372,303 @@ describe("a starter chip that is an opening rather than a question", () => {
 
     await waitFor(() => expect(askChat).toHaveBeenCalled());
     expect(askChat.mock.calls[0][0].question).toMatch(/^Do any decisions/);
+  });
+});
+
+/**
+ * Leaving and coming back.
+ *
+ * <p>The product rule is that leaving this page and returning to it opens a new
+ * chat. Where that is *not* implemented is here, and this block exists to pin
+ * that down — see lib/chat-route.ts for the rule and lib/chat-route.test.tsx
+ * for the cases.
+ *
+ * <p>The first version of it was implemented at this boundary: the page's own
+ * unmount cleared the thread. It gave the right answer for `/ask` and for Home,
+ * whose panels unmount exactly when their routes do, and the wrong one for a
+ * meeting, whose chat is a tab and unmounts every time somebody opens the
+ * outline. So the mechanism moved to the shell, which is the only thing that
+ * sees a route change, and this page's lifetime stopped meaning anything.
+ *
+ * <p>Forgotten, not deleted, in either case: the conversation stays in the
+ * archive and one click away in the picker.
+ */
+describe("what this page does not decide", () => {
+  it("keeps its thread when the page component unmounts", () => {
+    /*
+     * INVERTED DELIBERATELY. This asserted the opposite one commit ago.
+     *
+     * <p>A page component unmounting is not the event the rule is about, and
+     * treating it as one is what broke the meeting chat. Rendering this page
+     * without the shell — which is what these tests do — is a surface with no
+     * route boundary above it, and the thread should survive that untouched.
+     */
+    setActiveChat("workspace:ask", "cnv_1");
+    const { unmount } = render(<AskPage />);
+    expect(activeChat("workspace:ask")).toBe("cnv_1");
+
+    unmount();
+
+    expect(activeChat("workspace:ask")).toBe("cnv_1");
+  });
+
+  it("keeps the other surface's thread out of its picker", () => {
+    // Home's pane and this page are keyed apart. They read the same meetings
+    // through the same endpoints, so a shared key would have looked like it
+    // worked — and a question asked on Home would have appeared here.
+    setActiveChat("workspace:home", "cnv_home");
+
+    render(<AskPage />);
+
+    expect(activeChat("workspace:ask")).toBeNull();
+    expect(activeChat("workspace:home")).toBe("cnv_home");
+  });
+
+  it("still lists a forgotten conversation in the history picker", async () => {
+    /*
+     * The other half of the rule, and the half worth proving on a surface that
+     * actually renders the picker: resetting which thread is active must not
+     * touch the archive. `forgetChatsLeftBehind` imports two module stores and
+     * no endpoint — see its own tests — and this is what that looks like from
+     * the outside.
+     */
+    setActiveChat("workspace:ask", "cnv_1");
+    render(<AskPage />);
+
+    act(() => forgetChatsLeftBehind("/home"));
+
+    // Off the thread, and the thread still reachable.
+    await waitFor(() => expect(screen.getByText("New chat")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /previous chat history/i }));
+    expect(screen.getByRole("menuitem", { name: /Still open/ })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The column the conversation is set in.
+ *
+ * <p>Not a rounder number for its own sake. 680px at the reading size is about
+ * 74 characters, which is the measurement the whole V2 layout is built to
+ * protect — and it is the same column a transcript and a brief are set in, so
+ * moving between them is not a change of reading posture. What is new is the
+ * 400px beside it, which holds the passages the answer was built on; 680 + 40 +
+ * 400 is the 70rem document this page centres.
+ *
+ * <p>All three regions are pinned to it, because they have drifted apart
+ * before: the thread at one width and the composer at another gives the box a
+ * visible step relative to the answer above it, which reads as a rendering
+ * fault. The header is in that list now and did not used to be — see the second
+ * test.
+ *
+ * <p>`ResizeObserver` is stubbed globally as a no-op, because jsdom has no
+ * layout to observe, so the panel never learns it is wide and these have to say
+ * so. Which is the honest arrangement: the width is a real measurement of a
+ * real element, and a test that wants the wide composition has to supply one.
+ */
+describe("the measure", () => {
+  /**
+   * Report a width once, synchronously, to whoever observes anything.
+   *
+   * <p>Fired from `observe` rather than from the constructor: the panel
+   * constructs the observer and *then* observes its root, and a callback that
+   * runs before the element is attached would be measuring nothing.
+   */
+  // `stubGlobal` is not undone between tests unless it is asked to be, and the
+  // rest of this file relies on the setup's no-op observer.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubWidth(width: number) {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe() {
+          this.cb(
+            [{ contentRect: { width } } as unknown as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  }
+
+  it("holds the thread and the composer to one document column", () => {
+    stubWidth(1440);
+    const { container } = render(<AskPage />);
+
+    const regions = Array.from(container.querySelectorAll("[data-ask-region]"));
+    expect(regions.map((r) => r.getAttribute("data-ask-region"))).toEqual([
+      "header",
+      "thread",
+      "dock",
+    ]);
+    // One column, stated once per region rather than two numbers that agree by
+    // coincidence.
+    for (const name of ["thread", "dock"]) {
+      const region = container.querySelector(`[data-ask-region="${name}"]`);
+      expect(region?.querySelector(".max-w-\\[70rem\\]"), name).not.toBeNull();
+    }
+  });
+
+  it("anchors the header to the panel's corners rather than to the column", () => {
+    /*
+     * CHANGED DELIBERATELY. This used to assert all three regions were held to
+     * the 70rem column, header included.
+     *
+     * <p>In a 1600px window that put the conversation picker 240px in from the
+     * left edge and New chat 240px short of the right, under a band that runs
+     * from edge to edge — a row of chrome floating in the middle of the page
+     * rather than the panel's own top. A header belongs to the surface it is
+     * on. The reading measure is for reading, and it still holds the thread and
+     * the composer below.
+     */
+    stubWidth(1440);
+    const { container } = render(<AskPage />);
+
+    const header = container.querySelector('[data-ask-region="header"]');
+    expect(header?.querySelector(".max-w-\\[70rem\\]")).toBeNull();
+    // And the picker really is inside that region rather than somewhere else.
+    expect(header?.querySelector('button[aria-label="Previous chat history"]')).not.toBeNull();
+  });
+
+  it("sets the composer to the answer's measure, not the answer plus its sources", () => {
+    /*
+     * The composer was `70rem` — 1120px — while what sits above it is 680px of
+     * answer and, 40px further right, 400px of quotes. So the box lined up with
+     * the right-hand edge of the footnotes and overhung the prose by 440: the
+     * widest element on the page, holding one line of placeholder.
+     *
+     * <p>42.5rem is the answer's own track. The box now begins where the prose
+     * begins and ends where the prose ends.
+     */
+    stubWidth(1440);
+    setActiveChat("workspace:ask", "cnv_1");
+    const { container } = render(<AskPage />);
+
+    const dock = container.querySelector('[data-ask-region="dock"]');
+    expect(dock?.querySelector(".max-w-\\[42\\.5rem\\]")).not.toBeNull();
+  });
+
+  it("docks the composer at the bottom on an empty thread as well as a full one", () => {
+    /*
+     * REGRESSION. For one turn an empty thread centred the composer in the
+     * panel, and it was reported on sight — on this page and in Home's pane.
+     * The composer is the one control here, and putting it in the middle puts
+     * it where it will never be again: the first question sends it to the foot,
+     * so it moves the first time anybody uses it, and until then it sits in the
+     * space the conversation is about to occupy.
+     *
+     * <p>Both states, in one test, because what matters is that they are the
+     * same state. The empty thread is what this page opens on — it starts on a
+     * clean sheet by design — and naming a conversation is what fills it.
+     */
+    stubWidth(1440);
+    const empty = render(<AskPage />);
+    expect(empty.container.querySelector('[data-ask-region="dock"]')?.className).toContain(
+      "shrink-0",
+    );
+    expect(
+      empty.container.querySelector('[data-ask-region="dock"]')?.className,
+    ).not.toContain("justify-center");
+    expect(empty.container.querySelector('[data-ask-region="thread"]')?.className).toContain(
+      "flex-1",
+    );
+    empty.unmount();
+
+    setActiveChat("workspace:ask", "cnv_1");
+    const full = render(<AskPage />);
+    expect(full.container.querySelector('[data-ask-region="dock"]')?.className).toContain(
+      "shrink-0",
+    );
+    expect(full.container.querySelector('[data-ask-region="thread"]')?.className).toContain(
+      "flex-1",
+    );
+  });
+
+  it("centres the composer in the panel, in both states", () => {
+    /*
+     * Horizontally, and it is the panel's centre rather than the answer's left
+     * edge.
+     *
+     * <p>Left-aligned in `COLUMN` was tried, on the reasoning that the box
+     * belongs in the column its answer will appear in. `COLUMN` is 1120 because
+     * it is the answer *and* its evidence rail -- and the composer's row has no
+     * evidence rail, so a 680px box pinned to its left sat 220px off centre
+     * with nothing to its right. It reads as slipped rather than as aligned,
+     * and it was reported that way.
+     *
+     * <p>Asserted in both states, because that is the guarantee: the box does
+     * not move when the first question is asked. `mx-auto` inside a centred
+     * `max-w-[70rem]` is the panel's centre at every width above the
+     * two-column threshold.
+     */
+    stubWidth(1440);
+    const centred = ".mx-auto.max-w-\\[42\\.5rem\\]";
+
+    const empty = render(<AskPage />);
+    expect(
+      empty.container.querySelector('[data-ask-region="dock"]')!.querySelector(centred),
+      "an empty thread",
+    ).not.toBeNull();
+    empty.unmount();
+
+    setActiveChat("workspace:ask", "cnv_1");
+    const full = render(<AskPage />);
+    expect(
+      full.container.querySelector('[data-ask-region="dock"]')!.querySelector(centred),
+      "a thread with turns in it",
+    ).not.toBeNull();
+  });
+
+  it("draws the same wash every other page in the shell has", () => {
+    // It was the one page without it: near-black from the band to the
+    // composer, which is how it came to look like a different application.
+    const { container } = render(<AskPage />);
+
+    expect(container.querySelector(".v2-ambient")).not.toBeNull();
+  });
+
+  it("sets the answer to the prose measure and the evidence beside it", () => {
+    stubWidth(1440);
+    // A thread has to be open for there to be a turn: the page starts on a new
+    // chat and reads nothing until one is named.
+    setActiveChat("workspace:ask", "cnv_1");
+    const { container } = render(<AskPage />);
+
+    // 42.5rem is the 680px measure; 15-25rem is the evidence rail. Two tracks,
+    // so an answer is read at the same line length as the transcript it came
+    // from rather than at the width of the monitor.
+    const turn = container.querySelector("article");
+    expect(turn?.className).toContain("grid-cols-[minmax(0,42.5rem)_minmax(15rem,25rem)]");
+  });
+
+  it("stacks them instead when the panel is too narrow to hold both", () => {
+    /*
+     * The same panel is the 26rem side pane on Home, and it is a full-width
+     * 768px pane on a tablet. Neither can hold both columns well: 416 cannot
+     * hold them at all, and 768 resolves to `296px 400px` — the footnotes
+     * wider than the answer. So below `TWO_COLUMN_AT` the sources go under the
+     * answer they belong to.
+     */
+    stubWidth(420);
+    setActiveChat("workspace:ask", "cnv_1");
+    const { container } = render(<AskPage />);
+
+    const turn = container.querySelector("article");
+    expect(turn?.className).not.toContain("grid-cols-");
+    // And nothing is centred in a column it does not fill.
+    expect(container.querySelector(".max-w-\\[70rem\\]")).toBeNull();
+  });
+
+  it("sizes itself against the band rather than a hardcoded header", () => {
+    // The chrome above is 48px and is published as `--band`. A page that
+    // hardcodes the old 4rem scrolls its own composer off the bottom.
+    const { container } = render(<AskPage />);
+
+    expect(container.innerHTML).toContain("100vh-var(--band)");
   });
 });

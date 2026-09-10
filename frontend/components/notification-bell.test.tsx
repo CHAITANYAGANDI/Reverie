@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AppNotification } from "@/lib/types";
 
@@ -409,6 +409,101 @@ describe("NotificationBell live updates", () => {
     // whatever anybody chose to put there.
     await waitFor(() => expect(refetchedCount).toBeGreaterThan(0));
     expect(screen.queryByText("7")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The glyph on the row.
+ *
+ * <p>Asserted, and asserted by name, because it is the only part of a
+ * notification anybody reads at a glance — and because "appropriate icon" is
+ * exactly the kind of decision that gets undone by somebody reaching for the
+ * nearest sparkle. The name is lucide's own: it renders `class="lucide
+ * lucide-scroll-text"`, which is a stable hook and the only one an icon has.
+ *
+ * <p>The rule these hold is that the mark in the panel is the mark on the
+ * thing the row is about, not a mark chosen for the panel. See `ICONS`.
+ */
+describe("the glyph a notification carries", () => {
+  /** The row's glyph, by lucide's class, for whatever kind is on `items`. */
+  async function glyph(): Promise<string> {
+    await openBell();
+    const row = screen.getByRole("link", { name: /Sprint planning/ });
+    const svg = row.querySelector("svg");
+    return svg?.getAttribute("class") ?? "";
+  }
+
+  it("marks a ready summary with the Summary panel's own glyph", async () => {
+    items = [notification({ kind: "SUMMARY_READY", kindLabel: "Summary ready" })];
+
+    expect(await glyph()).toContain("lucide-scroll-text");
+  });
+
+  it("puts no star on a summary", async () => {
+    /*
+     * It was a `Sparkles`. A summary is written, not conjured, and the star
+     * said "AI happened here" in a list whose whole job is to say what
+     * happened to your meeting. The same glyph has come off the meeting
+     * header, the chat history and the empty chat.
+     */
+    items = [notification({ kind: "SUMMARY_READY" })];
+
+    expect(await glyph()).not.toContain("sparkles");
+  });
+
+  it("marks a ready transcript with the Transcript panel's own glyph", async () => {
+    // `Captions`, which is also what the export dialog puts on a transcript.
+    // It was `FileText` -- a generic page, and the same page the selection
+    // menu uses for `Summarize`, so the panel's two commonest rows were a
+    // document and a star.
+    items = [notification({ kind: "TRANSCRIPT_READY", kindLabel: "Transcript ready" })];
+
+    expect(await glyph()).toContain("lucide-captions");
+  });
+
+  it("marks a failure the way the meeting itself marks one", async () => {
+    // Unchanged, and asserted because it is the row that matters most: the
+    // overnight upload that did not land has to be findable without reading a
+    // sentence. `AlertTriangle` is what the failure banner on the meeting
+    // draws, and the glyph takes the destructive colour here.
+    items = [notification({ kind: "PROCESSING_FAILED", kindLabel: "Processing failed" })];
+
+    expect(await glyph()).toContain("lucide-triangle-alert");
+  });
+
+  it("draws no spinner on something that has already happened", async () => {
+    /*
+     * `PROCESSING_STARTED` was a `Loader2`, which is a broken arc when it is
+     * not spinning -- and it never spins here. A spinner in a list of past
+     * events asks somebody to wait for the past. It is retired on the server
+     * as well, but rows emitted before it was retired are still in inboxes.
+     */
+    items = [notification({ kind: "PROCESSING_STARTED", kindLabel: "Processing" })];
+
+    const mark = await glyph();
+    expect(mark).not.toContain("loader");
+    expect(mark).toContain("lucide-hourglass");
+  });
+
+  it("gives every kind a glyph, so no row falls back to the bell", async () => {
+    // `ICONS` is a `Record<NotificationKind, ...>`, so this cannot fail while
+    // it typechecks -- which is the point of asserting it: a new kind added to
+    // the union has to be given a mark rather than inheriting the fallback.
+    const kinds = [
+      "RECORDING_STARTED",
+      "PROCESSING_STARTED",
+      "TRANSCRIPT_READY",
+      "SUMMARY_READY",
+      "PROCESSING_FAILED",
+      "MENTIONED_IN_MEETING",
+      "SHARE_VIEWED",
+    ] as const;
+
+    for (const kind of kinds) {
+      cleanup();
+      items = [notification({ kind })];
+      expect(await glyph(), kind).not.toContain("lucide-bell");
+    }
   });
 });
 

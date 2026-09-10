@@ -1,8 +1,6 @@
 package com.reverie.service;
 
 import com.reverie.common.ApiException;
-import com.reverie.domain.ExportFormat;
-import com.reverie.domain.ExportOptions;
 import com.reverie.domain.SourceType;
 import com.reverie.domain.SummarySection;
 import com.reverie.dto.AudioDownloadResponse;
@@ -12,9 +10,9 @@ import com.reverie.entity.Meeting;
 import com.reverie.entity.MeetingActionItem;
 import com.reverie.entity.MeetingSummary;
 import com.reverie.entity.TranscriptSegment;
-import com.reverie.export.DocumentRenderer;
 import com.reverie.export.ExportDocument;
-import com.reverie.export.ExportFile;
+import com.reverie.export.PdfFonts;
+import com.reverie.export.PdfRenderer;
 import com.reverie.repository.MeetingActionItemRepository;
 import com.reverie.repository.MeetingRepository;
 import com.reverie.repository.MeetingSummaryRepository;
@@ -77,13 +75,20 @@ class ExportServiceTest {
     private Capturing renderer;
     private ExportService service;
 
-    /** A renderer that renders nothing and keeps everything. */
-    private static final class Capturing implements DocumentRenderer {
+    /**
+     * A renderer that renders nothing and keeps everything.
+     *
+     * <p>A subclass rather than an implementation of an interface: there is one
+     * renderer now, and the service holds it concretely. What these tests are
+     * about is the <em>document</em> the service assembles, which is the thing
+     * every assertion below reads off `last` -- rendering it to real PDF bytes
+     * and parsing them back would test openpdf instead.
+     */
+    private static final class Capturing extends PdfRenderer {
         private ExportDocument last;
 
-        @Override
-        public ExportFormat format() {
-            return ExportFormat.MARKDOWN;
+        Capturing() {
+            super(new PdfFonts());
         }
 
         @Override
@@ -97,7 +102,7 @@ class ExportServiceTest {
     void setUp() {
         renderer = new Capturing();
         service = new ExportService(meetings, summaries, actionItems, segments,
-                translations, storage, ai, List.of(renderer));
+                translations, storage, ai, renderer);
 
         when(meetings.findByIdAndUserId(MEETING, USER)).thenReturn(Optional.of(meeting()));
         when(summaries.findFirstByMeetingIdOrderByCreatedAtDesc(MEETING))
@@ -106,22 +111,22 @@ class ExportServiceTest {
         when(segments.findByMeetingIdOrderByStartTimeAsc(MEETING)).thenReturn(transcript());
     }
 
-    private ExportDocument exported(boolean transcript, String language) {
-        service.render(USER, MEETING, ExportFormat.MARKDOWN, transcript, language, "Europe/London");
+    /**
+     * The summary document: every section, and the action items.
+     *
+     * <p>Where a single `exported(includeTranscript, language)` used to stand.
+     * The pair of booleans and the option object it grew into described several
+     * hundred documents; there are two.
+     */
+    private ExportDocument summaryDoc(String language) {
+        service.summaryPdf(USER, MEETING, language, "Europe/London");
         return renderer.last;
     }
 
-    private ExportDocument exported(ExportOptions options) {
-        service.render(USER, MEETING, ExportFormat.MARKDOWN, options, null, "Europe/London");
+    /** The transcript document: the words, with who said them and when. */
+    private ExportDocument transcriptDoc(String language) {
+        service.transcriptPdf(USER, MEETING, language, "Europe/London");
         return renderer.last;
-    }
-
-    private static ExportOptions options(boolean summary, java.util.Set<String> sections,
-                                         boolean actionItems, boolean transcript,
-                                         boolean speakers, boolean timestamps,
-                                         ExportOptions.Combine combine) {
-        return new ExportOptions(summary, sections, actionItems, transcript,
-                speakers, timestamps, combine);
     }
 
     private static List<ExportDocument.Utterance> utterances(List<ExportDocument.Block> blocks) {
@@ -140,14 +145,14 @@ class ExportServiceTest {
 
         @Test
         void writesTheTemplateSSectionsInOrder() {
-            List<ExportDocument.Block> blocks = exported(false, null).blocks();
+            List<ExportDocument.Block> blocks = summaryDoc(null).blocks();
 
             assertThat(headings(blocks)).containsSubsequence("Decisions", "Budget", "Action items");
         }
 
         @Test
         void keepsASectionTheMeetingNeverReached() {
-            List<ExportDocument.Block> blocks = exported(false, null).blocks();
+            List<ExportDocument.Block> blocks = summaryDoc(null).blocks();
 
             // A file is a record. "Budget" with a line saying it was not
             // discussed is a finding; dropping the heading loses it.
@@ -164,7 +169,7 @@ class ExportServiceTest {
             when(summaries.findFirstByMeetingIdOrderByCreatedAtDesc(MEETING))
                     .thenReturn(Optional.of(flat));
 
-            List<ExportDocument.Block> blocks = exported(false, null).blocks();
+            List<ExportDocument.Block> blocks = summaryDoc(null).blocks();
 
             // Meetings summarised before templates existed have nothing else,
             // and an empty file for them would be a regression, not a tidy-up.
@@ -178,8 +183,11 @@ class ExportServiceTest {
             when(summaries.findFirstByMeetingIdOrderByCreatedAtDesc(MEETING)).thenReturn(Optional.empty());
 
             // Still worth exporting: the tasks and the transcript are the whole
-            // meeting for somebody who reprocessed it and lost the notes.
-            assertThat(headings(exported(true, null).blocks())).contains("Action items", "Transcript");
+            // meeting for somebody who reprocessed it and lost the notes. Two
+            // files now, so the assertion is two -- and a summary PDF with no
+            // summary in it still carries what people agreed to do.
+            assertThat(headings(summaryDoc(null).blocks())).contains("Action items");
+            assertThat(headings(transcriptDoc(null).blocks())).contains("Transcript");
         }
     }
 
@@ -191,7 +199,7 @@ class ExportServiceTest {
 
         @Test
         void keepsTheWordsSomebodyUsedForADeadline() {
-            ExportDocument.Task task = firstTask(exported(false, null));
+            ExportDocument.Task task = firstTask(summaryDoc(null));
 
             // "before the demo" is what was promised. Replacing it with a date
             // is putting a commitment in somebody's mouth they did not make.
@@ -200,7 +208,7 @@ class ExportServiceTest {
 
         @Test
         void keepsFinishedWorkInTheList() {
-            List<ExportDocument.Task> all = allTasks(exported(false, null));
+            List<ExportDocument.Task> all = allTasks(summaryDoc(null));
 
             // A list that empties as you work makes the work look like it never
             // happened, and a file is exactly where somebody looks it up.
@@ -212,7 +220,7 @@ class ExportServiceTest {
         void leavesTheHeadingOutWhenThereAreNoTasks() {
             when(actionItems.findByMeetingId(MEETING)).thenReturn(List.of());
 
-            assertThat(headings(exported(false, null).blocks())).doesNotContain("Action items");
+            assertThat(headings(summaryDoc(null).blocks())).doesNotContain("Action items");
         }
     }
 
@@ -224,12 +232,12 @@ class ExportServiceTest {
 
         @Test
         void isLeftOutUnlessItIsAskedFor() {
-            assertThat(headings(exported(false, null).blocks())).doesNotContain("Transcript");
+            assertThat(headings(summaryDoc(null).blocks())).doesNotContain("Transcript");
         }
 
         @Test
         void carriesTheTimeAndTheSpeakerWithEveryLine() {
-            ExportDocument.Utterance first = utterances(exported(true, null)).get(0);
+            ExportDocument.Utterance first = utterances(transcriptDoc(null)).get(0);
 
             assertThat(first.timecode()).isEqualTo("0:00");
             assertThat(first.speaker()).isEqualTo("Priya");
@@ -241,7 +249,7 @@ class ExportServiceTest {
             TranscriptSegment late = segment("seg_3", 3725.0, "Marcus", "Still going.");
             when(segments.findByMeetingIdOrderByStartTimeAsc(MEETING)).thenReturn(List.of(late));
 
-            assertThat(utterances(exported(true, null)).get(0).timecode()).isEqualTo("1:02:05");
+            assertThat(utterances(transcriptDoc(null)).get(0).timecode()).isEqualTo("1:02:05");
         }
 
         @Test
@@ -249,7 +257,7 @@ class ExportServiceTest {
             TranscriptSegment anonymous = segment("seg_9", 0.0, null, "Someone said this.");
             when(segments.findByMeetingIdOrderByStartTimeAsc(MEETING)).thenReturn(List.of(anonymous));
 
-            assertThat(utterances(exported(true, null)).get(0).speaker()).isEqualTo("Speaker");
+            assertThat(utterances(transcriptDoc(null)).get(0).speaker()).isEqualTo("Speaker");
         }
     }
 
@@ -266,7 +274,7 @@ class ExportServiceTest {
 
         @Test
         void writesTheDocumentInThatLanguage() {
-            ExportDocument doc = exported(false, "es");
+            ExportDocument doc = summaryDoc("es");
 
             assertThat(doc.language()).isEqualTo(com.reverie.domain.Language.SPANISH);
             assertThat(headings(doc.blocks())).contains("Decisiones");
@@ -275,21 +283,22 @@ class ExportServiceTest {
         @Test
         void labelsItsOwnHeadingsInThatLanguageToo() {
             // "Action items" in the middle of a Spanish document reads as a
-            // translation that gave up half way through.
-            assertThat(headings(exported(true, "es").blocks())).contains("Tareas", "Transcripción");
+            // translation that gave up half way through. One heading per file.
+            assertThat(headings(summaryDoc("es").blocks())).contains("Tareas");
+            assertThat(headings(transcriptDoc("es").blocks())).contains("Transcripción");
         }
 
         @Test
         void saysWhatWasTranslatedAndWhatWasNot() {
             // Somebody who forgets they are reading a translation is exactly the
             // person about to quote a translated line as a thing said aloud.
-            assertThat(exported(false, "es").notice())
+            assertThat(summaryDoc("es").notice())
                     .isEqualTo("Translated into Spanish. The recording is in English.");
         }
 
         @Test
         void takesTheSpeakerAndTheTimingFromTheLiveTranscript() {
-            ExportDocument.Utterance line = utterances(exported(true, "es")).get(0);
+            ExportDocument.Utterance line = utterances(transcriptDoc("es")).get(0);
 
             // Not stored with the translation: a speaker renamed afterwards has
             // to be renamed in every language, not only in the one regenerated.
@@ -302,13 +311,13 @@ class ExportServiceTest {
         void showsALineRecordedSinceInTheOriginal() {
             // A gap would be worse than English: a missing line in a transcript
             // reads as a silence in the room.
-            assertThat(utterances(exported(true, "es")).get(1).text())
+            assertThat(utterances(transcriptDoc("es")).get(1).text())
                     .isEqualTo("I'll draft the rollout plan before the demo.");
         }
 
         @Test
         void showsATaskWhoseWordingHasMovedOnAsItIsNow() {
-            ExportDocument.Task task = firstTask(exported(false, "es"));
+            ExportDocument.Task task = firstTask(summaryDoc("es"));
 
             assertThat(task.title()).isEqualTo("Terminar la validación de JWT");
         }
@@ -320,7 +329,7 @@ class ExportServiceTest {
 
             // A download is a GET, and translating on demand would make one
             // quietly cost a model call and five seconds.
-            assertThatThrownBy(() -> exported(false, "de"))
+            assertThatThrownBy(() -> summaryDoc("de"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("German");
         }
@@ -333,18 +342,35 @@ class ExportServiceTest {
     class File {
 
         @Test
-        void isNamedAfterTheMeeting() {
-            ExportFile file = service.render(USER, MEETING, ExportFormat.MARKDOWN, false, null, null);
+        void isNamedAfterTheMeetingAndAfterWhatIsInIt() {
+            /*
+             * `sprint-planning-summary.pdf`, not `sprint-planning.pdf`.
+             *
+             * <p>Two documents come out of one meeting now. Named only after
+             * the meeting they would collide in a downloads folder, and the
+             * second would arrive as `sprint-planning (1).pdf` -- which of the
+             * two being anybody's guess.
+             */
+            assertThat(service.summaryPdf(USER, MEETING, null, null).filename())
+                    .isEqualTo("sprint-planning-summary.pdf");
+            assertThat(service.transcriptPdf(USER, MEETING, null, null).filename())
+                    .isEqualTo("sprint-planning-transcript.pdf");
+        }
 
-            assertThat(file.filename()).isEqualTo("sprint-planning.md");
-            assertThat(file.mediaType()).isEqualTo("text/markdown;charset=UTF-8");
+        @Test
+        void isAPdf() {
+            // The whole product contract for a document, in one assertion.
+            assertThat(service.summaryPdf(USER, MEETING, null, null).mediaType())
+                    .isEqualTo("application/pdf");
+            assertThat(service.transcriptPdf(USER, MEETING, null, null).mediaType())
+                    .isEqualTo("application/pdf");
         }
 
         @Test
         void datesTheDocumentInTheReaderSTimeZone() {
             // 23:30 UTC is the next day in Tokyo. A file dated a day off from
             // what the app showed looks like the wrong meeting.
-            service.render(USER, MEETING, ExportFormat.MARKDOWN, false, null, "Asia/Tokyo");
+            service.summaryPdf(USER, MEETING, null, "Asia/Tokyo");
 
             assertThat(renderer.last.meta().get(0)).contains("2026");
             assertThat(renderer.last.meta().get(0)).isNotEqualTo(utcDate());
@@ -352,28 +378,79 @@ class ExportServiceTest {
 
         @Test
         void fallsBackToUtcRatherThanFailingOnANonsenseZone() {
-            service.render(USER, MEETING, ExportFormat.MARKDOWN, false, null, "Middle/Earth");
+            service.summaryPdf(USER, MEETING, null, "Middle/Earth");
 
             assertThat(renderer.last.meta().get(0)).isEqualTo(utcDate());
         }
 
         private String utcDate() {
-            service.render(USER, MEETING, ExportFormat.MARKDOWN, false, null, "UTC");
+            service.summaryPdf(USER, MEETING, null, "UTC");
             return renderer.last.meta().get(0);
         }
 
         @Test
         void saysHowLongTheMeetingWas() {
-            assertThat(exported(false, null).meta()).contains("42 min", "planning");
+            assertThat(summaryDoc(null).meta()).contains("42 min", "planning");
         }
 
         @Test
         void belongsToItsOwner() {
+            // Both documents, because both are new doors into the same data and
+            // an authorization check is only as good as its least-guarded one.
             when(meetings.findByIdAndUserId(MEETING, "usr_2")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.render("usr_2", MEETING, ExportFormat.PDF, false, null, null))
+            assertThatThrownBy(() -> service.summaryPdf("usr_2", MEETING, null, null))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("not found");
+            assertThatThrownBy(() -> service.transcriptPdf("usr_2", MEETING, null, null))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("not found");
+        }
+
+        @Test
+        void keepsTheTwoDocumentsApart() {
+            /*
+             * THE CONTRACT THE OLD ENDPOINT COULD NOT STATE.
+             *
+             * <p>It could produce a summary, a transcript, both, or neither,
+             * which is why the dialog had to ask. Each file is now one thing,
+             * and neither can carry the other by accident.
+             */
+            assertThat(headings(summaryDoc(null).blocks()))
+                    .contains("Decisions", "Action items")
+                    .doesNotContain("Transcript");
+            assertThat(headings(transcriptDoc(null).blocks()))
+                    .contains("Transcript")
+                    .doesNotContain("Decisions", "Action items");
+        }
+
+        @Test
+        void writesEverySectionWithoutBeingAsked() {
+            // There is no section filter any more. `options.wants(key)` used to
+            // drop the ones a caller had not named, and the caller was a row of
+            // checkboxes.
+            assertThat(headings(summaryDoc(null).blocks()))
+                    .contains("Decisions", "Budget", "Action items");
+        }
+
+        @Test
+        void alwaysNamesTheSpeakerAndTheTime() {
+            // Both were switches. A transcript without them is a wall of text
+            // nobody can attribute or check against the recording.
+            List<ExportDocument.Utterance> lines = utterances(transcriptDoc(null));
+
+            assertThat(lines).isNotEmpty();
+            assertThat(lines).allSatisfy(line -> {
+                assertThat(line.speaker()).isNotBlank();
+                assertThat(line.timecode()).isNotBlank();
+            });
+        }
+
+        @Test
+        void leavesTheBackAndForthAsItWasSpoken() {
+            // `combine` is gone: one block per utterance, so two speakers are
+            // two lines rather than one merged paragraph.
+            assertThat(utterances(transcriptDoc(null))).hasSize(2);
         }
     }
 
@@ -672,159 +749,6 @@ class ExportServiceTest {
         done.setOwnerName("Marcus");
         done.setStatus("DONE");
         return List.of(open, done);
-    }
-
-    /* ---------------------------- what to include ------------------------- */
-
-    @Nested
-    @DisplayName("choosing what goes in the file")
-    class Choosing {
-
-        @Test
-        @DisplayName("the summary can be left out and the transcript kept")
-        void transcriptOnly() {
-            List<ExportDocument.Block> blocks = exported(options(
-                    false, Set.of(), false, true, true, true, ExportOptions.Combine.NONE)).blocks();
-
-            // Somebody exporting to search the words does not want the brief
-            // above them, and deleting it by hand is not an export.
-            assertThat(headings(blocks)).doesNotContain("Decisions", "Action items");
-            assertThat(utterances(blocks)).hasSize(2);
-        }
-
-        @Test
-        @DisplayName("named sections are the only ones written")
-        void sectionSubset() {
-            List<ExportDocument.Block> blocks = exported(options(
-                    true, Set.of("decisions"), false, false, true, true,
-                    ExportOptions.Combine.NONE)).blocks();
-
-            assertThat(headings(blocks)).contains("Decisions").doesNotContain("Budget");
-        }
-
-        @Test
-        @DisplayName("naming no sections means all of them, not none")
-        void noSectionsMeansEverything() {
-            List<ExportDocument.Block> blocks = exported(options(
-                    true, Set.of(), true, false, true, true, ExportOptions.Combine.NONE)).blocks();
-
-            // The opposite reading turns "I did not touch the section filter"
-            // into an empty file.
-            assertThat(headings(blocks)).contains("Decisions", "Budget");
-        }
-
-        @Test
-        @DisplayName("an export of nothing is refused rather than delivered empty")
-        void nothingSelected() {
-            assertThatThrownBy(() -> exported(options(
-                    false, Set.of(), false, false, true, true, ExportOptions.Combine.NONE)))
-                    .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("at least one");
-        }
-
-        @Test
-        @DisplayName("the old two-argument call still writes the old file")
-        void defaultsAreTheOldBehaviour() {
-            // The account-wide data export calls this, and so does any
-            // bookmarked download URL.
-            List<ExportDocument.Block> blocks = exported(false, null).blocks();
-
-            assertThat(headings(blocks)).contains("Decisions", "Action items");
-            assertThat(utterances(blocks)).isEmpty();
-        }
-    }
-
-    /* --------------------------- transcript layout ------------------------ */
-
-    @Nested
-    @DisplayName("how the transcript is laid out")
-    class Layout {
-
-        @Test
-        @DisplayName("speaker and time are there by default")
-        void bothByDefault() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, true, true, ExportOptions.Combine.NONE)).blocks());
-
-            assertThat(lines.get(0).label()).isEqualTo("[0:00] Priya");
-        }
-
-        @Test
-        @DisplayName("timestamps can be dropped, leaving the names")
-        void withoutTimestamps() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, true, false, ExportOptions.Combine.NONE)).blocks());
-
-            assertThat(lines.get(0).label()).isEqualTo("Priya");
-        }
-
-        @Test
-        @DisplayName("names can be dropped, leaving the times")
-        void withoutSpeakers() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, false, true, ExportOptions.Combine.NONE)).blocks());
-
-            assertThat(lines.get(0).label()).isEqualTo("[0:00]");
-        }
-
-        @Test
-        @DisplayName("with neither, an utterance is bare prose")
-        void withNeither() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, false, false, ExportOptions.Combine.NONE)).blocks());
-
-            // The renderers must not print an empty "[]  :" where the label was.
-            assertThat(lines.get(0).label()).isEmpty();
-            assertThat(lines.get(0).text()).isEqualTo("Right, shall we start?");
-        }
-
-        @Test
-        @DisplayName("consecutive turns by one speaker become one block")
-        void combineSameSpeaker() {
-            when(segments.findByMeetingIdOrderByStartTimeAsc(MEETING)).thenReturn(List.of(
-                    segment("s1", 0.0, "Priya", "Right, shall we start?"),
-                    segment("s2", 4.0, "Priya", "I had one more thing."),
-                    segment("s3", 9.0, "Marcus", "Go ahead.")));
-
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, true, true,
-                    ExportOptions.Combine.SAME_SPEAKER)).blocks());
-
-            // Diarisation splits a turn at every pause, so a minute of one
-            // person arrives as a dozen fragments.
-            assertThat(lines).hasSize(2);
-            assertThat(lines.get(0).text()).isEqualTo("Right, shall we start? I had one more thing.");
-            // The first utterance's time, which is when they started talking.
-            assertThat(lines.get(0).timecode()).isEqualTo("0:00");
-        }
-
-        @Test
-        @DisplayName("combining everything gives one unattributed block")
-        void combineAll() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, true, true,
-                    ExportOptions.Combine.ALL)).blocks());
-
-            assertThat(lines).hasSize(1);
-            // No name and no time: attributing the whole meeting to whoever
-            // spoke first would be worse than attributing it to nobody.
-            assertThat(lines.get(0).label()).isEmpty();
-            assertThat(lines.get(0).text())
-                    .isEqualTo("Right, shall we start? I'll draft the rollout plan before the demo.");
-        }
-
-        @Test
-        @DisplayName("merging by speaker does not fold everything when names are hidden")
-        void combineBySpeakerWithoutNames() {
-            List<ExportDocument.Utterance> lines = utterances(exported(options(
-                    false, Set.of(), false, true, false, true,
-                    ExportOptions.Combine.SAME_SPEAKER)).blocks());
-
-            // Every label is blank with names off, and comparing blanks would
-            // silently turn this into Combine.ALL — which is a different choice
-            // the user did not make.
-            assertThat(lines).hasSize(2);
-        }
     }
 
     private static List<TranscriptSegment> transcript() {

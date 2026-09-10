@@ -14,13 +14,13 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { chatError } from "@/lib/chat-error";
 import {
   ChevronDown,
   Maximize2,
   Minimize2,
   Pencil,
   Plus,
-  Sparkles,
   Trash2,
   Check,
   X,
@@ -50,21 +50,30 @@ export interface ChatHistoryProps {
    * chat could not do it at all, having no page of its own to open.
    */
   onExpand?: () => void;
-  /** Whether it is currently maximised, so the control can offer the way back. */
-  expanded?: boolean;
   /**
-   * Draw the control, and refuse it.
+   * Whether it is currently maximised, so the control can offer the way back.
    *
-   * For the full AI Chat page, which is already as big as this chat gets.
-   * Ordinarily a control that cannot act is worse than no control — it invites
-   * somebody to try twice — but this one is answering a question the reader is
-   * about to ask. The three surfaces share a header, and a maximise button that
-   * is simply missing on one of them reads as a panel that has lost a feature
-   * rather than one that is already at its maximum. Same reasoning as New chat,
-   * which is disabled rather than hidden when the thread on screen is already
-   * a new one, and says so.
+   * <p>Defaults to false rather than being left undefined, because a control
+   * that is drawn at all is in one of exactly two states. `aria-pressed`
+   * omitted announces something that is not a toggle; the old
+   * `expandDisabled` branch had to reach for that, and there is no longer a
+   * third state for it to describe.
    */
-  expandDisabled?: boolean;
+  expanded?: boolean;
+  /*
+   * NO `expandDisabled`.
+   *
+   * <p>It drew this control and refused it, for `/ask` — a page that is
+   * already as big as the chat gets. The argument was that the same header
+   * sits on three surfaces and one of them quietly missing a button reads as a
+   * panel that has lost something.
+   *
+   * <p>What it actually produced was a permanently greyed glyph in the corner
+   * of the page whose only message was about a state the page cannot leave. It
+   * is withdrawn, and with it the branch: this control is drawn when there is
+   * a panel to maximise, which is what `onExpand` means. Nothing else changed
+   * — the pane still maximises in place and still offers the way back.
+   */
   /**
    * The thread on screen is already an empty one, so New has nothing to do.
    *
@@ -84,8 +93,7 @@ export function ChatHistory({
   onDelete,
   busy,
   onExpand,
-  expanded,
-  expandDisabled,
+  expanded = false,
   atNewChat,
 }: ChatHistoryProps) {
   const [open, setOpen] = React.useState(false);
@@ -131,7 +139,12 @@ export function ChatHistory({
   const label = active?.title || "New chat";
 
   return (
-    <div ref={rootRef} className="relative">
+    // `min-w-0` so this can be laid out beside something in a narrow row: as a
+    // flex item it defaults to `min-width: auto`, so without it the trigger's
+    // own `min-w-0` and `truncate` below have nothing to shrink into and a long
+    // conversation title pushes whatever is beside it off the edge. Which is
+    // what it did to the pane's close button — see `AskHeader`.
+    <div ref={rootRef} className="relative min-w-0">
       {/* Quiet by design: a title you can press, and two icons. Everything
           else this component can do — rename, delete, jump to an older
           thread — is inside the menu, because a header carrying every action
@@ -165,7 +178,15 @@ export function ChatHistory({
            */
           className="flex min-w-0 max-w-sm items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:bg-accent"
         >
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+          {/*
+            NO GLYPH. It was a `Sparkles` in the accent colour, and it was the
+            third thing claiming to be this panel's identity: the Reverie mark
+            is immediately to its left in the header, the pane is opened by a
+            control that already carries one, and a four-pointed star is what
+            every product in the category spends on the same claim. What is
+            left is the conversation's name and the chevron that opens the
+            archive -- a label and its affordance, and nothing else.
+          */}
           <span className="truncate">{label}</span>
           <ChevronDown
             className={cn(
@@ -193,38 +214,21 @@ export function ChatHistory({
             <Plus className="h-4 w-4" />
           </Button>
 
-          {(onExpand || expandDisabled) && (
+          {onExpand && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={onExpand}
-              disabled={expandDisabled}
-              aria-pressed={expandDisabled ? undefined : expanded}
+              aria-pressed={expanded}
               // Named for what it will do, not for what it is. "Expand the chat"
               // on a chat that is already expanded is a control that lies about
               // its own effect.
-              aria-label={
-                expandDisabled
-                  ? "This is already the full chat"
-                  : expanded
-                    ? "Shrink the chat back to the panel"
-                    : "Expand the chat"
-              }
-              title={
-                expandDisabled
-                  ? "This is already the full chat"
-                  : expanded
-                    ? "Shrink the chat back to the panel"
-                    : "Expand the chat"
-              }
+              aria-label={expanded ? "Shrink the chat back to the panel" : "Expand the chat"}
+              title={expanded ? "Shrink the chat back to the panel" : "Expand the chat"}
             >
-              {expanded || expandDisabled ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
+              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           )}
         </div>
@@ -309,8 +313,10 @@ function Row({
     }
     try {
       await onRename(title);
-    } catch {
-      toast.error("Couldn't rename that conversation.");
+    } catch (err) {
+      // Same reasoning as the delete handler below: the server's message where
+      // it sent one, this sentence where it did not.
+      toast.error(chatError(err, "Couldn't rename that conversation."));
     }
   }
 
@@ -385,8 +391,23 @@ function Row({
           onClick={async () => {
             try {
               await onDelete();
-            } catch {
-              toast.error("Couldn't delete that conversation.");
+            } catch (err) {
+              /*
+               * THE SERVER'S REASON, NOT A SHRUG.
+               *
+               * <p>This was `catch { toast.error(…) }`, which threw the error
+               * away. When somebody reported this toast appearing on `/ask`,
+               * that sentence was all there was to go on: both surfaces call
+               * the same `remove` with the same scope on the same endpoint, so
+               * the failure is the server's answer — and the interface had
+               * discarded it.
+               *
+               * <p>`chatError` falls back to the same sentence when the
+               * response carries no message, so nothing gets worse; when it
+               * carries one, the reader is told and so is whoever reads the
+               * next bug report.
+               */
+              toast.error(chatError(err, "Couldn't delete that conversation."));
             }
           }}
         >

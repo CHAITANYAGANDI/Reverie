@@ -6,7 +6,7 @@ import type { ChatMessage } from "@/lib/types";
 /**
  * The reconciliation rule, on its own.
  *
- * The surface test in `components/home-chat-panel.test.tsx` covers the ordinary
+ * The surface test in `app/(app)/ask/page.test.tsx` covers the ordinary
  * path. This covers the case that is awkward to reach through a UI and is
  * exactly where a content-matching implementation breaks: asking the same
  * question twice.

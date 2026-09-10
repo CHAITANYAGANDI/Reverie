@@ -3,259 +3,157 @@
 /**
  * Home.
  *
- * Your conversations on the left, and on the right the two things you do with
- * them: ask a question about them, or look at what they committed you to. That
- * pairing is the whole design — the old dashboard led with usage bars and a plan
- * summary, which is information about the account rather than about the work,
- * and nobody opens a meeting recorder to find out how many minutes they have
- * left.
+ * <h2>The composition</h2>
  *
- * The list is grouped by day and the day is a heading, not a column, because a
- * meeting archive is read as a diary. The scope picker above it answers the one
- * question the list cannot: whether this is everything in the workspace, or
- * only what was never filed into a folder.
+ * <p>From the approved 1672x941 reference, and it is a frame of Home's own:
+ * ~890px of list, a quiet vertical rule, and a ~463px margin, with the whole
+ * thing held to the reference width and centred past it. See `.v2-page` in
+ * app/globals.css for the numbers, and for why this is not `.v2-spread`.
+ *
+ * <p>What was here before that was the spread: a 680px reading measure with a
+ * 400px margin, widened on this page to 780 + 376. On a 1672px screen that put
+ * the whole composition in the middle of the window with 236px of nothing down
+ * each side, and it is the wrong unit for this page -- `--measure` exists
+ * because 74 characters is where the eye stops losing a line of a transcript,
+ * and Home is a list of rows. It reads nothing.
+ *
+ * <p>Two columns, and neither spans the other. The masthead used to span both
+ * tracks, which is why the margin began under the launcher; the thing before
+ * that needed a 186px spacer to fake the same alignment. It is one grid row
+ * now, so both regions start on the same line by construction.
+ *
+ * <h2>Two facts the list payload does not carry</h2>
+ *
+ * <p>The reference's rows read `10 sec / 1 speaker` over a sentence of
+ * summary. `MeetingResponse` has neither a speaker count nor any summary field
+ * -- checked against the Java DTO, not only the TypeScript -- and the only
+ * ways to put them on screen would be a request per row or an invention. Both
+ * are refused, so a Home row is the reference's row less its third line and
+ * less one metadata fact. Everything else about it is the reference's,
+ * including the air above and below the text.
+ *
+ * <h2>What the composition replaced</h2>
+ *
+ * <p>A 768px column of rounded cards beside a shell-owned
+ * 400–448px bordered pane with its own scrollbar and its own tab bar — a second
+ * application standing next to the first. The V2 study rejects exactly that: a
+ * persistent AI panel beside Home, and a list whose every row announces itself
+ * as an object.
+ *
+ * <p>So the pane is gone from this page. The chat it held was a second workspace
+ * chat with a whole destination of its own already in the band, and the margin
+ * now carries the thing that actually belongs in a margin — your own list. The
+ * meeting page still uses `SidePane`; it is unchanged.
+ *
+ * <h2>Recent means recent, and nothing else narrows it</h2>
+ *
+ * <p>There was a scope picker above the list with two options: <i>Recent
+ * Conversations</i> and <i>All Conversations</i>. <i>Recent</i> sent
+ * `unfiled=true` — a folder filter under a name about time — and it was the
+ * default, so filing a meeting into a folder made it vanish from the page
+ * called Recent.
+ *
+ * <p>Both are gone. This list is <b>the newest {@link RECENT_SIZE} conversations
+ * in the window, wherever they are filed</b>, and Library is the complete
+ * archive with the folders. The two pages differ by how much they show rather
+ * than by a hidden predicate, which is a difference a person can see.
+ *
+ * <h2>What is deliberately not here</h2>
+ *
+ * <p>The reference draws "Needs you" and "What Reverie noticed" from
+ * cross-meeting memory: decisions reversed, promises slipped twice, risks open
+ * thirteen days. None of it exists — the migrations dropped
+ * `meeting_decisions`, `decision_links`, `commitments` and
+ * `commitment_evidence`, and nothing replaced them. See
+ * docs/v2-implementation/feature-parity.md §2.
+ *
+ * <p>What survives is the <em>rhythm</em> of that region, filled from the rows
+ * already on screen: a conversation that failed needs a person, a conversation
+ * still being made does not, and they are never put under one heading. Both
+ * counts are derived from the fetched page, so they cost no request and cannot
+ * disagree with the rows underneath them.
  */
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  Sparkles,
-  ListChecks,
-  ChevronDown,
-  FileAudio,
-  FolderOpen,
-  Youtube,
-  FileText,
-  Download,
-  Mic,
-  CalendarDays,
-  RotateCw,
-} from "lucide-react";
-import { useGetMeetingsQuery, useGetProjectsQuery } from "@/lib/api";
+import dynamic from "next/dynamic";
+import { FileAudio, Mic, Plus, CalendarDays, RotateCw } from "lucide-react";
+import { useGetMeetingsQuery, useGetPreferencesQuery } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
-import { ProcessingRow, useLiveMeetingStatus } from "@/components/processing-row";
-import { ActionItemsPanel } from "@/components/action-items-panel";
-import {
-  DateFilter,
-  ANY_TIME,
-  restoreWindow,
-  type DateWindow,
-} from "@/components/date-filter";
-import { useStickyPreference, type PreferenceCodec } from "@/lib/preferences";
-import { HomeChatPanel } from "@/components/home-chat-panel";
+import { NowConversationRow } from "@/components/v2/now/conversation-row";
+import { NowActionItems } from "@/components/v2/now/action-items";
+import { useActionItems } from "@/components/v2/now/use-action-items";
+import { cn } from "@/lib/utils";
+import { AskLauncher } from "@/components/v2/now/ask-launcher";
 import { SidePane } from "@/components/side-pane";
-import { formatDuration, isTerminal } from "@/lib/format";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
+import { isTerminal } from "@/lib/format";
 import { groupByDay } from "@/lib/days";
 import { homeListState } from "@/lib/home-list-state";
 import type { MeetingResponse } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { recordHref } from "@/lib/routes";
+import { LIBRARY, recordHref } from "@/lib/routes";
 
 /**
- * Which conversations to list.
+ * How many conversations "recent" is.
  *
- * <p>Two, and they differ. There were three: "For you" took the twenty most
- * recent and called them unread, which they were not — nothing tracks whether a
- * meeting has been read — and "My Conversations" and "All Conversations"
- * returned the same rows as each other, because one account per workspace means
- * every meeting is yours. A picker whose options produce identical lists is
- * worse than no picker: it is read as a filter that is broken.
- *
- * <p>What is left is the distinction that does exist now that recordings and
- * imports file themselves into the folder they were started in — whether this
- * is the whole workspace, or only what was never filed into one.
- *
- * <p><strong>Recent Conversations is about folders, not about time.</strong>
- * Both options are newest-first and both sit inside the same date window, so
- * the label is doing no work that "All" is not; what separates them is
- * `unfiled=true` on the wire — whether a meeting was ever put in a folder.
- *
- * <p>Which makes <b>the hint load-bearing</b>, not decoration. It is the only
- * thing on screen that explains why a meeting recorded ten minutes ago inside a
- * folder is missing from a list called Recent, and it is what connects the
- * label to the "Everything is in a folder" empty state behind it. Renaming the
- * option to "Unfiled Conversations" would carry that in the label instead;
- * that was tried and reverted, and "Recent" is the product's word for this
- * list. So the hint is the whole of the explanation. Do not drop it.
- *
- * <p>The hints are written as a pair, and read as one: everything outside your
- * folders, or everything in this workspace. Said that way round they describe
- * two lists, rather than one list and one property a meeting either has or does
- * not.
- *
- * <p>Otter offers "Shared with me" as well, and Reverie cannot: nobody can
- * share anything *into* a one-account workspace. Offering the row anyway would
- * be a filter that is permanently empty and reads as a fault.
+ * <p>A bound rather than a filter, and it is what separates this page from
+ * Library. Both ask the same question of the same endpoint; this one asks for
+ * the top of the answer. Twenty is four or five days for somebody in meetings
+ * all week, and it is short enough that the list is still a glance rather than
+ * an archive — which is the whole distinction being drawn.
  */
-const SCOPES = [
-  { value: "recent", label: "Recent Conversations", hint: "everything outside your folders" },
-  { value: "all", label: "All Conversations", hint: "everything in this workspace" },
-] as const;
-
-/*
- * The order here is the order in the menu, and Recent leads it because Recent
- * is where Home opens -- but those are two decisions rather than one, and they
- * have not always agreed. There was a stretch where this list led with Recent
- * and DEFAULT_SCOPE below said `all`, which is a picker that does not lead with
- * the option it is on. Moving one is not moving the other.
- */
-
-type Scope = (typeof SCOPES)[number]["value"];
-
-type Panel = "chat" | "actions";
+const RECENT_SIZE = 20;
 
 /**
- * Both filters are remembered until you sign out. See lib/preferences.ts.
+ * The Ask pane, fetched the first time it is drawn.
  *
- * <p>Defined out here rather than inline because the hook depends on them: a
- * codec rebuilt on every render would re-read storage on every render, and put
- * back the value you had just changed.
+ * <p>`dynamic` rather than a plain import, because the workspace chat brings
+ * the composer, the context picker, the conversation archive, the markdown
+ * renderer and the evidence rail with it -- and Home is the page the
+ * application opens on. Statically imported it was 80kB of Home's first load,
+ * every visit, for a panel that only appears when somebody presses Ask.
+ *
+ * <p>`ssr: false` for the same reason it renders nothing on the server anyway:
+ * the pane is a portal into an element the shell owns, which does not exist
+ * until the shell has mounted. See components/side-pane.
+ *
+ * <p>No loading state. It is behind a `SidePane` that is itself a frame late,
+ * and a spinner in a panel that is opening is chrome where the conversation is
+ * about to be.
  */
-const SCOPE_CODEC: PreferenceCodec<Scope> = {
-  save: (value) => value,
-  load: (raw) => (raw === "recent" || raw === "all" ? raw : null),
-};
-
-/**
- * Where the chosen scope is written down, and why the name carries a version.
- *
- * <h2>What v1 could not answer</h2>
- *
- * <p>A stored value is only worth honouring if it was a choice. Under v1 the
- * default was `recent` and the picker wrote on every interaction, so a stored
- * `"recent"` meant either "I chose this" or "I opened the menu once and it
- * wrote down where I already was" -- and nothing on disk told them apart. That
- * mattered then, because `recent` was hiding filed meetings with nothing on
- * screen to say so, and honouring the ambiguous value carried that through the
- * deployment into exactly the browsers it was happening in.
- *
- * <p>So v1 was abandoned wholesale rather than repaired. Everything under v2 is
- * a value somebody selected, because nothing writes this key except the picker
- * -- which is still true now that the default has moved back to Recent. A
- * stored `"all"` is honoured, and so is a stored `"recent"`.
- *
- * <p><b>The key stays at v2.</b> Bumping it again would throw away real choices
- * to fix an ambiguity that no longer exists. And the old `home.scope` entry is
- * left where it is rather than deleted: nothing reads that name any more, and
- * clearing it would mean a write on load, from a page whose whole problem once
- * was doing something surprising on load.
- */
-const SCOPE_PREF_KEY = "home.scope.v2";
-
-/**
- * Recent Conversations: what has not been filed anywhere else.
- *
- * <h2>This has moved twice, and the middle step is the one to understand</h2>
- *
- * <p>`recent`, then `all`, and now `recent` again. The move to `all` was not a
- * preference -- it was a bug fix, and undoing it blind would put the bug back.
- *
- * <p>`recent` is `unfiled=true` on the wire, so the list it draws is "your
- * meetings, minus the ones you organised". An account that had filed everything
- * therefore opened Home to a list with nothing in it -- and the page said <b>No
- * conversations</b> and offered to help with a first recording. The
- * archive-lost screen, over a full archive, reached by doing nothing at all.
- *
- * <p>But the default was only how people arrived there. What made it
- * unrecoverable is that an empty list never said <em>which filter had emptied
- * it</em>: the same screen appeared whether the workspace was empty or merely
- * tidy, and the way out was a control you had to remember you had never
- * touched.
- *
- * <p>That is now answered. An empty Recent asks the server whether the
- * workspace holds anything at all, and the two cases get opposite screens --
- * "Everything is in a folder" with the way to the whole list, or the
- * first-recording screen. See {@link EmptyState}, and note that the probe is
- * the only reason this is safe to open on: anybody moving the default again
- * should move that guard with it rather than through it.
- *
- * <p>So this is a product choice once more instead of a trap, and the choice is
- * Recent. Home is what you have not filed yet; the folders in the rail are
- * where the rest of it went.
- */
-const DEFAULT_SCOPE: Scope = "recent";
-
-const WHEN_CODEC: PreferenceCodec<DateWindow> = {
-  // The choice, not the window. Storing the instants would pin "Last 7 days" to
-  // the week it was picked and leave "Today" labelling a day that has passed.
-  save: (value) => value.choice ?? null,
-  load: (raw) => restoreWindow(raw),
-};
+const WorkspaceAskPane = dynamic(
+  () => import("@/components/chat/workspace-ask").then((m) => m.WorkspaceAskPane),
+  { ssr: false },
+);
 
 export default function HomePage() {
-  // Home opens on Recent: what has not been filed anywhere else. A meeting
-  // recorded inside a folder is therefore not on this list until you switch to
-  // All — deliberately, because the folder is where it was put and the rail on
-  // the left is how you get back to it. See DEFAULT_SCOPE for why that is safe
-  // to open on now and was not before.
-  //
-  // Both filters are remembered until sign-out. Home is a page people leave and
-  // come back to constantly — open a meeting, come back, open another — and a
-  // filter that reset on every return meant narrowing the list was work you did
-  // once per visit rather than once. A new sign-in starts from the defaults;
-  // see lib/preferences.ts for why a preference must never outlive its
-  // session.
-  const scopePref = useStickyPreference<Scope>(SCOPE_PREF_KEY, DEFAULT_SCOPE, SCOPE_CODEC);
-  const whenPref = useStickyPreference<DateWindow>("home.when", ANY_TIME, WHEN_CODEC);
-  const { value: scope, set: setScope } = scopePref;
-  const { value: when, set: setWhen } = whenPref;
-  const [panel, setPanel] = React.useState<Panel>("chat");
-
-  /**
-   * Whether the remembered filters have been read back yet.
-   *
-   * <p>They cannot be read while rendering, so the first render always holds
-   * the defaults. Asking the server during that render would fetch the whole
-   * workspace and then immediately fetch it again narrowed — two requests, and
-   * a list that visibly changes under the reader. Waiting one tick costs the
-   * skeleton that was going to be on screen anyway.
-   */
-  const restored = scopePref.ready && whenPref.ready;
-
-  // Both filters go to the server rather than narrowing what came back. This
-  // asks for fifty rows; dropping the filed ones from those would answer
-  // "conversations outside a folder" with whichever of the fifty most recent
-  // happened to be outside one, and would look right until somebody had more
-  // than fifty meetings. The scope used to be applied here, over the page,
-  // which is half of why it did nothing.
   const meetings = useGetMeetingsQuery(
     {
       page: 0,
-      size: 50,
-      from: when.from ?? undefined,
-      to: when.to ?? undefined,
-      // The screen says Recent and the wire says unfiled, and each is right
-      // where it is: the label is the product's word for this list, the
-      // parameter is what the query actually does to it. One seam, here.
-      unfiled: scope === "recent",
+      size: RECENT_SIZE,
+      // NO `unfiled`. It is the parameter this page used to send and the reason
+      // its name was a lie: a meeting recorded inside a folder was filed there
+      // and disappeared from Recent, which is not what recent means.
+      //
+      // AND NO `from`/`to`. This page had a date window of its own, remembered
+      // until sign-out. It is gone: the list is the newest RECENT_SIZE
+      // conversations, and a date filter over a fixed-size recency list can
+      // only ever subtract from it -- it cannot surface anything the
+      // unfiltered list does not already show. Narrowing by date is Library's,
+      // where it is narrowing the whole archive and can therefore find
+      // something. See docs/v2-implementation/feature-parity.md.
     },
     {
-      skip: !restored,
       /*
-       * Ask again every time Home is opened.
-       *
-       * A meeting's status is the one field in this list that changes without
-       * anybody touching the list, and the cached copy is whatever was true
-       * when it was last fetched. Arriving back on Home after a meeting
-       * finished elsewhere would otherwise show it still "Processing" -- the
-       * row's socket only carries *changes*, so subscribing after the fact
-       * hears nothing at all.
-       *
-       * One request per visit, against a page of fifty rows. The docked
-       * watcher covers meetings this tab started or opened; this covers the
-       * rest, including one processed on another device.
+       * Ask again every time Now is opened. A meeting's status is the one field
+       * in this list that changes without anybody touching the list, and the
+       * cached copy is whatever was true when it was last fetched.
        */
       refetchOnMountOrArgChange: true,
     },
   );
-  // Derived from `data` rather than from a `?? []` above it: the fallback array
-  // is a new value on every render, which would make the grouping below rerun
-  // — and `new Date()` inside it produce different day boundaries — on renders
-  // that have nothing to do with the data changing.
   const { data } = meetings;
 
   /*
@@ -267,7 +165,10 @@ export default function HomePage() {
    * had none.
    */
   const listState = homeListState({
-    restored,
+    // Nothing to restore any more, so the list is never waiting on a
+    // preference before it may ask. `homeListState` keeps the flag because
+    // Library still has one.
+    restored: true,
     isUninitialized: meetings.isUninitialized,
     isLoading: meetings.isLoading,
     isFetching: meetings.isFetching,
@@ -276,266 +177,402 @@ export default function HomePage() {
     count: data ? data.content.length : null,
   });
 
-  const groups = React.useMemo(() => groupByDay(data?.content ?? []), [data]);
+  /*
+   * THREE SETS, AND EVERY ROW IS IN EXACTLY ONE.
+   *
+   * <p>Sorted by what the row needs rather than by when it happened, because
+   * that is the question this page exists to answer. A failed conversation
+   * needs a person; one still being made does not and is never filed under a
+   * heading that says it does. Everything settled falls through to the diary.
+   *
+   * <p>Grouped on the status in the fetched page rather than on each row's live
+   * status: the live one arrives per row over its own socket, and regrouping
+   * the page underneath somebody as a meeting finishes would move a row they
+   * were about to click. The row's own metadata line stays live.
+   */
+  const rows = React.useMemo(() => data?.content ?? [], [data]);
+  const failed = React.useMemo(() => rows.filter((m) => m.status === "FAILED"), [rows]);
+  const making = React.useMemo(
+    () => rows.filter((m) => !isTerminal(m.status)),
+    [rows],
+  );
+  const settled = React.useMemo(
+    () => rows.filter((m) => m.status !== "FAILED" && isTerminal(m.status)),
+    [rows],
+  );
+  const days = React.useMemo(() => groupByDay(settled), [settled]);
+
+  /** Every section, in order, so the first one can carry the date filter. */
+  const sections = React.useMemo(() => {
+    const out: { key: string; heading: string; note?: string; items: MeetingResponse[] }[] = [];
+    if (failed.length > 0) {
+      out.push({
+        key: "attention",
+        heading: "Needs attention",
+        note:
+          failed.length === 1
+            ? "1 conversation needs attention"
+            : `${failed.length} conversations need attention`,
+        items: failed,
+      });
+    }
+    if (making.length > 0) {
+      out.push({
+        key: "progress",
+        heading: "In progress",
+        note:
+          making.length === 1
+            ? "1 conversation is still being made"
+            : `${making.length} conversations are still being made`,
+        items: making,
+      });
+    }
+    for (const day of days) out.push({ key: day.key, heading: day.label, items: day.items });
+    return out;
+  }, [failed, making, days]);
+
+  const showing = listState === "list";
+
+  /*
+   * THE MARGIN'S CONTENT, FETCHED HERE.
+   *
+   * <p>One call, read by this page and passed to the component that draws it --
+   * not the same query twice. See components/v2/now/use-action-items.
+   *
+   * <p>It no longer decides the layout. It used to: an account with no
+   * standalone items drew no margin and the page re-centred on the
+   * conversation list, so Home had two compositions and adding the first item
+   * moved every row on the screen. The column is drawn in every state now --
+   * loading, failed, empty, full -- and what changes is the sentence under the
+   * rule. See components/v2/now/action-items.
+   */
+  const actions = useActionItems();
 
   return (
-    <>
-      {/* The list, and nothing else. What used to be the second column of this
-          page — the chat and the action items — is now a pane of the shell, so
-          it runs the full height of the window rather than starting under the
-          top bar, and this page no longer states its width. See
-          components/side-pane.tsx. */}
-      <section className="scrollbar-none h-[calc(100vh-4rem)] overflow-y-auto px-4 py-4 lg:px-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            {/* When on the left, whose on the right — the two questions the
-                list itself cannot answer, in the order people ask them. */}
-            <DateFilter value={when} onChange={setWhen} />
-            {/* The button that hid the panel used to sit here. It is in the
-                top bar now, next to the rest of the controls that act on the
-                window rather than on the list, and it works at every width
-                instead of only on a phone. */}
-            <ScopePicker value={scope} onChange={setScope} />
-          </div>
+    /*
+     * ONE DOCUMENT, ON ONE CANVAS. The page used to give its list its own
+     * `h-[calc(100vh-var(--band))] overflow-y-auto`, which made a second
+     * scrolling region beside the pane's — two scrollbars on the default
+     * screen. The margin is part of this page and scrolls with it.
+     *
+     * <p>`relative` for the wash below, and nothing else: no background, no
+     * width, no padding. Those are the frame's, one level in, so the wash can
+     * span the window while the content sits inside 136px gutters.
+     */
+    <div className="relative">
+      {/*
+       * THE ATMOSPHERE, and it is the page's rather than a column's.
+       *
+       * <p>One element behind everything, so the iris lift over the upper
+       * centre and the trace of green in the upper right run continuously
+       * under the list, under the rule and under the margin. A gradient per
+       * region would put a seam down the middle of the page, and a fill behind
+       * the margin would make it a panel -- which is the one thing this
+       * composition is not.
+       *
+       * <p>Pulled up by the band so the field is continuous through the glass.
+       * 34rem rather than the landing's 60vmax: the masthead here is four
+       * lines, not a hero, and the wash has to be gone by the time the list
+       * starts. It came down with the type -- at 46rem over the tighter
+       * composition the wash outlasted the rows it was meant to sit behind.
+       */}
+      <AmbientCanvas height="34rem" top="calc(var(--band) * -1)" />
+
+      {/*
+       * THE FRAME. Two columns, one grid row, and a rule between them that is
+       * the margin's own left edge -- see `.v2-page` in app/globals.css.
+       */}
+      <div className="v2-page relative">
+        <div className="min-w-0">
+          {/* `empty` is unqualified now. With no window there is only one way
+              for this list to be empty -- the account is -- where before the
+              masthead had to distinguish that from a date range that happened
+              to return nothing. */}
+          <Masthead empty={listState === "empty"} />
 
           {listState === "skeleton" ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 w-full" />
+            <div className="mt-8 space-y-5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full" />
               ))}
             </div>
           ) : listState === "error" ? (
-            <HomeLoadError onRetry={() => void meetings.refetch()} />
+            <div className="mt-8">
+              <HomeLoadError onRetry={() => void meetings.refetch()} />
+            </div>
           ) : listState === "empty" ? (
-            <EmptyState
-              scope={scope}
-              when={when}
-              onClearDate={() => setWhen(ANY_TIME)}
-              onShowAll={() => setScope("all")}
-              onRetry={() => void meetings.refetch()}
-            />
+            <div className="mt-10">
+              <EmptyState />
+            </div>
           ) : (
-            groups.map((group) => (
-              <div key={group.key} className="mb-6">
-                <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-                  {group.label}
-                </h2>
-                <ul className="space-y-2">
-                  {group.items.map((meeting) => (
-                    <ConversationRow key={meeting.id} meeting={meeting} />
-                  ))}
-                </ul>
-              </div>
-            ))
+            /* 32px under the launcher: enough that the list is a separate
+               thing from the control above it, and no more. It was 58, off
+               the magnified reference. */
+            <div className="mt-8 space-y-7">
+              {sections.map((section) => (
+                <Group key={section.key} heading={section.heading} note={section.note}>
+                  <Rows meetings={section.items} />
+                </Group>
+              ))}
+
+              {/* Said only when it is true, and said where the list runs out.
+                  A page showing twenty of two hundred conversations with
+                  nothing at the bottom is a list somebody scrolls to the end
+                  of and believes. `totalElements` is on the response already. */}
+              {data && data.totalElements > data.content.length && (
+                <p className="v2-page-meta text-ink-4">
+                  Showing the {data.content.length} most recent of{" "}
+                  <span className="tabular">{data.totalElements}</span>.{" "}
+                  <Link href={LIBRARY} className="underline underline-offset-2 hover:text-ink-2">
+                    All of them are in Library
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
           )}
         </div>
-      </section>
 
-      <SidePane>
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex shrink-0 items-center gap-1 border-b px-2">
-            <PanelTab
-              icon={<Sparkles className="h-4 w-4" />}
-              label="AI Chat"
-              active={panel === "chat"}
-              onClick={() => setPanel("chat")}
-            />
-            <PanelTab
-              icon={<ListChecks className="h-4 w-4" />}
-              label="Action Items"
-              active={panel === "actions"}
-              onClick={() => setPanel("actions")}
-            />
-          </div>
-          <div className="min-h-0 flex-1">
-            {/* Both stay mounted: switching to the tasks and back should not
-                throw away a half-typed question or re-run the chat's history
-                fetch. Hidden rather than unmounted. */}
-            <div className={cn("h-full", panel === "chat" ? "block" : "hidden")}>
-              <HomeChatPanel />
-            </div>
-            <div className={cn("h-full", panel === "actions" ? "block" : "hidden")}>
-              <ActionItemsPanel />
-            </div>
-          </div>
+        {/*
+         * THE MARGIN. Not a pane and not a card: no fill, no radius, no
+         * scrollbar of its own. One 1px rule down its left edge, which is
+         * `[data-page-margin]` in app/globals.css, and the page's background
+         * running underneath it uninterrupted. There is nothing beneath the
+         * list either, because a promotional card in the core product is
+         * marketing standing where whitespace belongs.
+         *
+         * <p>Always drawn. See the note beside `useActionItems` above.
+         */}
+        <div data-page-margin>
+          <NowActionItems items={actions} />
         </div>
+      </div>
+
+      {/*
+       * ASK, IN THE SHELL'S PANE RATHER THAN ON A PAGE OF ITS OWN.
+       *
+       * <p>Home used to have no pane at all: its chat was an `<aside>` inside
+       * this page, it was removed for being a second workspace chat competing
+       * with `/ask`, and the launcher above became a link to that page. What
+       * that traded away was the ability to ask about the list while the list
+       * is on screen — which is the whole point of asking, and is how the same
+       * question is asked from inside a meeting.
+       *
+       * <p>It is the pane and not an aside because the pane is a column of the
+       * shell: full height, against the window's edge, with this page ending
+       * where it begins. An aside here would begin under the band, end where
+       * this page's padding ends, and need this file to restate the pane's
+       * width to clear it. See components/side-pane.
+       *
+       * <p>Not a second chat, either. Same endpoints and the same conversation
+       * archive as `/ask`; only the open thread is separate, keyed
+       * `workspace:home`. See components/chat/workspace-ask.
+       *
+       * <p>Outside the frame, deliberately. `.v2-page` is a two-track grid and
+       * anything inside it is one of those tracks; the pane belongs to the
+       * window.
+       */}
+      <SidePane>
+        <WorkspaceAskPane />
       </SidePane>
-    </>
+    </div>
+  );
+}
+
+/* --------------------------------- sections -------------------------------- */
+
+/**
+ * A heading, an optional note or control beside it, and the rows.
+ *
+ * <p>A 14px heading in muted blue-grey, anything else pushed to the far end of
+ * the same baseline. No card, and no rule under the heading — the hairlines
+ * between rows are the only lines in the list.
+ *
+ * <p>It was `.v2-label`: 11.5px at 560 with a little tracking, which is the
+ * label for a group inside a 680px reading column, and beside Home's row
+ * titles it read as a caption that had lost its picture. It carries no bottom
+ * margin: the first row's own top padding is the gap, which is what makes the
+ * space above the first title the same as the space between every pair of rows
+ * after it.
+ */
+function Group({
+  heading,
+  note,
+  aside,
+  children,
+}: {
+  heading: string;
+  note?: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="flex items-baseline gap-3">
+        <h2 className="v2-page-sub text-ink-3">{heading}</h2>
+        {note && <p className="v2-page-meta text-ink-3">{note}</p>}
+        {aside && <div className="ml-auto">{aside}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** The hairline lives between rows, which is the only line the list has. */
+function Rows({ meetings }: { meetings: MeetingResponse[] }) {
+  return (
+    <ul className="[&>li+li>a]:shadow-[inset_0_1px_0_rgb(var(--line))]">
+      {meetings.map((meeting) => (
+        /* The frame's drawing of the row -- a glyph column and a chevron at
+           the far end -- and no clock. Library takes the same size and keeps
+           its clock; see `size` and `clock` on the row. */
+        <NowConversationRow key={meeting.id} meeting={meeting} size="page" clock={false} />
+      ))}
+    </ul>
+  );
+}
+
+/* ------------------------------- the masthead ------------------------------ */
+
+/**
+ * Where you are in the day, and one true sentence about what is under it.
+ *
+ * <p>The reference's subtitle — "two meetings landed overnight, and a decision
+ * you took on the twenty-eighth reverses one from the twelfth" — is the memory
+ * layer talking, and there is no such thing here. What replaces it says what
+ * this page actually is, and it invents no counts: the two numbers that do
+ * exist are stated as headings over the rows they count, where they cannot
+ * drift from them.
+ */
+function Masthead({ empty }: { empty: boolean }) {
+  const { mode, userId, profile } = useAuth();
+  const prefs = useGetPreferencesQuery();
+
+  /*
+   * The clock is read after mounting, never during a render.
+   *
+   * This page is prerendered as static content, so a greeting computed while
+   * rendering would be baked at BUILD time — "Good evening" at nine in the
+   * morning, for everybody, until the next deploy — and would mismatch on
+   * hydration into the bargain.
+   */
+  const [now, setNow] = React.useState<Date | null>(null);
+  React.useEffect(() => setNow(new Date()), []);
+
+  // The same order of precedence as the account menu: what this person typed
+  // into Settings, then what they told their identity provider, then nothing.
+  // Never the user id -- an opaque key in the place a name goes reads as
+  // somebody else's account, which is exactly how it was reported.
+  const full = prefs.data?.displayName?.trim() || profile.name || (mode === "dev" ? userId : "");
+  // First name only. "Good morning, Chaitanyasai Gandi" is a form letter.
+  const first = full.trim().split(/\s+/)[0] || null;
+
+  const hour = now?.getHours() ?? 0;
+  const greeting =
+    hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  const title = empty
+    ? first
+      ? `Nothing here yet, ${first}.`
+      : "Nothing here yet."
+    : first
+      ? `${greeting}, ${first}.`
+      : `${greeting}.`;
+
+  return (
+    /*
+     * No padding ABOVE. The frame owns the air over the date -- 99px at the
+     * reference, which is what puts it on the reference's line under a 48px
+     * band -- because a masthead with its own `pt-10` inside a frame with its
+     * own top padding is two numbers deciding one gap.
+     *
+     * <p>24px underneath, which is this block's -- the launcher is inside it
+     * now, on the greeting's line, so there is no second element between the
+     * masthead and the list to argue with about this gap.
+     */
+    <header className="pb-6">
+      {/* Both lines reserve their height, so the greeting arriving one tick
+          after the list does not push the list down under a reader's cursor.
+          `min-h` rather than `h` on the greeting: at 390px it wraps, and a
+          fixed height would print the second line through the lede. */}
+      <p className="v2-page-sub h-[19px] text-ink-3">
+        {now
+          ? now.toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })
+          : ""}
+      </p>
+      {/*
+        THE GREETING AND THE ONE CONTROL, ON ONE LINE.
+
+        <p>The button was a row of its own under the lede -- and before that a
+        40px field the width of the list. Across from the greeting it reads as
+        the page's single action rather than a fourth stacked line, and it is
+        the arrangement the margin already uses: `+ Add` sits opposite
+        `Action items`, not underneath it.
+
+        <p>`items-center`, not `items-baseline`. The mark inside the button is
+        an inline SVG, so its baseline is its own bottom edge -- aligning
+        baselines would lift the glyph off the greeting's line.
+
+        <p>And not `items-start` either, which is a decision about 390px: down
+        there the greeting wraps and the button sits opposite the middle of the
+        pair of lines rather than on the first one. Looked at across 1440,
+        1280, 1024, 768 and 390 -- centred reads as balanced against the block
+        where top-aligned reads as having drifted up, and top-aligned would
+        need a hand-tuned negative margin to sit optically on a 31px line
+        anyway.
+
+        <p>`flex-1 min-w-0` on the heading rather than `justify-between`: the
+        greeting is the element allowed to wrap, and `min-w-0` is what lets it
+        wrap instead of forcing the row wider than the column at 390px.
+      */}
+      <div className="mt-2 flex items-center gap-4">
+        <h1 className="v2-page-greet min-h-[1.875rem] min-w-0 flex-1 font-headline text-ink">
+          {now ? title : ""}
+        </h1>
+        {/* Same condition as the block this replaced, so an empty account is
+            still offered nothing to ask about. */}
+        {!empty && (
+          <div className="shrink-0">
+            <AskLauncher />
+          </div>
+        )}
+      </div>
+      <p className="v2-page-lede mt-2 max-w-[68ch] text-ink-3">
+        {/*
+          THE REFERENCE'S SENTENCE, VERBATIM.
+          <p>This read "Recent conversations, wherever they are filed, and what
+          needs your attention." for one turn -- the middle clause being the
+          sentence that replaced `unfiled=true` and the promise that filing a
+          conversation into a folder does not hide it from this page.
+          <p>The clause is gone and the guarantee is not. A promise in a
+          subtitle was never what kept it: the query is, and it is asserted on
+          the wire and on the rows -- see "never asks the server to hide filed
+          conversations" and "keeps showing a conversation that has been filed
+          into a folder" in this page's suite. Copy that restates a guarantee
+          is copy that goes stale the day the guarantee breaks, and it reads to
+          somebody who has never heard of the bug as an odd thing to mention.
+        */}
+        {empty
+          ? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
+          : "Recent conversations and anything that needs your attention."}
+      </p>
+    </header>
   );
 }
 
 /* -------------------------------- the list -------------------------------- */
 
 /**
- * Narrow the list to a scope.
- *
- * "For you" is the recent slice rather than a different query: a workspace with
- * one account has no notion of relevance beyond recency, and inventing a ranking
- * would be a claim the data cannot support. "Mine" and "All" are identical today
- * for the same reason, and are kept apart because the distinction becomes real
- * the moment a workspace has two people in it — at which point this is the one
- * place that has to change.
- */
-function ScopePicker({
-  value,
-  onChange,
-}: {
-  value: Scope;
-  onChange: (scope: Scope) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const current = SCOPES.find((s) => s.value === value) ?? SCOPES[0];
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-      >
-        {current.label}
-        <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          // Anchored to the button's right edge, not its left. This trigger
-          // sits at the right edge of the content column, so a menu growing
-          // rightward from `left-0` ran ~120px past it — and the scroll
-          // container it lives in cannot clip one axis without clipping the
-          // other, so `overflow-y-auto` quietly became `overflow: auto`. The
-          // hint text was cut off mid-word and the whole list grew a
-          // horizontal scrollbar to reach a menu nobody wanted to scroll to.
-          className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-lg border bg-popover shadow-lg"
-        >
-          {SCOPES.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={s.value === value}
-              onClick={() => {
-                onChange(s.value);
-                setOpen(false);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                s.value === value && "bg-accent/60",
-              )}
-            >
-              <span>
-                <span className="block">{s.label}</span>
-                <span className="block text-xs text-muted-foreground">{s.hint}</span>
-              </span>
-              {s.value === value && <span aria-hidden>✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * One meeting in the list — and, while it is being made, how far along it is.
- *
- * <p>The processing row is the *same* row, not a separate section and not a
- * card of its own: a meeting has one place in this list and keeps it from the
- * moment it is saved. What is added is a status pill, the stage, a slim bar and
- * a percentage, plus a warning-tinted border so it is findable among nine
- * finished meetings without being a different kind of object. See
- * components/processing-row.
- *
- * <p>Clicking it opens the normal meeting route, exactly as a finished one does.
- */
-function ConversationRow({ meeting }: { meeting: MeetingResponse }) {
-  const Icon =
-    meeting.sourceType === "YOUTUBE"
-      ? Youtube
-      : meeting.sourceType === "DOCUMENT"
-        ? FileText
-        : FileAudio;
-
-  // Live, because Home does not poll its list. Terminal meetings open no
-  // subscription -- see the hook.
-  const { status, reported } = useLiveMeetingStatus(meeting.id, meeting.status);
-  const processing = !isTerminal(status);
-
-  return (
-    <li>
-      <Link
-        href={`/meetings/${meeting.id}`}
-        className={cn(
-          "flex gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/40",
-          // Slightly more prominent, still plainly one of the rows around it.
-          processing && "border-warning/40 bg-warning/5",
-        )}
-      >
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate font-medium">{meeting.title}</span>
-            {/* One word while it runs. The stage is said in full underneath,
-                and a pill that changed from "Transcribing" to "Summarizing"
-                would be a second, competing statement of the same thing. */}
-            {processing ? (
-              <Badge variant="warning">Processing</Badge>
-            ) : (
-              status !== "READY" && <StatusBadge status={status} />
-            )}
-          </span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            {new Date(meeting.createdAt).toLocaleTimeString(undefined, {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
-            {meeting.durationSeconds ? ` · ${formatDuration(meeting.durationSeconds)}` : ""}
-            {meeting.tags.length > 0 ? ` · ${meeting.tags.slice(0, 3).join(", ")}` : ""}
-          </span>
-          {processing && (
-            <ProcessingRow meetingId={meeting.id} status={status} reported={reported} />
-          )}
-        </span>
-      </Link>
-    </li>
-  );
-}
-
-/**
  * The list could not be fetched, and we are not going to pretend otherwise.
  *
- * <p>This is the screen that was missing. Without it a failed request fell
- * through to "No conversations — Record / Import", which tells somebody with a
- * full archive that it is empty and offers to help them start their first
- * meeting. The two readings are opposites and only one of them is recoverable
- * by waiting.
- *
- * <p>No status code, no message from the server, no URL. The cause is in the
- * network tab for whoever wants it; on the page it would be noise at best, and
- * at worst it leaks the shape of the backend to a screen anybody can reach.
+ * <p>Without it a failed request fell through to "No conversations — Record /
+ * Import", which tells somebody with a full archive that it is empty and offers
+ * to help them start their first meeting. The two readings are opposites and
+ * only one of them is recoverable by waiting.
  *
  * <p>`role="alert"` because this replaces content the reader was waiting for --
  * somebody who has already moved on would otherwise never learn it did not
@@ -543,287 +580,152 @@ function ConversationRow({ meeting }: { meeting: MeetingResponse }) {
  */
 function HomeLoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div
-      role="alert"
-      className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
-    >
-      <RotateCw className="h-8 w-8 text-muted-foreground" />
-      <p className="mt-3 font-medium">Couldn&apos;t load your conversations</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+    <div role="alert">
+      <p className="flex items-center gap-2 text-body font-headline text-ink">
+        <RotateCw className="h-4 w-4 text-ink-4" aria-hidden />
+        Couldn&apos;t load your conversations
+      </p>
+      <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
         Your conversations are still here. Something went wrong fetching them.
       </p>
-      <Button variant="outline" className="mt-4" onClick={onRetry}>
+      <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
         Try again
       </Button>
     </div>
   );
 }
 
+/* ------------------------------- the first minute -------------------------- */
+
 /**
- * Nothing to show, and why.
+ * Nothing to show, and which of the two reasons it is.
  *
- * <p>A filter that empties the list has to say so, and offer the way back.
- * Without it the page offers Record and Import to somebody with a hundred
- * meetings, which reads as an archive that lost them rather than as a filter
- * doing its job — and the way out is a control they have to remember they
- * touched.
+ * <p>This list sends no `unfiled`, so nothing here can hide a meeting: an empty
+ * list has two causes and both are already known without asking anything. The
+ * probe, the folder read and two of the four screens went with the third case.
+ * What did not go is the rule underneath them — an empty list is a *claim about
+ * the account*, and only a settled, successful, genuinely empty response may
+ * make it. That lives in {@link homeListState}.
  *
- * <p>Two filters can do it now. The date window is checked first because it is
- * the likelier cause and the one somebody has just used; the scope is checked
- * second, and it is the one most likely to be misread, since a folder is
- * exactly where a meeting goes when it stops appearing where you left it.
+ * <h2>The first minute</h2>
  *
- * <p>Which makes one question worth a request of its own: an empty Recent means
- * either that everything is filed or that there is nothing at all, and those
- * two want opposite screens — the way to the folders, or the way to a first
- * recording. One row is enough to tell them apart, and it is only ever asked
- * for when there is nothing to show.
- *
- * <p><b>Only on Recent.</b> "Everything is in a folder" describes a list that
- * is hiding rows, which is only true of Recent. On All Conversations an empty
- * list means the workspace is empty, full stop, so the probe below is skipped
- * and the first-recording screen is what shows. That skip is the whole guard:
- * get it wrong and a new account is told its meetings are filed somewhere, and
- * handed a button to another empty list.
- *
- * <p>Home opens on Recent, so this is the common path rather than a corner —
- * which is exactly why it exists. It is the difference between a default that
- * explains itself and the one that used to say "No conversations" to somebody
- * with a hundred of them.
+ * <p>`09-now-first.html`: two buttons, the allowance, and an honest account of
+ * what happens to a recording. The reference's third step is "it is compared
+ * against every meeting before it", which is the memory layer and does not
+ * exist. The third step here is what the product actually gives you afterwards,
+ * and every claim in the block under it was checked against production before
+ * it was written down.
  */
-function EmptyState({
-  scope,
-  when,
-  onClearDate,
-  onShowAll,
-  onRetry,
-}: {
-  scope: Scope;
-  when: DateWindow;
-  onClearDate: () => void;
-  onShowAll: () => void;
-  /** Fetch the list again, for the one state below that cannot explain itself. */
-  onRetry: () => void;
-}) {
-  const { userId } = useAuth();
-  const filtered = when.from !== null || when.to !== null;
-
-  // Skipped unless it is the question being asked. `size: 1` because the count
-  // is the whole answer.
-  const workspace = useGetMeetingsQuery(
-    { page: 0, size: 1 },
-    { skip: scope !== "recent" || filtered },
-  );
+function EmptyState() {
   /*
-   * The same truthfulness rule as the main list, on the probe behind it.
+   * ONE SCREEN, WHERE THERE WERE TWO.
    *
-   * `workspace.data?.totalElements ?? 0` would read a FAILED probe as "the
-   * workspace contains zero meetings" -- which is the screen that says the
-   * account is empty and offers a first recording. A request that never
-   * answered proves nothing, so `null` is kept distinct from `0` here too.
+   * <p>This used to branch: a date window that returned nothing got "Nothing
+   * from {label}" with a way to widen it, and only a genuinely empty account
+   * got the first-minute screen. With the window gone there is one way for
+   * this list to be empty and it is the account, so the branch and the widen
+   * button went with it.
    */
-  const total = workspace.isSuccess && workspace.data ? workspace.data.totalElements : null;
-
-  /*
-   * The folders, because "everything is in a folder" is a claim about them.
-   *
-   * <p>Already in the cache: the rail fetches this on every page, so reading it
-   * here costs nothing and adds no request. Three-state for the same reason
-   * everything else on this screen is -- a folder list that has not arrived is
-   * not a folder list with nothing in it.
-   */
-  const folders = useGetProjectsQuery();
-  const folderCount = folders.isSuccess && folders.data ? folders.data.length : null;
-
-  /*
-   * The message below says these meetings are in folders. It may only say so
-   * when there are folders for them to be in.
-   *
-   * <p>Production produced the screen this guards against: "Everything is in a
-   * folder" over a sidebar with no folders in it. Those two cannot both be
-   * true, and the app had every fact needed to know that and said it anyway --
-   * the same failure as an empty state over a failed request, one level up. An
-   * empty state explains itself, and an explanation that contradicts the rest
-   * of the screen is worse than no explanation at all.
-   */
-  const filedElsewhere = total !== null && total > 0 && folderCount !== null && folderCount > 0;
-
-  /**
-   * The workspace has meetings, this list has none, and there is no folder that
-   * could be holding them.
-   *
-   * <p>Nothing about that is a state the product has: with no folders, "outside
-   * your folders" and "everything" are the same list, so one of these two
-   * answers is wrong. Which one is not knowable from here, so this claims
-   * neither -- it says the list could not be shown and offers the two things
-   * that recover it.
-   */
-  const unexplained =
-    scope === "recent" && !filtered && total !== null && total > 0 && folderCount === 0;
-  /**
-   * The probe was asked and did not answer, so neither screen below is known.
-   *
-   * <p>Keyed off `total` rather than off `isSuccess`, so the one expression
-   * decides it. `isSuccess` with no body is not a state RTK Query produces, but
-   * splitting the question across two lines is how the pair drifts apart -- and
-   * the drift would land on the screen that tells somebody their account is
-   * empty.
-   */
-  const probeUnresolved =
-    scope === "recent" && !filtered && (total === null || folderCount === null);
-
-  if (filtered) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <CalendarDays className="h-8 w-8 text-muted-foreground" />
-        {/* "from" rather than "in", and the label verbatim: it reads correctly
-            for all three shapes the window can take — "from Today", "from Last
-            7 days", "from Thu, 13 Aug" — where lower-casing turns a date into
-            "thu, 13 aug". */}
-        <p className="mt-3 font-medium">Nothing from {when.label}</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          There are no conversations in this stretch of time. Your other meetings
-          are still here.
-        </p>
-        <Button variant="outline" className="mt-4" onClick={onClearDate}>
-          Show any time
-        </Button>
-      </div>
-    );
-  }
-
-  // Nothing rather than a guess, for the moment between the two answers. It is
-  // one row over a warm connection, and a sentence that turns out to be wrong
-  // is worse than a blank half-second.
-  if (
-    scope === "recent" &&
-    (workspace.isLoading || workspace.isFetching || folders.isLoading || folders.isFetching)
-  ) {
-    return null;
-  }
-
-  /*
-   * The probe failed. Both screens below make a claim it was supposed to
-   * settle -- "everything is filed" or "you have nothing" -- and neither is
-   * known now, so this says only what is certainly true: this list is empty,
-   * and the wider list is one click away. It never tells somebody their
-   * account is empty on the strength of a request that failed.
-   */
-  if (probeUnresolved) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <FolderOpen className="h-8 w-8 text-muted-foreground" />
-        <p className="mt-3 font-medium">Nothing outside your folders</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          This list leaves out anything filed into a folder. Your other
-          conversations may be in one.
-        </p>
-        <Button variant="outline" className="mt-4" onClick={onShowAll}>
-          Show all conversations
-        </Button>
-      </div>
-    );
-  }
-
-  /*
-   * `scope === "recent"` as well as the count, though the probe above is
-   * already skipped on any other scope so `filedElsewhere` cannot be true here.
-   * Stated anyway: this screen must appear only when the user has explicitly
-   * narrowed to the unfiled list, and tying that to one `skip` expression makes
-   * it true by accident. Two lines apart, either could be relaxed without the
-   * other being noticed.
-   */
-  if (unexplained) {
-    return (
-      <div
-        role="alert"
-        className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
-      >
-        <RotateCw className="h-8 w-8 text-muted-foreground" />
-        <p className="mt-3 font-medium">Couldn&apos;t show your conversations</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          This list is the conversations outside your folders, and there are no
-          folders — so it should be showing all of them. Your conversations are
-          still here.
-        </p>
-        <div className="mt-4 flex gap-2">
-          <Button variant="outline" onClick={onRetry}>
-            Try again
-          </Button>
-          <Button variant="outline" onClick={onShowAll}>
-            Show all conversations
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (scope === "recent" && filedElsewhere) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <FolderOpen className="h-8 w-8 text-muted-foreground" />
-        <p className="mt-3 font-medium">Everything is in a folder</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          A conversation recorded or imported inside a folder is filed there.
-          Nothing has been lost — this list is the ones that were not.
-        </p>
-        <Button variant="outline" className="mt-4" onClick={onShowAll}>
-          Show all conversations
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-      <FileAudio className="h-8 w-8 text-muted-foreground" />
-      <p className="mt-3 font-medium">No conversations</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Record a meeting from your browser, or bring in a file you already have.
-        {userId ? "" : ""}
-      </p>
-      <div className="mt-4 flex gap-2">
+    <div>
+      <div className="flex flex-wrap gap-2.5">
         <Button asChild>
           <Link href={recordHref("/home")}>
-            <Mic className="mr-2 h-4 w-4" /> Record
+            <Mic className="mr-2 h-4 w-4" /> Record a meeting
           </Link>
         </Button>
         <Button variant="outline" asChild>
           <Link href="/upload">
-            <Download className="mr-2 h-4 w-4" /> Import
+            <Plus className="mr-2 h-4 w-4" /> Import a recording
           </Link>
         </Button>
+      </div>
+      {/* `UsageLimitService.MINUTES_ALLOWANCE` and `IMPORT_ALLOWANCE`. */}
+      <p className="mt-3 text-foot text-ink-5">
+        100 minutes of transcription and three imports, for the life of the
+        account. No card.
+      </p>
+
+      <div className="h-11" />
+
+      <section className="mb-6">
+        <h2 className="v2-label mb-4">What happens to a conversation</h2>
+        <div className="flex flex-col gap-5">
+          <Step n="1" title="It is written down, with the speakers separated">
+            Reverie transcribes the recording and tells the voices apart, so a
+            quotation has a name and a timecode against it.
+          </Step>
+          <Step n="2" title="It becomes a brief you can work with">
+            A summary shaped by the kind of meeting it was, with the action
+            items, decisions and risks read out of it — each carrying the
+            sentence it came from.
+          </Step>
+          <Step n="3" title="You can search it, ask about it, and take it with you">
+            Search jumps to the moment a phrase was said, Ask Reverie answers
+            with the passages behind it, and the whole thing exports as PDF,
+            Word, Markdown or plain text.
+          </Step>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="v2-label mb-1">Three things worth knowing now</h2>
+        <div className="flex flex-col">
+          <Fact
+            icon={Mic}
+            title="Reverie records this device, not the far end of a call"
+          >
+            Nothing joins the meeting to do it. If the others are on a call, put
+            them through the speakers, or record on the machine hosting it.
+          </Fact>
+          <Fact
+            icon={FileAudio}
+            title="A file you already have works just as well"
+          >
+            Import audio or video and it goes through the same pipeline as
+            something recorded here.
+          </Fact>
+          <Fact
+            icon={CalendarDays}
+            title="Your recordings are never used to train anything"
+          >
+            They answer your questions and nothing else, they are not reviewed
+            by people here, and you choose how long they are kept.
+          </Fact>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3.5">
+      <span className="tabular w-[18px] shrink-0 pt-0.5 font-mono text-foot text-ink-5">{n}</span>
+      <div className="min-w-0">
+        <p className="text-title-3 font-headline text-ink">{title}</p>
+        <p className="mt-1 max-w-[52ch] text-callout leading-[1.5] text-ink-3">{children}</p>
       </div>
     </div>
   );
 }
 
-function PanelTab({
-  icon,
-  label,
-  active,
-  onClick,
+function Fact({
+  icon: Icon,
+  title,
+  children,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  icon: typeof Mic;
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors",
-        active
-          ? "border-primary text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
+    <div className="flex items-start gap-3 py-4 shadow-[inset_0_1px_0_rgb(var(--line))]">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-5" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-title-3 font-headline text-ink">{title}</p>
+        <p className="mt-1 max-w-[66ch] text-callout leading-[1.5] text-ink-3">{children}</p>
+      </div>
+    </div>
   );
 }

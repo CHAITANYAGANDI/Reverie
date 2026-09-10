@@ -111,6 +111,40 @@ describe("TranscriptEditor", () => {
     expect(screen.queryByDisplayValue("Priya")).not.toBeInTheDocument();
   });
 
+  it("corrects a line in the type and the place it was read in", () => {
+    /*
+     * MEASURED AND WRONG ONCE. The editable line was `text-sm` sans with
+     * `px-2`, so opening the mode re-set every paragraph from the reading
+     * serif into interface type and pushed it 7px right of the column it had
+     * just been on -- 1440px QA put the reading column at x=447 and the
+     * editing one at x=454.
+     *
+     * <p>`21-transcript-editing.png` moves nothing: same serif, same column,
+     * and the only difference from `19-meeting-transcript.png` is which
+     * paragraph has a box round it. `-ml-2` is what pays for the box's own
+     * padding out of the grid gap rather than out of the text position.
+     */
+    editor();
+    const line = lineFor("We should ship on Thursday.");
+
+    expect(line).toHaveClass("v2-read");
+    expect(line).toHaveClass("-ml-2", "px-2");
+    expect(line.className).not.toMatch(/\btext-sm\b/);
+  });
+
+  it("hangs the timecode in the same gutter the reading mode uses", () => {
+    // `3.25rem` and `gap-x-3`, defined identically here and in the transcript
+    // panel: switching modes must not move a paragraph horizontally, and the
+    // two grids are the only reason it does not.
+    editor();
+    const grid = lineFor("We should ship on Thursday.").closest("div")?.parentElement;
+
+    expect(grid).toHaveClass("grid", "grid-cols-[3.25rem_minmax(0,1fr)]", "gap-x-3");
+    // One per utterance, in the gutter, and not a control: seeking is the
+    // reading mode's job.
+    expect(screen.getByText("00:00")).toBeInTheDocument();
+  });
+
   it("sends every change as one batch", async () => {
     const user = userEvent.setup();
     const { ref } = editor();

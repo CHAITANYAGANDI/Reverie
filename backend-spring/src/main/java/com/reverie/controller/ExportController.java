@@ -1,8 +1,5 @@
 package com.reverie.controller;
 
-import com.reverie.common.ApiException;
-import com.reverie.domain.ExportFormat;
-import com.reverie.domain.ExportOptions;
 import com.reverie.dto.AudioDownloadResponse;
 import com.reverie.dto.AudioExportResponse;
 import com.reverie.export.Downloads;
@@ -17,18 +14,23 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.Set;
-
 /**
- * Taking a meeting out of Reverie.
+ * Taking a meeting out of Reverie: three things, in three fixed formats.
  *
- * <p>One endpoint for the four document formats rather than four endpoints,
- * because they differ in one parameter and nothing else — same meeting, same
- * options, same permissions — and the audio has an endpoint of its own because
- * it differs in everything: it is not rendered, it is not small, and it does not
- * come back through this service at all.
+ * <p>There was one endpoint here taking eleven query parameters — a format from
+ * four, which of the summary's sections by key, whether to include the action
+ * items, whether to append the transcript, whether to label it with speakers,
+ * whether to label it with times, and how much of the back-and-forth to flatten.
+ * Every one of those was a question the product asked instead of answering, and
+ * between them they described several hundred documents, of which people wanted
+ * three.
+ *
+ * <p>So: the summary as a PDF, the transcript as a PDF, the recording as an
+ * MP3. Each is its own endpoint because each is its own document, and none of
+ * them takes an option that changes what is in it. What is left on the query
+ * string is the two things that are about the <em>reader</em> rather than about
+ * the document — which language they are reading in, and what time zone they
+ * are in — and those were never choices about content.
  */
 @RestController
 @RequestMapping("/api/v1/meetings/{id}")
@@ -41,49 +43,38 @@ public class ExportController {
     }
 
     /**
-     * The meeting as a file.
+     * The complete summary, as a PDF.
      *
-     * <p>Every option defaults to what this endpoint did before it had any, so
-     * a caller that passes only {@code format} still gets the summary, the
-     * action items and no transcript. That matters more than it sounds: the
-     * account-wide data export calls the same service, and so does anyone who
-     * bookmarked a download URL.
+     * <p>Complete without being asked: every section the template wrote, in the
+     * order it wrote them, and what people agreed to do. It carries no
+     * transcript — that is the endpoint below.
      *
-     * @param format      pdf, docx, md or txt
-     * @param summary     include the brief
-     * @param sections    which summary sections, by key, comma-separated; blank means all
-     * @param actionItems include what people agreed to do
-     * @param transcript  include the full transcript, which is usually most of the file
-     * @param speakers    label each utterance with who said it
-     * @param timestamps  label each utterance with when it was said
-     * @param combine     none, speaker, or all — how much of the back-and-forth to flatten
-     * @param language    read it in a language the meeting has already been translated into
-     * @param tz          the reader's IANA time zone, so the date matches the app's
+     * @param language read it in a language the meeting has already been translated into
+     * @param tz       the reader's IANA time zone, so the date matches the app's
      */
-    @GetMapping("/export")
-    public ResponseEntity<byte[]> export(@PathVariable String id,
-                                         @RequestParam(defaultValue = "pdf") String format,
-                                         @RequestParam(defaultValue = "true") boolean summary,
-                                         @RequestParam(required = false) String sections,
-                                         @RequestParam(defaultValue = "true") boolean actionItems,
-                                         @RequestParam(defaultValue = "false") boolean transcript,
-                                         @RequestParam(defaultValue = "true") boolean speakers,
-                                         @RequestParam(defaultValue = "true") boolean timestamps,
-                                         @RequestParam(required = false) String combine,
-                                         @RequestParam(required = false) String language,
-                                         @RequestParam(required = false) String tz) {
-        ExportFormat chosen = ExportFormat.find(format).orElseThrow(() -> ApiException.badRequest(
-                "Unsupported export format. Reverie writes: "
-                        + String.join(", ", Arrays.stream(ExportFormat.values())
-                                .map(ExportFormat::extension).toList())));
+    @GetMapping("/export/summary")
+    public ResponseEntity<byte[]> summary(@PathVariable String id,
+                                          @RequestParam(required = false) String language,
+                                          @RequestParam(required = false) String tz) {
+        return file(exports.summaryPdf(SecurityUtils.currentUserId(), id, language, tz));
+    }
 
-        ExportOptions options = new ExportOptions(
-                summary, keys(sections), actionItems, transcript,
-                speakers, timestamps, ExportOptions.Combine.of(combine));
+    /**
+     * The whole transcript, as a PDF, with who said it and when.
+     *
+     * <p>Speakers and timestamps are the contract rather than parameters: a
+     * transcript without them is a wall of text nobody can attribute or check
+     * against the recording. It carries no summary.
+     */
+    @GetMapping("/export/transcript")
+    public ResponseEntity<byte[]> transcript(@PathVariable String id,
+                                             @RequestParam(required = false) String language,
+                                             @RequestParam(required = false) String tz) {
+        return file(exports.transcriptPdf(SecurityUtils.currentUserId(), id, language, tz));
+    }
 
-        ExportFile file = exports.render(
-                SecurityUtils.currentUserId(), id, chosen, options, language, tz);
-
+    /** The same headers for both documents, so they cannot drift apart. */
+    private static ResponseEntity<byte[]> file(ExportFile file) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, file.mediaType())
                 .header(HttpHeaders.CONTENT_DISPOSITION, Downloads.attachment(file.filename()))
@@ -91,21 +82,6 @@ public class ExportController {
                 // to be in the next download, not in the one after it.
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(file.content());
-    }
-
-    /** Section keys from a comma-separated parameter, blanks discarded. */
-    private static Set<String> keys(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return Set.of();
-        }
-        Set<String> keys = new LinkedHashSet<>();
-        for (String part : raw.split(",")) {
-            String key = part.trim();
-            if (!key.isEmpty()) {
-                keys.add(key);
-            }
-        }
-        return keys;
     }
 
     /** A short-lived link to the original recording, named after the meeting. */

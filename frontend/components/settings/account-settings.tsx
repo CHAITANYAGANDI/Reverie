@@ -3,11 +3,10 @@
 /**
  * Account Settings.
  *
- * One page, two tabs. There used to be several separate routes in three
- * different places — Settings in the sidebar, Billing in the sidebar, Privacy
- * in the sidebar — which made every "where do I change…" question a hunt.
- * Four of the six tabs that replaced them have since gone with the features
- * they configured.
+ * One page, four tabs: General, Email, Data Retention, Plans. There used to be
+ * several separate routes in three different places — Settings in the sidebar,
+ * Billing in the sidebar, Privacy in the sidebar — which made every "where do I
+ * change…" question a hunt.
  *
  * The tab is in the URL rather than in state, so a tab can be linked to, opened
  * in a new window and bookmarked.
@@ -18,15 +17,21 @@
  * one click from where the choice is never made.
  *
  * Each tab is its own component and fetches its own data. Nothing is loaded for
- * a tab that is not open: Plans reads usage, and that should not be paid for by
- * somebody changing their name.
+ * a tab that is not open: Plans reads usage, Data Retention reads the privacy
+ * overview, and neither should be paid for by somebody changing their name.
+ * That is the whole practical argument for the split — the two subjects that
+ * came off General each had a query on them, and both ran on every visit to a
+ * page most people open to edit one field.
  */
 
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SETTINGS_TABS, pathForTab, tabFromPath, type SettingsTab } from "@/lib/settings-tabs";
+import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { GeneralTab } from "@/components/settings/general-tab";
+import { EmailTab } from "@/components/settings/email-tab";
+import { RetentionTab } from "@/components/settings/retention-tab";
 import { PlansTab } from "@/components/settings/plans-tab";
 import { cn } from "@/lib/utils";
 
@@ -35,35 +40,65 @@ export function AccountSettings() {
   const active = tabFromPath(pathname ?? "/settings");
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Account Settings</h1>
+    /*
+     * `relative`, for the wash. See the note on `AmbientCanvas` below.
+     *
+     * <p>A preferences document, set in the measure like every other document
+     * in the product. It was 4xl (896px), which is a dashboard width — and
+     * these are single-column sections of prose and switches, so the extra
+     * 216px was spent making each line harder to read.
+     */
+    <div className="relative">
+      {/*
+        THE SAME WASH EVERY OTHER PAGE IN THE SHELL HAS.
 
-      {/* Scrolls sideways rather than wrapping. Tabs wrapped onto two rows on
-          a narrow window read as two groups, and the grouping would be an
-          accident of the viewport width. */}
-      <nav
-        aria-label="Account settings"
-        className="mt-4 flex gap-1 overflow-x-auto border-b"
-      >
-        {SETTINGS_TABS.map((tab) => (
-          <Link
-            key={tab.id}
-            href={pathForTab(tab.id)}
-            aria-current={tab.id === active ? "page" : undefined}
-            className={cn(
-              "shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
-              tab.id === active
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
+        <p>Settings was the last page without it, after `/ask` — near-black from
+        the band to the footer, which is how a page comes to look like a
+        different application from the one it is inside. Home, Library, a
+        folder, a meeting and Ask all draw it.
 
-      <div className="py-6">
-        <TabBody tab={active} />
+        <p>Pulled up by exactly the band height so the field is continuous
+        through the glass and the band's hairline is the only line there. 30rem
+        rather than Home's 34: what it has to lift here is the title and the tab
+        row, not a masthead and a lede, and the wash should be gone before the
+        first switch.
+      */}
+      <AmbientCanvas height="30rem" top="calc(var(--band) * -1)" />
+
+      <div className="mx-auto w-full max-w-measure">
+        <h1 className="text-title-l font-headline text-ink">Account Settings</h1>
+
+        {/* The same device the meeting's reading modes use and the band uses
+            for its places: a word, and a 2px ink rule on a boundary the layout
+            already has. Three underlines in the product, one idea.
+
+            Scrolls sideways rather than wrapping. Four tabs wrapped onto two
+            rows on a narrow window read as two groups, and the grouping would
+            be an accident of the viewport width. */}
+        <nav
+          aria-label="Account settings"
+          className="no-scrollbar mt-5 flex gap-6 overflow-x-auto border-b border-line"
+        >
+          {SETTINGS_TABS.map((tab) => (
+            <Link
+              key={tab.id}
+              href={pathForTab(tab.id)}
+              aria-current={tab.id === active ? "page" : undefined}
+              className={cn(
+                "-mb-px shrink-0 whitespace-nowrap border-b-2 px-0 pb-2.5 pt-1 text-callout transition-colors",
+                tab.id === active
+                  ? "border-ink font-headline text-ink"
+                  : "border-transparent text-ink-3 hover:text-ink-2",
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="py-7">
+          <TabBody tab={active} />
+        </div>
       </div>
     </div>
   );
@@ -71,6 +106,10 @@ export function AccountSettings() {
 
 function TabBody({ tab }: { tab: SettingsTab }) {
   switch (tab) {
+    case "email":
+      return <EmailTab />;
+    case "data":
+      return <RetentionTab />;
     case "plans":
       return <PlansTab />;
     case "general":

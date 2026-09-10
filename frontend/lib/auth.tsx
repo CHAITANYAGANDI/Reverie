@@ -10,6 +10,11 @@ import {
   publishAuthState,
 } from "@/lib/auth-store";
 import { clearPreferences } from "@/lib/preference-store";
+import { ONBOARDING_FLAG } from "@/lib/onboarding";
+
+/** Where dev mode keeps the onboarding flag, one per dev user. */
+const devFlagKey = (userId: string) => `reverie.${ONBOARDING_FLAG}.${userId}`;
+import { SIGN_IN } from "@/lib/routes";
 
 interface AuthContextValue {
   mode: "dev" | "clerk";
@@ -32,7 +37,65 @@ interface AuthContextValue {
   sessionKey: string;
   isSignedIn: boolean;
   isLoaded: boolean;
-  signOut?: () => void;
+  /**
+   * End the session and leave.
+   *
+   * <p>Lands on the sign-in form by default, because the ordinary reason to
+   * sign out is to stop — and a marketing page is not what somebody who has
+   * just left their own account came for. `to` is for the one case where that
+   * is wrong: closing an account, which goes to the sign-up form instead. That
+   * account is gone, so a form offering to sign into it would be the product
+   * not having noticed, and the only way back in is to make a new one.
+   *
+   * <p>It ends somewhere else whatever the revoke does. Under Clerk that is not
+   * automatic — see lib/sign-out.
+   */
+  signOut?: (to?: string) => void;
+  /**
+   * Whether the two onboarding questions have been answered or skipped.
+   *
+   * <p>An explicit flag, never inferred from what the account contains. An
+   * account with no meetings has not necessarily skipped onboarding, and one
+   * with a display name did not necessarily get it from this flow — Google
+   * supplies it. See lib/onboarding.
+   *
+   * <p>`false` until `isLoaded`, because the honest answer before the identity
+   * has arrived is "not known", and the screen that reads it treats not-known
+   * the same as not-done: two skippable questions is a cheap wrong answer.
+   */
+  onboardingCompleted: boolean;
+  /**
+   * Record that onboarding is finished — answered or skipped, which are the
+   * same thing to this flag.
+   *
+   * <p>Resolves when it has been written, so the screen can leave knowing the
+   * next arrival will not be asked again.
+   */
+  completeOnboarding: () => Promise<void>;
+  /**
+   * Forget that onboarding was ever finished.
+   *
+   * <p>For the one case that produces it: closing an account destroys Reverie's
+   * data, the identity deletion is refused, and the credential survives. That
+   * identity must not go on claiming to be onboarded — the next sign-in gets a
+   * freshly provisioned, empty Reverie row, and walking somebody into an empty
+   * product with the questions already marked answered is the exact state this
+   * flag exists to prevent.
+   *
+   * <p>Not called by an ordinary sign-out. Signing out is not losing anything.
+   */
+  clearOnboarding: () => Promise<void>;
+  /**
+   * Destroy the sign-in itself, not just Reverie's copy of the account.
+   *
+   * <p>Closing an account erases Reverie's data; this is the other half, and
+   * without it the credential survives and signing in with the same Google
+   * account walks straight back into an empty product. Returns whether the
+   * identity is actually gone, because the instance can refuse — self-service
+   * deletion is a setting — and telling somebody their sign-in was destroyed
+   * when it was not is worse than telling them it could not be.
+   */
+  deleteIdentity: () => Promise<boolean>;
   /**
    * Who the person is, as the identity provider knows them.
    *
@@ -144,9 +207,20 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
    * deleted, re-provisioning that id on the next request. Forgetting the stored
    * id and reloading drops the cached data with it.
    */
-  const signOut = React.useCallback(() => {
+  const signOut = React.useCallback((to?: string) => {
     try {
       window.localStorage.removeItem(DEV_USER_KEY);
+      /*
+       * The onboarding flag is deliberately NOT removed here.
+       *
+       * <p>Signing out is not losing anything. It briefly did clear it, which
+       * made dev mode ask the two questions again on every single sign-in —
+       * the flag is keyed on the dev user id and signing back in as the same
+       * dev user is the same person, who has already answered.
+       *
+       * <p>What destroys it is `deleteIdentity`, which is the deletion path and
+       * dev mode's only version of "this identity is gone".
+       */
     } catch {
       /* ignore */
     }
@@ -154,13 +228,76 @@ function DevAuthProvider({ children }: { children: React.ReactNode }) {
     // notice this happened. See lib/preference-store.ts.
     clearPreferences();
     authStore.devUserId = DEFAULT_DEV_USER;
-    window.location.href = "/";
+    window.location.href = to ?? SIGN_IN;
+    // Nothing from the render, now that the onboarding flag is no longer
+    // touched here. It briefly needed `userId` for the key it was clearing, and
+    // leaving that dependency behind would re-create this callback on every dev
+    // user switch for no reason.
   }, []);
+
+  /*
+   * DEV MODE HAS NO IDENTITY PROVIDER, so it has nowhere to put this but the
+   * browser.
+   *
+   * <p>Under Clerk the flag lives on the identity, which is what makes the
+   * whole lifecycle work: destroying the identity destroys the flag, so the
+   * same Google account coming back after a full deletion is a new identity
+   * with nothing on it and is asked again. Dev mode has no identity to destroy
+   * and no server row of its own to key on, so it keeps the flag beside the dev
+   * user id it already stores — and `deleteIdentity` clears it, which is dev
+   * mode's only version of the same event. An ordinary sign-out leaves it
+   * alone, because signing out is not losing anything.
+   */
+  const [devOnboarding, setDevOnboarding] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      setDevOnboarding(window.localStorage.getItem(devFlagKey(userId)) === "1");
+    } catch {
+      /* a browser with storage refused is a browser that asks again */
+    }
+  }, [userId]);
+
+  const completeOnboarding = React.useCallback(async () => {
+    setDevOnboarding(true);
+    try {
+      window.localStorage.setItem(devFlagKey(userId), "1");
+    } catch {
+      /* the screen still leaves; it is two questions, not a gate */
+    }
+  }, [userId]);
+
+  const clearOnboarding = React.useCallback(async () => {
+    setDevOnboarding(false);
+    try {
+      window.localStorage.removeItem(devFlagKey(userId));
+    } catch {
+      /* ignore */
+    }
+  }, [userId]);
+
+  /*
+   * There is no identity in dev mode, so there is nothing to destroy and
+   * nothing to claim was destroyed — hence `false`, honestly.
+   *
+   * <p>It still forgets the onboarding answers, because this is the deletion
+   * path and dev mode's flag is the only thing standing in for the identity
+   * that a Clerk deletion would take with it. Without this, closing a dev
+   * account and signing back in landed in an empty product that thought the
+   * questions had been answered.
+   */
+  const deleteIdentity = React.useCallback(async () => {
+    await clearOnboarding();
+    return false;
+  }, [clearOnboarding]);
 
   const value: AuthContextValue = {
     mode: "dev",
     userId,
     setDevUserId,
+    onboardingCompleted: devOnboarding,
+    completeOnboarding,
+    clearOnboarding,
+    deleteIdentity,
     // Dev has no sessions. The id is the only thing that distinguishes one
     // sign-in from another, and switching dev users is a sign-in.
     sessionKey: isLoaded ? userId : "",

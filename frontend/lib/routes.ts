@@ -17,14 +17,103 @@
 export const HOME = "/home";
 
 /**
- * The first screen inside a new account.
+ * The two questions a new account is asked, before Now.
  *
- * <p>Written by both sign-up roads and read by the screen itself, which is
- * exactly the shape of thing this file exists for.
+ * <p>Written by the sign-up form and by the SSO callback's *sign-up* fallback,
+ * and read by the screen itself — which is exactly the shape of thing this file
+ * exists for. Only the sign-up roads point here: a sign-in goes straight to
+ * Now, and the screen sends anybody whose onboarding is already recorded
+ * onwards, so neither road can ask twice.
  */
 export const WELCOME = "/welcome";
 
-/** Every folder. */
+/**
+ * The two screens Reverie hosts itself, and the reason they are constants.
+ *
+ * <p>These are read back by Clerk in three separate places — the provider, the
+ * middleware and the OAuth callback — and every one of them has to agree.
+ * Where any of them is missing, Clerk does not fail: it quietly falls back to
+ * its own hosted Account Portal on `accounts.dev`, which is a different domain
+ * wearing a different brand, and somebody who cancels a Google sign-in ends up
+ * there instead of back on Reverie's form. That is not a crash anyone would
+ * catch in review, which is exactly the kind of string this file is for.
+ */
+export const SIGN_IN = "/sign-in";
+export const SIGN_UP = "/sign-up";
+
+/**
+ * The Privacy & Demo Notice, which is public.
+ *
+ * <p>Four files write this path and none of them can be wrong about it: the
+ * landing footer links to it, `middleware.ts` has to name it as public or the
+ * gate sends a signed-out reader to the sign-in form, `lib/build-info` uses it
+ * as the internal default for the privacy link, and the page itself lives at
+ * it. A literal in the middleware that drifted from a literal in the footer
+ * would be a published link that bounces off the login — which is precisely
+ * what `/privacy` in that footer already did.
+ *
+ * <p><b>Not `/privacy`.</b> That path is Account Settings → Data Retention and
+ * has to stay that way: `RETENTION_APPLIED` notifications written months ago
+ * carry it in their link column. See `LEGACY_PATHS` in lib/settings-tabs.
+ */
+export const PRIVACY_NOTICE = "/privacy-policy";
+
+/**
+ * Account Settings, at its own front door.
+ *
+ * <p>`/settings` rather than `/settings/general`: the route is a catch-all and
+ * reads the tab from the path, so the bare form is the one that means "settings"
+ * rather than "the General tab of settings". The account menu already links
+ * here; this is the same string, named, now that the search box offers it too.
+ */
+export const SETTINGS = "/settings";
+
+/**
+ * The chat.
+ *
+ * <p>The third place in the band. A constant rather than six literals, for the
+ * same reason the folder paths are: it is written by the band and by the mobile
+ * tabs and parsed by lib/places.ts.
+ */
+export const ASK = "/ask";
+
+/**
+ * Everything you have, and the folders you filed it in.
+ *
+ * <p>The second of the three places in the band. Home answers "what is
+ * happening"; this answers "where is the thing I am looking for" — which used
+ * to be a scope inside Home and a separate /folders page, two halves of one
+ * question in two places.
+ */
+export const LIBRARY = "/library";
+
+/**
+ * The meeting id in a path, or null when the path is not a meeting's.
+ *
+ * <p>Mirrors {@link folderIdFrom}, and exists for the same reason: the shell
+ * has to know whether the page under it lays out its own frame, and matching
+ * `/meetings/<something>` with a string test in three places is how one of
+ * them ends up disagreeing.
+ *
+ * <p>Deliberately strict about the shape. `/meetings` on its own is not a
+ * meeting — there is no such route — and a nested path is not one either.
+ */
+export function meetingIdFrom(pathname: string): string | null {
+  const m = /^\/meetings\/([^/]+)$/.exec(pathname);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Where the folder list used to be.
+ *
+ * <p>It is part of Library now — a folder groups what you have, so it belongs
+ * on the page called what you have — and this route redirects there. Kept as a
+ * constant rather than deleted because the redirect page names it, and because
+ * `isFolderListPath` still has to recognise the URL on the way through so the
+ * band underlines Library rather than nothing.
+ *
+ * <p>Nothing in the app links here any more. See app/(app)/folders/page.tsx.
+ */
 export const FOLDERS = "/folders";
 
 /** One folder. */

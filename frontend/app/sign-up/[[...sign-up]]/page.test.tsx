@@ -73,7 +73,7 @@ async function reachTheCode() {
 
 async function enterTheCode() {
   await userEvent.type(screen.getByLabelText("Code"), "123456");
-  await userEvent.click(screen.getByRole("button", { name: /Confirm and continue/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Verify and continue/ }));
 }
 
 beforeEach(() => {
@@ -101,10 +101,19 @@ describe("what it refuses to ask for", () => {
   });
 
   it("asks for exactly two things", () => {
-    render(<SignUpPage />);
+    const { container } = render(<SignUpPage />);
 
-    const fields = screen.getAllByRole("textbox").length + screen.getAllByLabelText(/password/i).length;
-    expect(fields).toBe(2);
+    /*
+     * Counted as inputs, and named. This used to count anything labelled
+     * "password", which meant the reveal control on the password box read as a
+     * third thing being asked for — a control on a field is not a field. Naming
+     * the two also says which two, so a swap could not pass a count.
+     */
+    const asked = Array.from(container.querySelectorAll("input"));
+    expect(asked.map((input) => input.getAttribute("autocomplete"))).toEqual([
+      "email",
+      "new-password",
+    ]);
   });
 
   it("does not ask for a name, a company or a card", () => {
@@ -298,7 +307,7 @@ describe("another code", () => {
     // next thing anybody does is press it again.
     await reachTheCode();
 
-    await userEvent.click(screen.getByRole("button", { name: "Send another code" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send another" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(/A new code is on its way/);
     expect(clerk.prepare).toHaveBeenCalledTimes(2);
@@ -314,7 +323,7 @@ describe("another code", () => {
     clerk.prepare.mockRejectedValue(TAKEN);
     clerk.reload.mockResolvedValue(FINISHED);
 
-    await userEvent.click(screen.getByRole("button", { name: "Send another code" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send another" }));
 
     await waitFor(() => expect(clerk.setActive).toHaveBeenCalledWith({ session: "sess_new" }));
   });
@@ -327,10 +336,10 @@ describe("another code", () => {
     clerk.reload.mockResolvedValue({ ...OPEN, missingFields: ["username"] });
     clerk.update.mockRejectedValue({ errors: [{ code: "too_many_requests" }] });
 
-    await userEvent.click(screen.getByRole("button", { name: "Send another code" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send another" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/Too many attempts/);
-    expect(screen.getByRole("button", { name: "Send another code" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send another" })).toBeEnabled();
   });
 
   it("cannot be pressed twice over", async () => {
@@ -338,21 +347,21 @@ describe("another code", () => {
     let release = () => {};
     clerk.prepare.mockReturnValue(new Promise((resolve) => (release = () => resolve(OPEN))));
 
-    await userEvent.click(screen.getByRole("button", { name: "Send another code" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send another" }));
 
     expect(screen.getByRole("button", { name: "Sending…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Confirm and continue/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Verify and continue/ })).toBeDisabled();
 
     release();
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Send another code" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Send another" })).toBeEnabled(),
     );
   });
 
   it("offers a different address, which starts again", async () => {
     await reachTheCode();
 
-    await userEvent.click(screen.getByRole("button", { name: "Use a different email" }));
+    await userEvent.click(screen.getByRole("button", { name: "Change the address" }));
 
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
   });

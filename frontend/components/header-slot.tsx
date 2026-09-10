@@ -20,7 +20,7 @@
  * read the Spanish.
  *
  * A portal moves the rendered output and leaves every handler, dialog and piece
- * of state exactly where it already is. `FolderHeaderActions` takes the other
+ * of state exactly where it already is. `FolderActions` takes the other
  * approach — the shell renders it from the path — and that works there because
  * a folder's actions need a folder id and nothing else.
  *

@@ -73,7 +73,7 @@ describe("ReassignSpeakerDialog", () => {
     // diarization never separated out, which is exactly the case a
     // single-speaker meeting is most likely to be.
     show({ speakers: [SPEAKERS[1]] });
-    expect(screen.getByText(/isn't listed yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/diarization never separated out/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New speaker" })).toBeEnabled();
   });
 
@@ -140,13 +140,71 @@ describe("assigning to a speaker who is not in the meeting", () => {
     expect(screen.getByText(/isn't listed yet/i)).toBeInTheDocument();
   });
 
-  it("creates and assigns on confirmation", async () => {
+  it("asks who said it before creating anybody", async () => {
+    /*
+     * IT USED TO BE A BARE CONFIRM, and the speaker it made was called
+     * `Speaker 2` -- which on a transcript with one real participant is a
+     * second person who was never in the room, invented by the one correction
+     * whose entire purpose is accuracy.
+     *
+     * <p>So the confirm is refused until there is a name. The endpoint still
+     * allocates `Speaker N`; the caller renames it immediately -- see
+     * `confirmReassignToNew` in the meeting page.
+     */
     const { onConfirmNew } = show();
 
     await userEvent.click(screen.getByRole("button", { name: "New speaker" }));
-    await userEvent.click(screen.getByRole("button", { name: /create & assign/i }));
 
-    expect(onConfirmNew).toHaveBeenCalledTimes(1);
+    const confirm = screen.getByRole("button", { name: /create & assign/i });
+    expect(confirm).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText("Their name"), "Maya Chen");
+
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    expect(onConfirmNew).toHaveBeenCalledWith("Maya Chen");
+  });
+
+  it("will not take whitespace for a name", async () => {
+    const { onConfirmNew } = show();
+    await userEvent.click(screen.getByRole("button", { name: "New speaker" }));
+
+    await userEvent.type(screen.getByLabelText("Their name"), "   ");
+
+    expect(screen.getByRole("button", { name: /create & assign/i })).toBeDisabled();
+    expect(onConfirmNew).not.toHaveBeenCalled();
+  });
+
+  it("takes Enter in the name field as the confirmation", async () => {
+    const { onConfirmNew } = show();
+    await userEvent.click(screen.getByRole("button", { name: "New speaker" }));
+
+    await userEvent.type(screen.getByLabelText("Their name"), "Maya Chen{Enter}");
+
+    expect(onConfirmNew).toHaveBeenCalledWith("Maya Chen");
+  });
+
+  it("forgets the name when the dialog opens on a different selection", async () => {
+    // A name left standing from the last line would be a click away from
+    // filing this one under somebody who did not say it.
+    const { view } = show();
+    await userEvent.click(screen.getByRole("button", { name: "New speaker" }));
+    await userEvent.type(screen.getByLabelText("Their name"), "Maya Chen");
+
+    view.rerender(
+      <ReassignSpeakerDialog
+        target={{ ...TARGET, segmentId: "seg_9" }}
+        speakers={SPEAKERS}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        onConfirmNew={vi.fn()}
+      />,
+    );
+
+    // Back to the list of speakers, with nothing typed behind it.
+    expect(screen.queryByLabelText("Their name")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "New speaker" }));
+    expect(screen.getByLabelText("Their name")).toHaveValue("");
   });
 
   it("can be backed out of, leaving the list as it was", async () => {

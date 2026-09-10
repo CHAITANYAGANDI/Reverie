@@ -3,9 +3,10 @@
 /**
  * General — who you are, what is done with it, and the way out.
  *
- * Five things, in the order somebody needs them: the identity block, the
+ * Four things, in the order somebody needs them: the identity block, the
  * language your meetings are held in, what Reverie does and does not do with a
- * recording, how long it keeps one, and the button that ends the account.
+ * recording, and the button that ends the account. The email switches and the
+ * retention dials were the fourth and fifth and are tabs of their own now.
  *
  * Every field here is read by something. Your name is matched against the owner
  * of every action item, which is the only thing that turns a list of promises
@@ -22,36 +23,25 @@
  * column, so the change is handed to the provider, and a development session
  * has no provider and therefore nothing to rotate.
  *
- * The last two sections are the ones that delete things, and they are on this
- * page rather than behind a tab of their own because there is no longer a tab of
- * their own. Both endpoints have existed and worked for months with nothing in
- * the interface able to reach them: retention could only be set, and an account
- * only closed, by calling the API by hand. A deletion schedule that runs every
- * night and cannot be seen from inside the product is the worst version of this
- * feature, so it is now visible.
+ * Close Account is the section that deletes things, and it stays here: it is
+ * not a schedule and not a preference, it is the way out of the account, and
+ * the account is what this tab is about. Its endpoint had existed and worked
+ * for months with nothing in the interface able to reach it — an account could
+ * only be closed by calling the API by hand — which is the same reason the
+ * retention dials briefly lived here too.
  */
 
 import * as React from "react";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  Clock,
-  Globe,
-  Lightbulb,
-  Mail,
-  Loader2,
-  Pencil,
-  Trash2,
-  UserCheck,
-} from "lucide-react";
+import Link from "next/link";
+import { Globe, Lightbulb, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { pathForTab } from "@/lib/settings-tabs";
 import { identityPermissions } from "@/lib/identity-owner";
 import {
   useGetPreferencesQuery,
   useUpdatePreferencesMutation,
   useGetLanguagesQuery,
-  useGetPrivacyOverviewQuery,
-  useUpdateRetentionMutation,
   useCloseAccountMutation,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -59,6 +49,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { settingsError } from "@/components/settings/shared";
 import { LEGAL_LINKS } from "@/lib/build-info";
+import { SIGN_UP } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   Avatar,
@@ -66,12 +57,7 @@ import {
   type ProfileForm,
   type ProfilePatch,
 } from "@/components/settings/profile-dialog";
-import {
-  RETENTION_CHOICES,
-  DELETE_PHRASE,
-  confirmsDeletion,
-  retentionLabel,
-} from "@/lib/privacy";
+import { DELETE_PHRASE, confirmsDeletion } from "@/lib/privacy";
 
 export function GeneralTab() {
   return (
@@ -79,8 +65,6 @@ export function GeneralTab() {
       <IdentityBlock />
       <LanguageRow />
       <TrainingSection />
-      <EmailSection />
-      <RetentionSection />
       <CloseAccountSection />
       <Footer />
     </div>
@@ -281,10 +265,10 @@ function LanguageRow() {
 function TrainingSection() {
   return (
     <section aria-labelledby="training-heading" className="space-y-1 pt-6">
-      <h2 id="training-heading" className="flex items-center gap-2 text-lg font-semibold">
-        <Lightbulb className="h-4 w-4 text-muted-foreground" /> Feedback and training
+      <h2 id="training-heading" className="flex items-center gap-2 text-title-3 font-headline text-ink">
+        <Lightbulb className="h-4 w-4 text-ink-3" /> Feedback and training
       </h2>
-      <div className="space-y-2 border-b py-4 text-sm text-muted-foreground">
+      <div className="space-y-2 border-b border-line py-4 text-callout text-ink-3">
         <p>
           <strong className="text-foreground">
             Reverie does not train on your meetings.
@@ -314,328 +298,39 @@ function TrainingSection() {
           transcribed in full afterwards, and that fuller transcript is the one
           that is kept.
         </p>
+        {/* The link moved with the section. It was `#data`, an anchor to the
+            retention dials further down this tab; they are a tab of their own
+            now, so this is a real navigation rather than a jump. Closing the
+            account is still on this tab and is still below, so that half of
+            the sentence stays a `below`. */}
         <p>
-          How long any of it stays is <a href="#data" className="text-primary underline-offset-2 hover:underline">yours to set below</a>,
-          and you can delete the whole account from the same place.
+          How long any of it stays is{" "}
+          <Link
+            href={pathForTab("data")}
+            className="text-brand-text underline-offset-2 hover:underline"
+          >
+            yours to set under Data Retention
+          </Link>
+          , and you can delete the whole account below.
         </p>
       </div>
     </section>
   );
 }
 
-/**
- * What Reverie will write to you about.
+/*
+ * EMAIL AND DATA RETENTION ARE TABS NOW, and both were here.
  *
- * <h2>Why this exists at all, given V56 deleted the tab it used to be</h2>
+ * <p>`EmailSection` with its five switches, and `RetentionSection` with its two
+ * dials, sat between the training paragraph and the close-account control. Both
+ * arrived here for a good reason -- their endpoints had worked for months with
+ * nothing in the interface able to reach them, and getting them on screen
+ * mattered more than getting them in the right place -- and both outgrew it.
  *
- * <p>V56 removed every email and said why: the switches had no UI to reach
- * them, so nothing was going out and nobody could have turned anything on. It
- * also deleted the four messages, and it was right about those too — they
- * reported things the reader could see by opening the app.
- *
- * <p>Five messages came back that pass a different test: they reach somebody
- * who is <em>not</em> in Reverie, about something they cannot see from outside
- * it, while there is still something to do about it. Every one of them is off
- * until it is switched on here, which is the half V56 was missing.
- *
- * <h2>What is not on this list</h2>
- *
- * <p>Two messages have no switch and the page says so rather than hiding it:
- * running out of the allowance, and the account being closed. Neither is a
- * notification about the contents of an account. The second is the sharper
- * case — closing an account deletes the row these very switches live on, so by
- * the time it is sent there is nothing left to consult and no bell left to
- * ring.
- *
- * <p>Each switch saves on its own. A section of six toggles behind one Save
- * button is a section where flipping one thing and leaving loses it.
+ * <p>See components/settings/email-tab and components/settings/retention-tab.
+ * Nothing about either behaviour changed in the move; what changed is that
+ * General is one subject again.
  */
-function EmailSection() {
-  const prefs = useGetPreferencesQuery();
-  const [update, { isLoading }] = useUpdatePreferencesMutation();
-
-  async function set(field: EmailSwitch, value: boolean) {
-    try {
-      await update({ [field]: value }).unwrap();
-    } catch (err) {
-      toast.error(settingsError(err));
-    }
-  }
-
-  return (
-    <section id="email" aria-labelledby="email-heading" className="space-y-1 pt-6">
-      <h2 id="email-heading" className="flex items-center gap-2 text-lg font-semibold">
-        <Mail className="h-4 w-4 text-muted-foreground" /> Email notifications
-      </h2>
-      <div className="space-y-3 border-b py-4">
-        <p className="text-sm text-muted-foreground">
-          All off unless you turn them on. Reverie does not email you about
-          things you can see by opening it.
-        </p>
-
-        {prefs.isLoading ? (
-          <div className="space-y-2" aria-hidden>
-            {EMAIL_SWITCHES.map((s) => (
-              <div key={s.field} className="h-[58px] animate-pulse rounded-md border bg-muted/40" />
-            ))}
-          </div>
-        ) : prefs.isError || !prefs.data ? (
-          <p role="alert" className="text-sm text-muted-foreground">
-            Couldn&apos;t load your email settings. Reload the page to try again.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {EMAIL_SWITCHES.map((row) => (
-              <label
-                key={row.field}
-                className="flex cursor-pointer items-start justify-between gap-3 rounded-md border p-3"
-              >
-                <span className="space-y-0.5">
-                  <span className="block text-sm">{row.label}</span>
-                  <span className="block text-xs text-muted-foreground">{row.detail}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={prefs.data![row.field]}
-                  disabled={isLoading}
-                  onChange={(e) => void set(row.field, e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
-                />
-              </label>
-            ))}
-          </div>
-        )}
-
-        {/* Said rather than hidden. A switch somebody cannot find reads as a
-            message they cannot stop. */}
-        <p className="text-xs text-muted-foreground">
-          Two messages have no switch: running out of transcription minutes, and
-          your account being closed and its data deleted. Neither is about the
-          contents of your account, and the second is sent after everything —
-          including these settings — has been deleted.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-type EmailSwitch =
-  | "retentionWarningEmail"
-  | "retentionAppliedEmail"
-  | "taskReminderEmail"
-  | "notesReadyEmail"
-  | "allowanceEmail";
-
-/**
- * In the order they matter, which is not the order they were built.
- *
- * <p>The warning first: it is the only one that arrives while there is still
- * something to do. Everything below it reports.
- */
-const EMAIL_SWITCHES: { field: EmailSwitch; label: string; detail: string }[] = [
-  {
-    field: "retentionWarningEmail",
-    label: "Before retention deletes something",
-    detail: "A week's notice, and only when something is actually due.",
-  },
-  {
-    field: "retentionAppliedEmail",
-    label: "After retention deletes something",
-    detail: "One message for the night's work, never one per meeting.",
-  },
-  {
-    field: "taskReminderEmail",
-    label: "Action items due tomorrow",
-    detail: "One digest each morning, including anything overdue. Nothing when the list is empty.",
-  },
-  {
-    field: "notesReadyEmail",
-    label: "Notes ready for a long recording",
-    detail: "Only above fifteen minutes — a short one is finished before you have left the page.",
-  },
-  {
-    field: "allowanceEmail",
-    label: "When your transcription minutes are nearly gone",
-    detail: "Once, at 85%. There is nothing to buy; it is so you can choose what to record.",
-  },
-];
-
-/**
- * How long a recording is kept, and how long a meeting is.
- *
- * <p>Two dials because "how long do you keep the recording of my voice" and
- * "how long do you keep the notes" are asked by different people. Everyone who
- * was in the room can ask the first; only the account holder cares about the
- * second. "A week for the recording, forever for the notes" is a coherent and
- * common answer, and one number cannot say it.
- *
- * <p><strong>Both dials are sent on every change.</strong> The API reads a null
- * as "keep forever" rather than "leave this one alone" — the opposite of every
- * other patch in it — because the two constrain each other and a partial update
- * from a stale render is how somebody ends up with a rule they did not set.
- *
- * <p>The choices that would break that constraint are disabled rather than
- * offered and refused. The server's message is a good one, but a control that
- * exists to be clicked and then rejected is a control that wasted a click.
- */
-function RetentionSection() {
-  const overview = useGetPrivacyOverviewQuery();
-  const [update, { isLoading }] = useUpdateRetentionMutation();
-  const policy = overview.data?.retention;
-
-  async function choose(which: "audio" | "meeting", days: number | null) {
-    if (!policy) return;
-    try {
-      await update({
-        audioDays: which === "audio" ? days : policy.audioDays,
-        meetingDays: which === "meeting" ? days : policy.meetingDays,
-      }).unwrap();
-      toast.success("Saved.");
-    } catch (err) {
-      toast.error(settingsError(err));
-    }
-  }
-
-  return (
-    <section id="data" aria-labelledby="retention-heading" className="space-y-1 pt-6">
-      <h2 id="retention-heading" className="flex items-center gap-2 text-lg font-semibold">
-        <Clock className="h-4 w-4 text-muted-foreground" /> How long things are kept
-      </h2>
-      <p className="pb-2 text-sm text-muted-foreground">
-        Nothing is deleted on a schedule until you choose one here. Both start at
-        Never.
-      </p>
-
-      <div className="space-y-6 border-b py-4">
-        {overview.isLoading || !policy ? (
-          <p className="text-sm text-muted-foreground">
-            {overview.isLoading
-              ? "Loading your policy…"
-              : "Couldn't load your retention policy. Reload the page to try again."}
-          </p>
-        ) : (
-          <>
-            <Dial
-              label="Delete the recording"
-              hint="The audio goes. The transcript, summary and action items stay."
-              value={policy.audioDays}
-              disabled={isLoading}
-              // Refused by the server, because a recording rule that the meeting
-              // rule deletes out from under is a rule that never runs.
-              blocked={(days) =>
-                policy.meetingDays !== null && days !== null && days > policy.meetingDays
-                  ? "Longer than the whole meeting is kept."
-                  : null
-              }
-              onChoose={(days) => void choose("audio", days)}
-              dueNow={policy.recordingsDueNow}
-              dueNoun="recording"
-            />
-            <Dial
-              label="Delete the whole meeting"
-              hint="Everything about it: the recording, the transcript, the notes and its action items."
-              value={policy.meetingDays}
-              disabled={isLoading}
-              blocked={(days) =>
-                policy.audioDays !== null && days !== null && days < policy.audioDays
-                  ? "Shorter than the recording is kept."
-                  : null
-              }
-              onChoose={(days) => void choose("meeting", days)}
-              dueNow={policy.meetingsDueNow}
-              dueNoun="meeting"
-            />
-            <p className="text-xs text-muted-foreground">
-              Age is counted from when a meeting was created, not from when you
-              last opened it — otherwise the recording of a sensitive
-              conversation survives longest precisely because people keep going
-              back to it. Reverie checks once a day and tells you what it took.
-              Deletion is immediate and cannot be undone.
-            </p>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-/**
- * One retention window, as three buttons.
- *
- * <p>Buttons rather than a select. There are three options and the current one
- * is the answer to a question somebody is uneasy about — it should be readable
- * without opening anything.
- */
-function Dial({
-  label,
-  hint,
-  value,
-  disabled,
-  blocked,
-  onChoose,
-  dueNow,
-  dueNoun,
-}: {
-  label: string;
-  hint: string;
-  value: number | null;
-  disabled: boolean;
-  blocked: (days: number | null) => string | null;
-  onChoose: (days: number | null) => void;
-  dueNow: number;
-  dueNoun: string;
-}) {
-  const offList = !RETENTION_CHOICES.some((c) => c.days === value);
-
-  return (
-    <div>
-      <p className="text-sm font-medium">{label}</p>
-      <p className="mb-2 text-xs text-muted-foreground">{hint}</p>
-      <div className="flex flex-wrap gap-2">
-        {RETENTION_CHOICES.map((choice) => {
-          const reason = blocked(choice.days);
-          const off = disabled || reason !== null;
-          return (
-            <button
-              key={String(choice.days)}
-              type="button"
-              disabled={off}
-              title={reason ?? undefined}
-              aria-pressed={value === choice.days}
-              onClick={() => onChoose(choice.days)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs transition-colors",
-                value === choice.days
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "hover:bg-accent",
-                off && "cursor-not-allowed opacity-50",
-              )}
-            >
-              {choice.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* A window set through the API, or left over from a longer list. Named
-          rather than drawn as none of the three, which would read as Never. */}
-      {offList && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Currently {retentionLabel(value).toLowerCase()}, which is not one of
-          these. Choosing one replaces it.
-        </p>
-      )}
-
-      {dueNow > 0 && (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-500">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          This deletes {dueNow} {dueNoun}
-          {dueNow === 1 ? "" : "s"} you already have, at the next daily pass.
-        </p>
-      )}
-    </div>
-  );
-}
 
 /**
  * The end of the account.
@@ -649,7 +344,7 @@ function Dial({
  * empty body. The point is that it cannot be produced by a stray click.
  */
 function CloseAccountSection() {
-  const { signOut } = useAuth();
+  const { signOut, deleteIdentity, clearOnboarding, mode } = useAuth();
   const [close, { isLoading }] = useCloseAccountMutation();
   const [typed, setTyped] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -663,7 +358,72 @@ function CloseAccountSection() {
       );
       setOpen(false);
       setTyped("");
-      signOut?.();
+
+      /*
+       * AND THE SIGN-IN ITSELF, which is the half that was missing.
+       *
+       * <p>Closing an account erased Reverie's data and left the credential
+       * alone, so signing in again with the same Google account walked straight
+       * back into an empty product — the row is simply re-provisioned. Deleting
+       * the identity is what makes "delete my account" mean it, and it is also
+       * what makes the same person coming back a genuinely new account with
+       * onboarding ahead of it.
+       *
+       * <p>This order and not the other one: Reverie's data goes first because
+       * erasing it needs a live session token, and destroying the identity ends
+       * the session.
+       *
+       * <p>Only in clerk mode — dev mode has no identity to destroy and says so
+       * by answering false, which is not a failure worth reporting.
+       */
+      const gone = (await deleteIdentity?.()) ?? false;
+      if (mode === "clerk" && !gone) {
+        /*
+         * THE IDENTITY SURVIVED, SO IT MUST NOT GO ON CLAIMING TO BE ONBOARDED.
+         *
+         * <p>Reverie's data is gone either way. If this credential signs in
+         * again it gets a freshly provisioned, empty row — and an identity
+         * still carrying `onboardingCompleted` would walk straight into that
+         * empty product with the two questions marked answered, which is the
+         * exact state the flag exists to prevent. Forgetting it here means the
+         * next sign-in is onboarded again, whether or not the deletion is ever
+         * retried.
+         *
+         * <p>Before the message and not after: the message is the last thing
+         * that happens on this screen before the sign-out, and an error thrown
+         * on the way to it must not leave the flag standing.
+         */
+        try {
+          await clearOnboarding?.();
+        } catch {
+          /* Nothing better to do, and the sentence below is still true. */
+        }
+
+        /*
+         * Said out loud rather than swallowed, and never reported as a success.
+         * The instance can refuse — self-service deletion is a dashboard
+         * setting — and somebody who is told their sign-in was destroyed when
+         * it was not will find out by signing in successfully, which is the
+         * worst way to learn it.
+         */
+        toast.error("Your data is deleted. The sign-in itself could not be removed.");
+      }
+
+      /*
+       * OUT TO THE SIGN-UP FORM.
+       *
+       * <p>Not the sign-in form: signing out ordinarily means "I will be back"
+       * and lands there, and this account has just been deleted — offering to
+       * sign into it would be the product not having noticed, and the attempt
+       * could only fail. Not the landing page either, which was the last
+       * answer: it is the front door for somebody deciding whether to try
+       * Reverie, and this is somebody who already has, so the useful next
+       * screen is the one that makes a new account.
+       *
+       * <p>This is also the navigation that used not to happen at all — see
+       * lib/sign-out.
+       */
+      signOut?.(SIGN_UP);
     } catch (err) {
       toast.error(settingsError(err));
     }
@@ -774,32 +534,53 @@ function Row({
  * this same page, a few hundred pixels away and reachable by scrolling. A
  * footer link to the middle of the page you are already on is furniture.
  *
- * <p>What is left appears only when somebody has supplied the URLs. Reverie ships
- * no terms of service or privacy policy of its own — those are documents
- * somebody has to write and be bound by — and with neither set this renders
- * nothing at all rather than an empty strip of padding.
+ * <h2>What it says now, and what it stopped saying</h2>
+ *
+ * <p>It read "By using Reverie you agree to the …" and rendered nothing at all
+ * unless a deployment had supplied both URLs. There is a privacy document in
+ * the repository now — `app/privacy-policy`, the Privacy &amp; Demo Notice — so
+ * `LEGAL_LINKS` carries it by default and this is no longer empty.
+ *
+ * <p>Which makes the sentence wrong. Reverie asks nobody to agree to anything:
+ * there are no terms, no acceptance checkbox and no contract, so an agreement
+ * sentence wrapped around a link to a *disclosure* would be inventing the one
+ * thing the notice is careful not to claim. So the agreement framing appears
+ * only where a deployment has actually supplied terms — which is the only case
+ * where there is something to agree to — and otherwise the links stand on their
+ * own.
+ *
+ * <p>Internal links are `next/link` in the same tab; an external policy still
+ * opens in a new one. Sending somebody out of the product to read the product's
+ * own page would be the sort of small wrongness nobody files a bug about.
  */
 function Footer() {
   if (LEGAL_LINKS.length === 0) return null;
+  // Terms are the only document anybody could be agreeing to. Its presence is
+  // what decides the sentence, rather than a count of links.
+  const agreeing = LEGAL_LINKS.some((link) => link.label === "Terms of Service");
+  const links = LEGAL_LINKS.map((link, i) => (
+    <React.Fragment key={link.href}>
+      {i > 0 && (agreeing ? " and " : " · ")}
+      {link.internal ? (
+        <Link href={link.href} className="text-primary underline-offset-2 hover:underline">
+          {link.label}
+        </Link>
+      ) : (
+        <a
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {link.label}
+        </a>
+      )}
+    </React.Fragment>
+  ));
+
   return (
     <div className="space-y-1 pt-8 text-center text-xs text-muted-foreground">
-      <p>
-        By using Reverie you agree to the{" "}
-        {LEGAL_LINKS.map((link, i) => (
-          <React.Fragment key={link.href}>
-            {i > 0 && " and "}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline-offset-2 hover:underline"
-            >
-              {link.label}
-            </a>
-          </React.Fragment>
-        ))}
-        .
-      </p>
+      <p>{agreeing ? <>By using Reverie you agree to the {links}.</> : links}</p>
     </div>
   );
 }

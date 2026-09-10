@@ -70,6 +70,31 @@ export function dueLabel(item: {
   return `due ${formatDay(item.dueOn)}`;
 }
 
+/**
+ * The same deadline, for a column of its own.
+ *
+ * <p>Home's margin puts the due date in a right-aligned column beside the
+ * title, where "due tomorrow" and "due Sep 10" carry a word the column heading
+ * already implies -- the reference reads "Tomorrow" and "Sep 10". So this
+ * strips the leading preposition and capitalises what is left.
+ *
+ * <p>Derived from {@link dueLabel} rather than written again, which is the
+ * whole point: overdue phrasing, the unresolved-date fallback and the
+ * completed-item case are decided in exactly one place, and this cannot drift
+ * from the label the meeting page shows for the same task.
+ */
+export function dueColumn(item: {
+  dueDate?: string | null;
+  dueOn?: string | null;
+  daysUntilDue?: number | null;
+  status?: string;
+}): string {
+  const label = dueLabel(item);
+  if (!label) return "";
+  const bare = label.startsWith("due ") ? label.slice(4) : label;
+  return bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
 /** The words that were actually said, when the label is showing our reading instead. */
 export function spokenDeadline(item: {
   dueDate?: string | null;

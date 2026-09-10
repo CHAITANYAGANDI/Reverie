@@ -28,7 +28,6 @@ import {
   AudioLines,
   Highlighter,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -438,8 +437,30 @@ export function AudioPlayer({
   const fraction = progressFraction(controller.currentTime, duration);
 
   return (
-    <Card>
-      <CardContent className="space-y-2 py-3">
+    /*
+     * A summoned surface, not a content card.
+     *
+     * <p>This floats over the transcript it is scrubbing, which makes it the
+     * functional layer — the one place translucency is for in this product. It
+     * is `.v2-glass`: lighter than the page, because a thing above content has
+     * more light on it, with the half-pixel white inset that is what actually
+     * separates a floating layer from the words underneath. Never nested inside
+     * another glass surface; nothing else here is one.
+     *
+     * <p>A video is the exception and stays inline (see the caller), so this
+     * renders the same markup in both places and only its position differs.
+     */
+    /*
+      A SLIM HORIZONTAL DOCK, as `18-meeting-brief.png` and
+      `19-meeting-transcript.png` draw it: transport, clock, timeline, speed,
+      volume, on one line. It was two stacked rows about ninety pixels tall
+      with the timeline over the transport.
+      <p>Nothing about the audio changed: same controller, same seeking, same
+      speaker bands read from the transcript, same marks, same rate, same
+      volume, same deep links, same expiring-source refresh.
+    */
+    <div className="v2-glass rounded-xl">
+      <div className="space-y-2 px-3 py-2 sm:px-3.5">
         {isVideo ? (
           <video
             ref={controller.ref as React.MutableRefObject<HTMLVideoElement | null>}
@@ -467,66 +488,41 @@ export function AudioPlayer({
             scrubbing blindly into looking. Silence shows as the gaps between
             them, which is the same information an amplitude waveform is usually
             being read for. */}
-        <div
-          role="slider"
-          tabIndex={0}
-          aria-label="Seek"
-          aria-valuemin={0}
-          aria-valuemax={Math.round(duration)}
-          aria-valuenow={Math.round(controller.currentTime)}
-          aria-valuetext={`${timecode(controller.currentTime)} of ${timecode(duration)}`}
-          onClick={scrub}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") {
-              e.preventDefault();
-              nudge(-5);
-            } else if (e.key === "ArrowRight") {
-              e.preventDefault();
-              nudge(5);
-            }
-          }}
-          className="group relative h-6 cursor-pointer"
-        >
-          <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-secondary">
-            {duration > 0 &&
-              turns.map((turn, i) => (
-                <span
-                  key={i}
-                  aria-hidden
-                  title={turn.speaker}
-                  className="absolute inset-y-0 opacity-45"
-                  style={{
-                    left: `${(turn.start / duration) * 100}%`,
-                    width: `${Math.max(0.15, ((turn.end - turn.start) / duration) * 100)}%`,
-                    backgroundColor: speakerHex(turn.speaker, turn.speakerKey),
-                  }}
-                />
-              ))}
-            {/* Played-so-far, over the bands rather than replacing them, so the
-                speaker layout stays readable ahead of and behind the playhead. */}
-            <span
-              aria-hidden
-              className="absolute inset-y-0 left-0 bg-foreground/25"
-              style={{ width: `${fraction * 100}%` }}
-            />
-          </div>
-          <span
-            aria-hidden
-            className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow ring-2 ring-background transition-transform group-hover:scale-125"
-            style={{ left: `${fraction * 100}%` }}
-          />
-        </div>
 
         {/* Said out loud rather than left as a dead play button. This is only
             reached when a refreshed link failed too, so "try again" is honest
             advice and "reload the page" is the thing that actually works. */}
         {failed && (
-          <p role="status" className="text-xs text-destructive">
+          <p role="status" className="text-foot text-danger">
             The recording could not be loaded. Reload the page to try again.
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
+        {/* One row on anything above a phone. Below `sm` the timeline drops to
+            its own line -- `order-last` -- because a transport, a clock, a
+            timeline, a speed and a volume do not fit across 358px, and a
+            timeline squeezed to forty pixels is not scrubbable. */}
+        {/* A step tighter than it was: `gap-x-1` above `sm` where it was
+            `gap-x-1.5`, 28px icon buttons where they were 32, and a 32px play
+            button where it was 36. The transport is a control strip under a
+            document, not the subject of the page -- and every pixel it gives
+            back is one the timeline takes, which is the part somebody actually
+            aims at. */}
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:flex-nowrap sm:gap-x-1">
+          {/*
+            THE CLOCK FIRST, before the transport rather than after it.
+            <p>It sat between the five buttons and the timeline, which is where
+            most players put it -- and in a bar this short that left the reading
+            in the middle of the controls, with the eye crossing it on the way
+            to the scrubber. At the head of the row it is read once and then
+            ignored, which is what a clock is for.
+            <p>`shrink-0` and `tabular`, so the row does not reflow every second
+            and the digits do not shuffle as they tick.
+          */}
+          <span className="mr-1 shrink-0 whitespace-nowrap font-mono text-foot tabular-nums text-ink-4">
+            {timecode(controller.currentTime)} / {timecode(duration)}
+          </span>
+
           <IconButton
             label="Previous speaker"
             onClick={() => {
@@ -535,22 +531,22 @@ export function AudioPlayer({
             }}
             disabled={turns.length === 0}
           >
-            <SkipBack className="h-4 w-4" />
+            <SkipBack className="h-3.5 w-3.5" />
           </IconButton>
           <IconButton label={`Back ${NUDGE} seconds`} onClick={() => nudge(-NUDGE)}>
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
           </IconButton>
 
           <button
             onClick={toggle}
             aria-label={playing ? "Pause" : "Play"}
-            className="mx-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"
+            className="mx-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-ink text-surface transition-transform duration-press ease-out hover:scale-105"
           >
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+            {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="ml-0.5 h-3.5 w-3.5" />}
           </button>
 
           <IconButton label={`Forward ${NUDGE} seconds`} onClick={() => nudge(NUDGE)}>
-            <RotateCw className="h-4 w-4" />
+            <RotateCw className="h-3.5 w-3.5" />
           </IconButton>
           <IconButton
             label="Next speaker"
@@ -560,12 +556,64 @@ export function AudioPlayer({
             }}
             disabled={turns.length === 0}
           >
-            <SkipForward className="h-4 w-4" />
+            <SkipForward className="h-3.5 w-3.5" />
           </IconButton>
 
-          <span className="ml-2 font-mono text-xs tabular-nums text-muted-foreground">
-            {timecode(controller.currentTime)} / {timecode(duration)}
-          </span>
+            {/* THE TIMELINE, in the row rather than above it.
+                `19-meeting-transcript.png` draws one horizontal bar: transport,
+                time, then the timeline taking every pixel that is left, then
+                speed and volume. It was stacked over the transport, which made
+                the dock two rows and about ninety pixels tall. Same scrubbing,
+                same speaker bands, same marks, same keyboard nudges. */}
+            <div
+              role="slider"
+              tabIndex={0}
+              aria-label="Seek"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration)}
+              aria-valuenow={Math.round(controller.currentTime)}
+              aria-valuetext={`${timecode(controller.currentTime)} of ${timecode(duration)}`}
+              onClick={scrub}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  nudge(-5);
+                } else if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  nudge(5);
+                }
+              }}
+              className="group relative order-last h-6 min-w-[8rem] flex-1 cursor-pointer sm:order-none"
+            >
+              <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-surface-hover">
+                {duration > 0 &&
+                  turns.map((turn, i) => (
+                    <span
+                      key={i}
+                      aria-hidden
+                      title={turn.speaker}
+                      className="absolute inset-y-0 opacity-45"
+                      style={{
+                        left: `${(turn.start / duration) * 100}%`,
+                        width: `${Math.max(0.15, ((turn.end - turn.start) / duration) * 100)}%`,
+                        backgroundColor: speakerHex(turn.speaker, turn.speakerKey),
+                      }}
+                    />
+                  ))}
+                {/* Played-so-far, over the bands rather than replacing them, so the
+                    speaker layout stays readable ahead of and behind the playhead. */}
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 bg-ink/25"
+                  style={{ width: `${fraction * 100}%` }}
+                />
+              </div>
+              <span
+                aria-hidden
+                className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink shadow-e2 ring-2 ring-surface-overlay transition-transform duration-press ease-out group-hover:scale-125"
+                style={{ left: `${fraction * 100}%` }}
+              />
+            </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-1">
             {/* Skip silence, from the transcript's gaps rather than the signal's
@@ -576,7 +624,7 @@ export function AudioPlayer({
               disabled={segments.length === 0 || highlightsOnly}
               onClick={() => setSkipSilence((v) => !v)}
             >
-              <AudioLines className="h-4 w-4" />
+              <AudioLines className="h-3.5 w-3.5" />
             </Toggle>
 
             {/* Only offered when there is something marked; a toggle that can
@@ -587,7 +635,7 @@ export function AudioPlayer({
                 active={highlightsOnly}
                 onClick={() => setHighlightsOnly((v) => !v)}
               >
-                <Highlighter className="h-4 w-4" />
+                <Highlighter className="h-3.5 w-3.5" />
               </Toggle>
             )}
 
@@ -595,9 +643,9 @@ export function AudioPlayer({
               <DropdownMenuTrigger asChild>
                 <button
                   aria-label="Playback speed"
-                  className="flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="flex h-7 items-center gap-1 rounded-md px-1.5 text-foot font-medium text-ink-3 transition-colors hover:bg-surface-hover hover:text-ink"
                 >
-                  <Gauge className="h-4 w-4" />
+                  <Gauge className="h-3.5 w-3.5" />
                   {rate}×
                 </button>
               </DropdownMenuTrigger>
@@ -625,9 +673,9 @@ export function AudioPlayer({
               }}
             >
               {muted || volume === 0 ? (
-                <VolumeX className="h-4 w-4" />
+                <VolumeX className="h-3.5 w-3.5" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-3.5 w-3.5" />
               )}
             </IconButton>
             <input
@@ -645,12 +693,12 @@ export function AudioPlayer({
                 // element muted would make the control appear to do nothing.
                 media.muted = Number(e.target.value) === 0;
               }}
-              className="h-1 w-20 cursor-pointer accent-[hsl(var(--primary))]"
+              className="h-1 w-16 cursor-pointer accent-[hsl(var(--primary))]"
             />
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -671,7 +719,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
