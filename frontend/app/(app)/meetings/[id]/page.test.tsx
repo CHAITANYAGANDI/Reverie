@@ -2692,7 +2692,7 @@ describe("while one of the menu's acting items is running", () => {
     expect(screen.queryByText(/Rewriting the summary…/)).not.toBeInTheDocument();
   });
 
-  it("keeps the template name on the Templates row, not a rewrite label", async () => {
+  it("keeps the template name on the Templates row, and never a rewrite label", async () => {
     // Part 1. The row is still the answer to "which template is in use", which
     // is the question a closed submenu row exists to answer.
     busy.rewriting = true;
@@ -2703,6 +2703,30 @@ describe("while one of the menu's acting items is running", () => {
 
     expect(trigger).toHaveTextContent("General");
     expect(trigger).not.toHaveTextContent("Rewriting…");
+  });
+
+  it("and does not set the Templates glyph revolving either", async () => {
+    /*
+     * THE SECOND HALF OF THE SAME MISTAKE.
+     *
+     * <p>Moving the label to Regenerate summary left a turning icon behind on
+     * this row, so pressing Regenerate summary still spun the Templates glyph
+     * -- reported as "why is the template symbol revolving when it is
+     * regenerating summary". A spinner on a row nobody pressed says the same
+     * untrue thing the label said.
+     *
+     * <p>It stays disabled, which is what stops a second rewrite; the status
+     * line under the title is where the rewrite is announced.
+     */
+    busy.rewriting = true;
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    const trigger = screen.getByRole("menuitem", { name: /Templates/ });
+
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-file-sliders")).not.toBeNull();
+    expect(trigger).toHaveAttribute("data-disabled");
   });
 
   it("closes the Templates row while a translation runs", async () => {

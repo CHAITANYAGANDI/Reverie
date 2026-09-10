@@ -2137,20 +2137,23 @@ function TemplateItems({
         disabled={rewriting || busy || refusal !== null}
       >
         {/*
-          A SPINNER, AND THE TEMPLATE NAME STAYS.
-          <p>This row used to replace the name with "Rewriting…" whenever the
-          shared flag was set -- including when the rewrite had been started
-          from Regenerate summary two rows down, which is how it came to be
-          the one row claiming to be working while the row that had been
-          pressed said nothing. That label lives there now. See
-          components/meeting-menu.
-          <p>What is right here is the spinner: this row *is* closed while a
-          rewrite runs, and a row that greys out with no reason beside it is
-          the thing worth avoiding. The name stays because it is the answer to
-          "which template is in use", which is the question a closed submenu
-          row exists to answer.
+          NO SPINNER HERE, AND NO LABEL EITHER.
+          <p>This row reported the rewrite twice over, and both were wrong for
+          the same reason. First it replaced the template name with
+          "Rewriting…"; then, with the label moved to Regenerate summary where
+          it belongs, it kept a turning icon -- so pressing Regenerate summary
+          still set the Templates glyph revolving, which is the row nobody had
+          touched.
+          <p>The rewrite is announced in exactly one place now: the status line
+          under the title, which is on the page rather than inside a menu that
+          shuts when you choose something. This row does what a disabled
+          control does -- it greys -- and goes on answering the only question a
+          closed submenu row is asked, which is which template is in use.
+          <p>The two rows that DO spin are the two that can be pressed to start
+          something: Change language and Regenerate summary. A spinner there
+          names what you just did; a spinner here names what somebody else did.
         */}
-        {rewriting ? <Loader2 className="animate-spin" /> : <FileSliders />}
+        <FileSliders />
         <span className="flex-1">Templates</span>
         {chosen && <span className="text-cap text-ink-4">{chosen.name}</span>}
       </DropdownMenuSubTrigger>
