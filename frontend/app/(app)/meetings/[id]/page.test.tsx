@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
@@ -40,6 +40,20 @@ import type {
  * against a temporal-dead-zone binding and the whole suite fails to collect
  * with an error that names the wrong file.
  */
+/**
+ * Which of the menu's acting items is running.
+ *
+ * <p>The shared `mut` helper answers `isLoading: false` for every mutation,
+ * which is right for the ninety-odd tests that are not about waiting. These
+ * three are: the menu closes all four acting rows while any one of them runs,
+ * and the page says on the document which one it is.
+ */
+const busy = vi.hoisted(() => ({
+  rewriting: false,
+  translating: false,
+  reprocessing: false,
+}));
+
 const { push, refetch, openPane, ok, none, mut } = vi.hoisted(() => {
   const refetch = vi.fn();
   /** Whatever asked for the chat pane. */
@@ -173,13 +187,24 @@ vi.mock("@/lib/api", () => ({
   useGetMeetingConversationsQuery: () => ok([]),
   useDeleteMeetingMutation: mut,
   useAskChatMutation: mut,
-  useTranslateMeetingMutation: mut,
+  // The three with a controllable in-flight flag. Same tuple shape as `mut`
+  // plus the `reset` the page destructures off the translate one.
+  useTranslateMeetingMutation: () => [
+    () => ({ unwrap: () => Promise.resolve({}) }),
+    { isLoading: busy.translating, reset: () => {} },
+  ],
   useRenameSpeakersMutation: mut,
   useMergeSpeakersMutation: mut,
-  useReprocessMeetingMutation: mut,
+  useReprocessMeetingMutation: () => [
+    () => ({ unwrap: () => Promise.resolve({}) }),
+    { isLoading: busy.reprocessing },
+  ],
   useEditSegmentsMutation: mut,
   useSetSegmentSpeakerMutation: mut,
-  useResummarizeMutation: mut,
+  useResummarizeMutation: () => [
+    () => ({ unwrap: () => Promise.resolve({}) }),
+    { isLoading: busy.rewriting },
+  ],
   useCreateMomentMutation: mut,
   useDeleteMomentMutation: mut,
   useCreateMeetingConversationMutation: mut,
@@ -2611,5 +2636,104 @@ describe("decisions and risks on the meeting", () => {
     ]) {
       expect(container.textContent ?? "").not.toMatch(forbidden);
     }
+  });
+});
+
+describe("while one of the menu's acting items is running", () => {
+  /*
+   * WHAT WAS REPORTED, IN THREE PARTS.
+   *
+   * <p>1. Pressing Regenerate summary put "Rewriting…" on the **Templates**
+   * row. The template picker shares the rewrite's in-flight state through a
+   * fixed mutation key, and its trigger was the only place drawing a label off
+   * it -- so the row that had not been pressed claimed to be working and the
+   * one that had said nothing.
+   *
+   * <p>2. Nothing on the page said anything. A menu shuts the moment an item is
+   * chosen, so a label inside it is gone before the work is. Changing the
+   * reading language had somewhere to say so -- the note on the facts line --
+   * and the two rewrites had nowhere.
+   *
+   * <p>3. The four rows did not close each other. A rewrite closed the
+   * translation and the reprocess, but a reprocess closed neither of the
+   * others -- and it rebuilds the transcript both of them read from.
+   */
+  beforeEach(() => {
+    templates = [
+      { slug: "general", name: "General" },
+      { slug: "standup", name: "Standup" },
+    ];
+    wide(true);
+  });
+
+  afterEach(() => {
+    busy.rewriting = false;
+    busy.translating = false;
+    busy.reprocessing = false;
+  });
+
+  it("says on the document that the summary is being rewritten", async () => {
+    // The same grammar as the reading-language note it sits beside: both are
+    // "what is happening to this document", and a second visual language for
+    // the second one would be a second thing to learn.
+    busy.rewriting = true;
+    render(<MeetingDetailPage />);
+
+    const note = await screen.findByRole("status");
+
+    expect(note).toHaveTextContent("Rewriting the summary…");
+  });
+
+  it("and says nothing when nothing is running", async () => {
+    // The guard against a permanent spinner on a finished meeting.
+    render(<MeetingDetailPage />);
+    await screen.findByLabelText("More actions");
+
+    expect(screen.queryByText(/Rewriting the summary…/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the template name on the Templates row, not a rewrite label", async () => {
+    // Part 1. The row is still the answer to "which template is in use", which
+    // is the question a closed submenu row exists to answer.
+    busy.rewriting = true;
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    const trigger = screen.getByRole("menuitem", { name: /Templates/ });
+
+    expect(trigger).toHaveTextContent("General");
+    expect(trigger).not.toHaveTextContent("Rewriting…");
+  });
+
+  it("closes the Templates row while a translation runs", async () => {
+    /*
+     * Part 3, in the direction the page owns. This row learns about a rewrite
+     * on its own, through the shared mutation key, and knows nothing about a
+     * translation or a reprocess -- both of which end in the document it
+     * rewrites being replaced.
+     */
+    busy.translating = true;
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: /Templates/ }))
+      .toHaveAttribute("data-disabled");
+  });
+
+  it("and while a reprocess is being queued", async () => {
+    busy.reprocessing = true;
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: /Templates/ }))
+      .toHaveAttribute("data-disabled");
+  });
+
+  it("leaves it open when nothing is running", async () => {
+    render(<MeetingDetailPage />);
+    await userEvent.click(screen.getByLabelText("More actions"));
+
+    expect(screen.getByRole("menuitem", { name: /Templates/ }))
+      .not.toHaveAttribute("data-disabled");
   });
 });

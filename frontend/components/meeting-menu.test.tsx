@@ -338,9 +338,20 @@ describe("MeetingMenu", () => {
     menu({ reprocessing: true });
     await open(user);
 
-    expect(
-      screen.getByRole("menuitem", { name: "Reprocess meeting" }),
-    ).toHaveAttribute("data-disabled");
+    const row = screen.getByRole("menuitem", { name: /Reprocess meeting/ });
+
+    expect(row).toHaveAttribute("data-disabled");
+    /*
+     * The words, which this test has always been named for and could not
+     * check: the row span a spinner and said nothing, so what was running
+     * was legible only to somebody who could see it turning.
+     *
+     * <p>"Queueing…" rather than "Reprocessing…", because that is what the
+     * flag means -- the request is in flight until the job is queued, and
+     * the meeting reports its own progress from there like any other
+     * processing meeting.
+     */
+    expect(row).toHaveTextContent("Queueing…");
   });
 
   it("offers no manual speaker merging", async () => {
@@ -439,15 +450,21 @@ describe("MeetingMenu", () => {
     }
   });
 
-  it("greys the three that act while one of them is still running", async () => {
+  it("greys every acting item while any one of them is running", async () => {
     const user = userEvent.setup();
-    menu({ working: true });
+    menu({ rewriting: true });
     await open(user);
 
-    // Changing language and regenerating both end in the summary being
-    // rewritten. The two racing on one meeting is the concrete thing this
-    // prevents.
-    for (const label of ["Change language", "Regenerate summary"]) {
+    /*
+     * ALL THREE, NOT TWO.
+     *
+     * <p>Reprocess used to stay live during a rewrite, and it is the most
+     * destructive of the set: it rebuilds the transcript that the rewrite is
+     * reading from, so the summary that lands describes text that has been
+     * replaced. The fourth row, Templates, is the page's (it arrives through
+     * `extra`) and closes on the same fact -- see the meeting page's suite.
+     */
+    for (const label of [/Change language/, /Regenerate summary/, /Reprocess meeting/]) {
       expect(screen.getByRole("menuitem", { name: label })).toHaveAttribute("data-disabled");
     }
 
@@ -457,6 +474,81 @@ describe("MeetingMenu", () => {
     for (const label of ["Copy transcript", "Copy summary", "Copy link"]) {
       expect(screen.getByRole("menuitem", { name: label })).not.toHaveAttribute("data-disabled");
     }
+  });
+
+  it("says which one is running, on the row that was pressed", async () => {
+    /*
+     * THE BUG, AS REPORTED: "when I click regenerate summary why it is saying
+     * rewriting in the templates in the menu list".
+     *
+     * <p>The menu took a single `working` flag, so it could say that something
+     * was running but not what. The only row drawing a label off it was the
+     * template picker's trigger -- which shares the rewrite's in-flight state
+     * through a fixed mutation key -- so pressing Regenerate summary put
+     * "Rewriting…" on Templates, and the row that had been pressed said
+     * nothing at all.
+     */
+    const user = userEvent.setup();
+    menu({ rewriting: true });
+    await open(user);
+
+    expect(
+      screen.getByRole("menuitem", { name: /Regenerate summary/ }),
+    ).toHaveTextContent("Rewriting…");
+    // And nowhere else. One thing is running; one row says so.
+    expect(
+      screen.getByRole("menuitem", { name: /Change language/ }),
+    ).not.toHaveTextContent("Rewriting…");
+  });
+
+  it("and says it on the language row when that is the one running", async () => {
+    const user = userEvent.setup();
+    menu({ translating: true });
+    await open(user);
+
+    expect(
+      screen.getByRole("menuitem", { name: /Change language/ }),
+    ).toHaveTextContent("Translating…");
+    expect(
+      screen.getByRole("menuitem", { name: /Regenerate summary/ }),
+    ).not.toHaveTextContent("Rewriting…");
+  });
+
+  it("and a reprocess closes the two that read the transcript it rebuilds", async () => {
+    /*
+     * The direction that was missing. A rewrite closed reprocess, but a
+     * reprocess left the rewrite and the translation open -- and it replaces
+     * the transcript both of them read from, so either one landing during it
+     * describes text that no longer exists.
+     */
+    const user = userEvent.setup();
+    menu({ reprocessing: true });
+    await open(user);
+
+    for (const label of [/Change language/, /Regenerate summary/]) {
+      expect(screen.getByRole("menuitem", { name: label })).toHaveAttribute("data-disabled");
+    }
+  });
+
+  it("draws a pen on Regenerate summary, not the everything glyph", async () => {
+    /*
+     * Sparkles is what every product in this category puts on anything a model
+     * touches, which makes it mean "AI" and therefore nothing. This row does
+     * one specific thing -- it writes the brief again -- and it sits two rows
+     * above Reprocess, whose `RefreshCw` the old pairing was not helping
+     * anybody tell apart.
+     *
+     * <p>Asserted on the icon's own class, which is what lucide sets from the
+     * component name; there is nothing else about an inline SVG to read.
+     */
+    const user = userEvent.setup();
+    menu();
+    await open(user);
+
+    const row = screen.getByRole("menuitem", { name: /Regenerate summary/ });
+
+    expect(row.querySelector(".lucide-pen-line")).not.toBeNull();
+    expect(row.querySelector(".lucide-sparkles")).toBeNull();
   });
 
   it("keeps deleting the meeting whole, and offers no smaller grain", async () => {

@@ -78,7 +78,7 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
-  Sparkles,
+  PenLine,
   Trash2,
   Users,
 } from "lucide-react";
@@ -127,14 +127,30 @@ export interface MeetingMenuProps {
    */
   canTranslate: boolean;
   /**
-   * One of the three acting items is still running in the backend.
+   * Which of the acting items is running, one flag each.
    *
-   * Separate from `busy`, which closes the whole menu off while the meeting
-   * itself is being deleted. This one leaves the menu usable — you can still
-   * copy, file it, follow the link — and only stops a second rewrite landing
-   * on top of the first.
+   * <h2>Why three flags and not one `working`</h2>
+   *
+   * <p>There was one, and the menu could therefore say *that* something was
+   * running but not *what*. The visible consequence was reported: pressing
+   * Regenerate summary put "Rewriting…" on the **Templates** row — because the
+   * template picker shares the rewrite's in-flight flag, and its trigger was
+   * the only place drawing a label off it. The row that had been pressed said
+   * nothing at all, and the row that had not claimed to be working.
+   *
+   * <p>So each item now draws its own state, and every one of them is disabled
+   * while any is running — a rewrite and a translation both end in the summary
+   * being rewritten, and a reprocess replaces the transcript underneath both.
+   * Starting a second is the race this closes; the label is how somebody knows
+   * which one they started.
+   *
+   * <p>Separate from `busy`, which closes the whole menu off while the meeting
+   * itself is being deleted. These leave it usable: copying, filing and
+   * following the link are unaffected.
    */
-  working?: boolean;
+  rewriting?: boolean;
+  /** A translation is in flight. Same reasoning as {@link rewriting}. */
+  translating?: boolean;
 
   onCopySummary: () => void;
   /**
@@ -229,6 +245,17 @@ export function MeetingMenu(props: MeetingMenuProps) {
    */
   const spent = spentNote(useAllowance());
 
+  /*
+   * ANY OF THEM RUNNING CLOSES ALL OF THEM.
+   *
+   * <p>Asked once here rather than four times below, and passed to the
+   * template picker through `extra` by the page so the fourth row obeys it
+   * too. Three of these end in the summary being rewritten and the fourth
+   * rebuilds the transcript they all read from, so two at once is a race
+   * whichever pair it is.
+   */
+  const running = Boolean(props.rewriting || props.translating || props.reprocessing);
+
   async function copyLink() {
     // The in-app URL, not a share link. Minting a public capability URL from a
     // menu item called "Copy link" would publish a meeting nobody asked to
@@ -294,10 +321,13 @@ export function MeetingMenu(props: MeetingMenuProps) {
             // Closed on a spent account even though languages already
             // translated still open: what this item does is *ask for a new one*.
             // Reading one you have is on the page, not in here.
-            disabled={!props.canTranslate || props.working || spent !== null}
+            disabled={!props.canTranslate || running || spent !== null}
             onSelect={props.onTranslate}
           >
-            <Languages /> Change language
+            {props.translating ? <Loader2 className="animate-spin" /> : <Languages />}
+            <span className="flex-1">Change language</span>
+            {/* On the row that was pressed, and only there. See `rewriting`. */}
+            {props.translating && <span className="text-cap text-ink-4">Translating…</span>}
           </DropdownMenuItem>
 
           {/* The brief, and the one control that rewrites it — which is what
@@ -317,10 +347,23 @@ export function MeetingMenu(props: MeetingMenuProps) {
                 <ClipboardCopy /> Copy summary
               </DropdownMenuItem>
               <DropdownMenuItem
-                disabled={!props.hasSummary || props.working || spent !== null}
+                disabled={!props.hasSummary || running || spent !== null}
                 onSelect={props.onRegenerateSummary}
               >
-                <Sparkles /> Regenerate summary
+                {/*
+                  `PenLine`, not `Sparkles`.
+
+                  <p>Sparkles is the glyph every product in this category puts
+                  on everything a model touches, which makes it mean "AI" and
+                  therefore nothing: it was on this row, and the row does one
+                  specific thing — it writes the brief again. A pen says that.
+                  It is also distinct from Reprocess's `RefreshCw` two rows
+                  down, which the previous pairing was not helping anybody
+                  tell apart.
+                */}
+                {props.rewriting ? <Loader2 className="animate-spin" /> : <PenLine />}
+                <span className="flex-1">Regenerate summary</span>
+                {props.rewriting && <span className="text-cap text-ink-4">Rewriting…</span>}
               </DropdownMenuItem>
             </>
           )}
@@ -334,11 +377,12 @@ export function MeetingMenu(props: MeetingMenuProps) {
               of this file for why it was absent for a while. The page confirms
               before anything is queued. */}
           <DropdownMenuItem
-            disabled={props.reprocessing || props.working || spent !== null}
+            disabled={running || spent !== null}
             onSelect={props.onReprocess}
           >
             {props.reprocessing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            Reprocess meeting
+            <span className="flex-1">Reprocess meeting</span>
+            {props.reprocessing && <span className="text-cap text-ink-4">Queueing…</span>}
           </DropdownMenuItem>
 
           <DropdownMenuItem

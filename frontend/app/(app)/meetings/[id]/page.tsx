@@ -766,6 +766,20 @@ export default function MeetingDetailPage() {
     }
     try {
       await translate({ id, targetLanguage: next, includeTranscript }).unwrap();
+      /*
+       * Said, where it used to only be shown.
+       *
+       * <p>The reading-language note appears on the facts line when this
+       * lands, which is the state; a translation of a long meeting takes long
+       * enough that somebody has looked away by then, and the two other
+       * actions on this menu both confirm in a toast. This is the third.
+       *
+       * <p>The name rather than the code -- "de" is not what anybody chose --
+       * and the code as the fallback rather than nothing, because the list may
+       * not have loaded.
+       */
+      const chosen = languages.data?.find((l) => l.code === next.split("-")[0])?.name ?? next;
+      toast.success(`Now reading in ${chosen}.`);
     } catch {
       toast.error("Could not translate this meeting.");
       setReadingIn(ORIGINAL);
@@ -1019,7 +1033,14 @@ export default function MeetingDetailPage() {
     summaryItems || transcriptItems ? (
       <>
         {summaryItems && (
-          <TemplateItems meetingId={id} current={summary.data?.templateSlug ?? "general"} />
+          <TemplateItems
+            meetingId={id}
+            current={summary.data?.templateSlug ?? "general"}
+            /* The other two, which this row cannot see: it learns about the
+               rewrite through the shared mutation key, and nothing about a
+               translation or a reprocess. All four close together. */
+            busy={translating || reprocessing}
+          />
         )}
         {transcriptItems && (
           /* NO GROUP LABEL. It read "This transcript" over these four items,
@@ -1088,10 +1109,19 @@ export default function MeetingDetailPage() {
       mode={tab === "summary" ? "summary" : "transcript"}
       hasSummary={ready && Boolean(summary.data)}
       canTranslate={ready}
-      // Change language and Regenerate grey while either is running.
-      // Both end in the summary being rewritten, and starting a second
-      // one on top of the first is the race this closes.
-      working={regenerating || translating}
+      /*
+       * One flag each, so the menu can say *which* one is running rather than
+       * only that something is. It used to take a single `working` -- and the
+       * only row drawing a label off it was the template picker's, so pressing
+       * Regenerate summary put "Rewriting…" on Templates and nothing on the
+       * row that had been pressed. See the props in components/meeting-menu.
+       *
+       * <p>All four rows still close while any of them runs: three end in the
+       * summary being rewritten and the fourth rebuilds the transcript they
+       * read from.
+       */
+      rewriting={regenerating}
+      translating={translating}
       busy={removeState.isLoading}
       onCopySummary={() => void onCopySummary()}
       onCopyTranscript={() => void onCopyTranscript()}
@@ -1231,6 +1261,29 @@ export default function MeetingDetailPage() {
             null on the original, and an always-rendered wrapper would leave an
             empty row under every title.
           */}
+          {/*
+            REWRITING, ON THE PAGE AND NOT ONLY INSIDE A CLOSED MENU.
+            <p>The report: "when I hit change it is showing that is processing
+            and circling, but when I click the regenerate summary and template
+            changing" -- nothing. Both spend a model call and take as long as a
+            translation; the difference was that only the translation had
+            anywhere on the page to say so. A menu shuts the moment an item is
+            chosen, so the label inside it is gone before the work is.
+            <p>The same row and the same grammar as the reading-language note
+            beside it, deliberately: they are both "what is happening to this
+            document", and a second visual language for the second one would be
+            a second thing to learn.
+          */}
+          {regenerating && (
+            <div
+              className="no-print mt-2.5 flex flex-wrap items-center gap-1.5 text-foot text-ink-3"
+              role="status"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              Rewriting the summary…
+            </div>
+          )}
+
           {readingIn !== ORIGINAL || translating ? (
             <div className="mt-2.5 flex flex-wrap items-center text-foot text-ink-3">
               <ReadingIn
@@ -1992,7 +2045,23 @@ function useRoomToTheSide(): boolean {
   return room;
 }
 
-function TemplateItems({ meetingId, current }: { meetingId: string; current: string }) {
+function TemplateItems({
+  meetingId,
+  current,
+  busy,
+}: {
+  meetingId: string;
+  current: string;
+  /**
+   * Something else on the menu is running.
+   *
+   * <p>This component learns about a *rewrite* on its own, through the shared
+   * mutation key below. A translation and a reprocess it cannot see, and both
+   * end in the document this row rewrites being replaced -- so they are
+   * passed in rather than inferred.
+   */
+  busy?: boolean;
+}) {
   const { data: templates } = useGetSummaryTemplatesQuery();
   // Shared with the menu's own Regenerate and with the banner -- see the page's
   // call. A rewrite started anywhere shows as "Rewriting…" on all of them.
@@ -2041,7 +2110,7 @@ function TemplateItems({ meetingId, current }: { meetingId: string; current: str
       // The reason on the item itself, because there is nowhere in a menu
       // for a sentence and an option that simply stops working is worse.
       title={refusal ?? undefined}
-      disabled={rewriting || refusal !== null}
+      disabled={rewriting || busy || refusal !== null}
       onSelect={() => void onChange(t.slug)}
     >
       {/* A tick on the one in use, and reserved space on the rest, so the
@@ -2065,16 +2134,25 @@ function TemplateItems({ meetingId, current }: { meetingId: string; current: str
     <DropdownMenuSub>
       <DropdownMenuSubTrigger
         title={refusal ?? undefined}
-        disabled={rewriting || refusal !== null}
+        disabled={rewriting || busy || refusal !== null}
       >
-        <FileSliders />
+        {/*
+          A SPINNER, AND THE TEMPLATE NAME STAYS.
+          <p>This row used to replace the name with "Rewriting…" whenever the
+          shared flag was set -- including when the rewrite had been started
+          from Regenerate summary two rows down, which is how it came to be
+          the one row claiming to be working while the row that had been
+          pressed said nothing. That label lives there now. See
+          components/meeting-menu.
+          <p>What is right here is the spinner: this row *is* closed while a
+          rewrite runs, and a row that greys out with no reason beside it is
+          the thing worth avoiding. The name stays because it is the answer to
+          "which template is in use", which is the question a closed submenu
+          row exists to answer.
+        */}
+        {rewriting ? <Loader2 className="animate-spin" /> : <FileSliders />}
         <span className="flex-1">Templates</span>
-        {/* Which one, on the closed row: a submenu that hides the current
-            value makes you open it to find out what you already have. */}
-        {!rewriting && chosen && (
-          <span className="text-cap text-ink-4">{chosen.name}</span>
-        )}
-        {rewriting && <span className="text-cap text-ink-4">Rewriting…</span>}
+        {chosen && <span className="text-cap text-ink-4">{chosen.name}</span>}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         {label}
