@@ -31,6 +31,8 @@ public final class IdGenerator {
     public static String summary()     { return generate("sum_"); }
     public static String actionItem()  { return generate("ai_"); }
     public static String usage()       { return generate("usg_"); }
+    /** A lifetime free-tier entitlement. Outlives the account: see V69. */
+    public static String freeTier()    { return generate("fte_"); }
     public static String subscription(){ return generate("sub_"); }
     public static String audit()       { return generate("aud_"); }
     public static String outbox()      { return generate("obx_"); }

@@ -414,12 +414,33 @@ describe("the rest of the page", () => {
  */
 
 describe("closing the account", () => {
-  it("says what goes and that it is permanent", () => {
+  it("says what goes, that it is permanent, and what is kept", () => {
+    /*
+     * IT SAID "Deletes everything, permanently".
+     *
+     * <p>Which was true and is now very nearly true, and very nearly true is
+     * the worse of the two. The free allowance is a lifetime one — 100 minutes
+     * and 3 imports — and it used to be reset by deleting an account and making
+     * another, so a count of what that allowance has already spent now outlives
+     * the account. See V69.
+     *
+     * <p>So the sentence narrows rather than softens: the content is named and
+     * still permanent, and the exception is stated with what it cannot do. A
+     * control that overstates what it deletes is a control somebody relies on.
+     */
     render(<GeneralTab />);
 
-    expect(screen.getByText(/Deletes everything/)).toBeInTheDocument();
+    expect(screen.getByText(/Deletes your meetings, recordings, transcripts/))
+      .toBeInTheDocument();
     // Bold and its own word, so it survives a skim of the paragraph.
     expect(screen.getByText("permanently")).toBeInTheDocument();
+
+    // The retained record, named — and named as unable to bring anything back.
+    expect(screen.getByText(/free allowance cannot be reset/)).toBeInTheDocument();
+    expect(screen.getByText(/holds no content and cannot restore any/))
+      .toBeInTheDocument();
+    // And it no longer claims to delete literally everything.
+    expect(screen.queryByText(/Deletes everything/)).not.toBeInTheDocument();
   });
 
   it("cannot be reached by one click", async () => {

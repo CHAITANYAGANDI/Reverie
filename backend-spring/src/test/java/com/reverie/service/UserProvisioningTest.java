@@ -62,13 +62,24 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UserProvisioningTest {
 
+    /**
+     * The lifetime free allowance, stubbed away.
+     *
+     * <p>`UserService.provision` attaches one (see V69), and none of the
+     * cases in this file are about that. A Mockito mock rather than a real
+     * one so nothing here touches a repository: what is asserted is
+     * unchanged, and `FreeTierServiceTest` owns the allowance behaviour.
+     */
+    private static final com.reverie.service.FreeTierService FREE_TIER =
+            org.mockito.Mockito.mock(com.reverie.service.FreeTierService.class);
+
     private static final String SUBJECT = "user_3IUiqZSNuF0gbjwWAMAs8eDkv9E";
     private static final String EMAIL = "someone@example.com";
 
     @Mock private UserRepository users;
 
     private UserService service() {
-        return new UserService(users, new SelfOnlyAccess(false, ""), "clerk");
+        return new UserService(users, new SelfOnlyAccess(false, ""), FREE_TIER, "clerk");
     }
 
     private static UserEntity row(String id, String email) {
@@ -227,7 +238,7 @@ class UserProvisioningTest {
              * through a different door.
              */
             UserService gated = new UserService(
-                    users, new SelfOnlyAccess(true, "user_2someoneElse"), "clerk");
+                    users, new SelfOnlyAccess(true, "user_2someoneElse"), FREE_TIER, "clerk");
 
             assertThatThrownBy(() -> gated.provision(SUBJECT, EMAIL))
                     .isInstanceOf(ApiException.class);

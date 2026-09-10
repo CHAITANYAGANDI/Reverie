@@ -69,6 +69,34 @@ class UserProvisioningConcurrencyTest {
         String owner = env("REVERIE_IT_DB_OWNER_USER", "REVERIE_IT_DB_USER");
         String password = env("REVERIE_IT_DB_OWNER_PASSWORD", "REVERIE_IT_DB_PASSWORD");
 
+        /*
+         * WHY A CONTEXT THAT NEVER MENTIONED THE FREE TIER NEEDS THIS.
+         *
+         * <p>`provision` now resolves the lifetime free-tier identity as part
+         * of first login (V69), and that identity is an HMAC. There is
+         * deliberately no default key -- see the note in application.yml: a
+         * generated or changed one makes every returning user look new and
+         * hands the whole estate another free allowance, silently. So the
+         * hasher refuses to hash without one in clerk mode, which is the mode
+         * this context runs in, and provisioning fails rather than guessing.
+         *
+         * <p>Any fixed value does here. Nothing in this class asserts anything
+         * about the hash; what it needs is for provisioning to complete, so
+         * that the claim it does make -- that eight simultaneous first logins
+         * produce one users row -- can still be made.
+         */
+        registry.add("reverie.free-tier.identity-secret", () -> "provisioning-race-test-secret");
+
+        /*
+         * And the Backend API key, which clerk mode also refuses to start
+         * without -- see ClerkIdentityCheck. The url points at a dead local
+         * port: every identity here is resolved from the email claim passed to
+         * `provision`, so a call that does go out is a bug and should fail
+         * immediately rather than reach the internet.
+         */
+        registry.add("reverie.clerk.secret-key", () -> "sk_test_integration_only");
+        registry.add("reverie.clerk.api-url", () -> "http://127.0.0.1:1/v1");
+
         registry.add("spring.datasource.url", () -> url);
         registry.add("spring.datasource.username", () -> owner);
         registry.add("spring.datasource.password", () -> password);

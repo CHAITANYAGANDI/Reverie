@@ -22,6 +22,7 @@ public class UserService {
 
     private final UserRepository users;
     private final SelfOnlyAccess selfOnly;
+    private final FreeTierService freeTier;
 
     /**
      * {@code clerk} or {@code dev}, and the only thing that decides whether the
@@ -36,9 +37,11 @@ public class UserService {
 
     public UserService(UserRepository users,
                        SelfOnlyAccess selfOnly,
+                       FreeTierService freeTier,
                        @Value("${reverie.auth-mode:dev}") String authMode) {
         this.users = users;
         this.selfOnly = selfOnly;
+        this.freeTier = freeTier;
         this.authMode = authMode == null ? "dev" : authMode;
     }
 
@@ -106,6 +109,29 @@ public class UserService {
         if (email != null && !email.equals(user.getEmail())) {
             user.setEmail(email);
         }
+
+        /*
+         * THE LIFETIME ALLOWANCE, ATTACHED HERE AND NOWHERE ELSE.
+         *
+         * <p>100 minutes and 3 imports are for the life of the *identity*, not
+         * of this row: `usage_limits` cascades away with the account, so
+         * closing one and signing up again used to hand out another allowance.
+         * See `FreeTierService`, which owns all of that reasoning.
+         *
+         * <p>Here because this is the only place every account comes into
+         * being, whichever door it arrives through, and because it is the only
+         * place that has the verified address from the token — the charging
+         * paths downstream have a user id and no business holding an email.
+         *
+         * <p>After the email refresh above, deliberately: a primary address
+         * that changed at the provider is written to the row first, so what is
+         * hashed is the address this request actually authenticated with.
+         *
+         * <p>Idempotent, and it has to be: this runs on every authenticated
+         * request. An account that is already linked and whose address has not
+         * changed does one column read.
+         */
+        freeTier.linkOnProvision(user.getId(), clerkUserId, email);
         return user.getId();
     }
 

@@ -47,6 +47,47 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProcessingIdempotencyTest {
 
+    /**
+     * The lifetime allowance the two capped figures now live on.
+     *
+     * <p>V69 moved them off `usage_limits`, which cascades away with the
+     * account, so that closing an account and signing up again stops handing
+     * out another 100 minutes. Nothing this file asserts changed; the numbers
+     * are read from here.
+     */
+    @Mock private com.reverie.repository.FreeTierEntitlementRepository entitlements;
+    @Mock private FreeTierService freeTier;
+    private final com.reverie.entity.FreeTierEntitlement entitlement =
+            new com.reverie.entity.FreeTierEntitlement();
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireTheEntitlement() {
+        entitlement.setId("fte_1");
+        org.mockito.Mockito.when(freeTier.forAccount(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("fte_1");
+        org.mockito.Mockito.when(freeTier.read("fte_1"))
+                .thenAnswer(i -> java.util.Optional.of(entitlement));
+        org.mockito.Mockito.when(entitlements.addMinutes(
+                        org.mockito.ArgumentMatchers.eq("fte_1"),
+                        org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> {
+                    entitlement.setRecordingMinutesUsed(
+                            entitlement.getRecordingMinutesUsed() + (int) i.getArgument(1));
+                    return 1;
+                });
+        org.mockito.Mockito.when(entitlements.claimImport(
+                        org.mockito.ArgumentMatchers.eq("fte_1"),
+                        org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> {
+                    int limit = i.getArgument(1);
+                    if (entitlement.getImportsUsed() >= limit) {
+                        return 0;
+                    }
+                    entitlement.setImportsUsed(entitlement.getImportsUsed() + 1);
+                    return 1;
+                });
+    }
+
     private static final String USER = "usr_1";
     private static final String MEETING = "mtg_1";
 
@@ -72,7 +113,7 @@ class ProcessingIdempotencyTest {
     @BeforeEach
     void setUp() {
         claimed = java.util.Collections.synchronizedSet(new HashSet<>());
-        service = new UsageLimitService(usageRepo, users, charges, mail);
+        service = new UsageLimitService(usageRepo, users, charges, entitlements, freeTier, mail);
 
         limit = new UsageLimit();
         limit.setId("usg_1");
@@ -92,7 +133,7 @@ class ProcessingIdempotencyTest {
         void chargesOnce() {
             assertThat(service.chargeAiMinutesOnce(USER, MEETING, 1, 40)).isTrue();
 
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(40);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(40);
         }
 
         @Test
@@ -101,7 +142,7 @@ class ProcessingIdempotencyTest {
             service.chargeAiMinutesOnce(USER, MEETING, 1, 40);
 
             assertThat(service.chargeAiMinutesOnce(USER, MEETING, 1, 40)).isFalse();
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(40);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(40);
         }
 
         @Test
@@ -111,7 +152,7 @@ class ProcessingIdempotencyTest {
                 service.chargeAiMinutesOnce(USER, MEETING, 1, 40);
             }
 
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(40);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(40);
         }
     }
 
@@ -128,7 +169,7 @@ class ProcessingIdempotencyTest {
             service.chargeAiMinutesOnce(USER, MEETING, 1, 40);
 
             assertThat(service.chargeAiMinutesOnce(USER, MEETING, 2, 40)).isTrue();
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(80);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(80);
         }
 
         @Test
@@ -138,7 +179,7 @@ class ProcessingIdempotencyTest {
             service.chargeAiMinutesOnce(USER, MEETING, 2, 40);
 
             assertThat(service.chargeAiMinutesOnce(USER, MEETING, 2, 40)).isFalse();
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(80);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(80);
         }
     }
 
@@ -152,7 +193,7 @@ class ProcessingIdempotencyTest {
             service.chargeAiMinutesOnce(USER, MEETING, 1, 40);
 
             assertThat(service.chargeAiMinutesOnce(USER, "mtg_2", 1, 10)).isTrue();
-            assertThat(limit.getAiMinutesUsed()).isEqualTo(50);
+            assertThat(entitlement.getRecordingMinutesUsed()).isEqualTo(50);
         }
     }
 
@@ -192,7 +233,7 @@ class ProcessingIdempotencyTest {
         // arrives second time around.
         assertThat(service.chargeAiMinutesOnce(USER, MEETING, 1, 0)).isTrue();
 
-        assertThat(limit.getAiMinutesUsed()).isZero();
+        assertThat(entitlement.getRecordingMinutesUsed()).isZero();
         assertThat(service.chargeAiMinutesOnce(USER, MEETING, 1, 40)).isFalse();
     }
 }

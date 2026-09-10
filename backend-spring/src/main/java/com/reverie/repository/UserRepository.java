@@ -81,4 +81,27 @@ public interface UserRepository extends JpaRepository<UserEntity, String> {
     int insertIfAbsent(@Param("id") String id,
                        @Param("clerkUserId") String clerkUserId,
                        @Param("email") String email);
+
+    /**
+     * Point this account at its lifetime free allowance, once and once only.
+     *
+     * <p>{@code AND free_tier_entitlement_id IS NULL} is the invariant, not an
+     * optimisation. An account's link must never move: re-pointing one at a
+     * different entitlement is how somebody would inherit an allowance by
+     * claiming an address, and how usage would leak between people. Expressing
+     * that in the statement means no caller can get it wrong, and two
+     * concurrent first provisions settle it in Postgres rather than by
+     * whichever thread flushed last.
+     *
+     * @return 1 when this caller attached the link, 0 when one was already there
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE users
+               SET free_tier_entitlement_id = :entitlementId
+             WHERE id = :userId
+               AND free_tier_entitlement_id IS NULL
+            """, nativeQuery = true)
+    int attachFreeTierEntitlement(@Param("userId") String userId,
+                                  @Param("entitlementId") String entitlementId);
 }

@@ -243,6 +243,39 @@ reverie:
   clerk:
     issuer: ${CLERK_ISSUER:}
     jwks-url: ${CLERK_JWKS_URL:}
+    # The Backend API credential, used for exactly one thing: resolving the
+    # verified primary email of an already-verified token subject, so that the
+    # lifetime free allowance has a durable identity even when the session token
+    # carries no email claim. See ClerkDirectory.
+    #
+    # Blank means that lookup is unavailable, and an account whose token has no
+    # email claim then gets no free allowance at all rather than an unmapped one
+    # that resets on deletion. A production deployment refuses to start without
+    # it; see DeploymentCheck.
+    #
+    # It never leaves the server: no endpoint returns it, nothing logs it, and
+    # the frontend has no equivalent.
+    secret-key: ${CLERK_SECRET_KEY:}
+    api-url: ${CLERK_API_URL:https://api.clerk.com/v1}
+  free-tier:
+    # The key that turns a verified email into the durable identity of one
+    # lifetime free allowance -- 100 transcribed minutes and 3 imports. See
+    # FreeTierIdentityHasher.
+    #
+    # NO DEFAULT, and this one matters more than it looks. Every existing
+    # identity hash was made with this exact value: change it and every
+    # returning user looks new, which hands the entire estate another free
+    # allowance -- silently, because nothing breaks. Generating one at startup
+    # would do the same thing on every restart.
+    #
+    # So it is blank here, the hasher refuses to hash without it in clerk mode,
+    # and DeploymentCheck refuses to boot a production deployment that has not
+    # set it. A laptop gets the fixed development key instead, which is safe for
+    # the same reason dev mode is: dev mode already trusts a header.
+    #
+    # OPERATIONAL REQUIREMENT: back this value up with the database. Restoring
+    # one without the other resets everybody's allowance.
+    identity-secret: ${FREE_TIER_IDENTITY_HMAC_SECRET:}
   # The nightly pass that applies each account's retention policy. Written out
   # here rather than left to an inline default because it is the one scheduled
   # job that deletes data: an environment restored from a backup should be able

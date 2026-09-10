@@ -42,6 +42,13 @@ services:
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
       KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-PLAIN}
       KAFKA_SASL_JAAS_CONFIG: ${KAFKA_SASL_JAAS_CONFIG:-}
+      # Defaults to clerk because the alternative trusts a header -- see
+      # AuthModeDefaultTest. Note what that costs since V69: clerk mode refuses
+      # to START without CLERK_SECRET_KEY and FREE_TIER_IDENTITY_HMAC_SECRET,
+      # because the lifetime free allowance is enforced against a verified Clerk
+      # identity and cannot be without them (ClerkIdentityCheck). Set both below,
+      # or run REVERIE_AUTH_MODE=dev, which is the zero-configuration path and
+      # needs neither.
       REVERIE_AUTH_MODE: ${REVERIE_AUTH_MODE:-clerk}
       # The development value now lives HERE and only here. application.yml has
       # no default for it any more: an unset REVERIE_INTERNAL_TOKEN used to
@@ -52,6 +59,30 @@ services:
       # Which is why compose still passes it explicitly -- the local stack is
       # meant to work out of the box, and this token is public anyway.
       REVERIE_INTERNAL_TOKEN: ${REVERIE_INTERNAL_TOKEN:-dev-internal-token}
+      # Clerk's Backend API credential. The backend uses it for one call:
+      # resolving the verified primary email of a token subject, so the lifetime
+      # free allowance has a durable identity without needing a JWT template
+      # (V69, ClerkDirectory).
+      #
+      # REQUIRED IN CLERK MODE, which is this file's default: the app refuses to
+      # start without it rather than serving 500s once somebody signs in. Unset
+      # is fine in dev mode, which has no Clerk at all and derives a stable
+      # identity from the dev subject instead.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      # The free-tier identity key (V69). No default, here or anywhere: a
+      # generated one would be new on every restart, which is the reset bug with
+      # extra steps -- every returning identity looks new and gets another 100
+      # minutes, silently.
+      #
+      # REQUIRED IN CLERK MODE, which is this file's default; the app refuses to
+      # start without it (ClerkIdentityCheck), and a production deployment is
+      # refused twice over (DeploymentCheck also rejects the published
+      # development value). In dev mode it is not needed at all:
+      # `FreeTierIdentityHasher` uses a fixed published key there, which is safe
+      # for the same reason dev mode is -- dev mode already trusts an X-Dev-User
+      # header -- and is *fixed* rather than random, so restarting the local
+      # stack does not hand the local account another 100 minutes.
+      FREE_TIER_IDENTITY_HMAC_SECRET: ${FREE_TIER_IDENTITY_HMAC_SECRET:-}
       # The nightly retention pass (V35). Exposed for the same reason and one
       # more: it is the only scheduled job that deletes data, so an environment
       # restored from a backup needs to be able to switch it off before it wakes

@@ -36,8 +36,27 @@ class DeploymentCheckTest {
     private static final String MAIL_FROM = "Reverie <notifications@reverie.app>";
     private static final String SELF_USER = "user_2abcMineOwnAccount";
 
+    /**
+     * A free-tier identity key that is neither missing nor the published one.
+     *
+     * <p>Any random-looking string will do here: the check asks whether it is
+     * set and whether it is the development key, and cannot ask anything else
+     * without knowing what a good secret looks like.
+     */
+    private static final String SECRET = "9f2c41d0b7e84a5c8d3f6019ab72e5c4";
+
+    /**
+     * A Clerk Backend API key.
+     *
+     * <p>Required in production because the lifetime free allowance needs a
+     * verified email even when the session token carries no email claim — see
+     * `ClerkDirectory`. Shaped like a real one so the check reads naturally;
+     * nothing here validates its format.
+     */
+    private static final String CLERK_SECRET = "sk_test_deploymentcheck";
+
     private static DeploymentCheck ready() {
-        return new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "");
+        return new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "");
     }
 
     @Test
@@ -57,7 +76,7 @@ class DeploymentCheckTest {
         @DisplayName("dev mode is refused, and the message says what it costs")
         void devModeIsRefused() {
             List<String> problems =
-                    new DeploymentCheck("dev", ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    new DeploymentCheck("dev", ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
             // Named as the consequence, not as the setting. "REVERIE_AUTH_MODE
@@ -73,7 +92,7 @@ class DeploymentCheckTest {
             // fail-closed default on the @Value never got a say.
             for (String mode : new String[] { "", "  ", "development", "DEV", "prod", "clerkk" }) {
                 List<String> problems =
-                        new DeploymentCheck(mode, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                        new DeploymentCheck(mode, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
                 assertThat(problems).as("mode=%s", mode).isNotEmpty();
             }
@@ -86,7 +105,7 @@ class DeploymentCheckTest {
             // three problems when there is one sends somebody to configure
             // Clerk when what they need to do is stop using dev mode.
             List<String> problems =
-                    new DeploymentCheck("dev", "", "", TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    new DeploymentCheck("dev", "", "", TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
         }
@@ -103,7 +122,7 @@ class DeploymentCheckTest {
             // deployment docs. Anybody who has read any of those can forge a
             // transcript callback.
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, "dev-internal-token", FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    MODE, ISSUER, JWKS, "dev-internal-token", SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
             assertThat(problems.get(0)).contains("forge a result callback");
@@ -113,7 +132,7 @@ class DeploymentCheckTest {
         @DisplayName("an unset token is refused")
         void anUnsetTokenIsRefused() {
             List<String> problems =
-                    new DeploymentCheck(MODE, ISSUER, JWKS, "", FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    new DeploymentCheck(MODE, ISSUER, JWKS, "", SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
         }
@@ -131,7 +150,7 @@ class DeploymentCheckTest {
             // wrong makes every request from the browser fail, and it looks
             // exactly like the API being down.
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, "http://localhost:3000", PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, "http://localhost:3000", PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
             assertThat(problems.get(0)).contains("only this container can reach");
@@ -155,7 +174,7 @@ class DeploymentCheckTest {
                     "http://[::1]",
             }) {
                 List<String> problems =
-                        new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, url, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                        new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, url, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
                 assertThat(problems).as("url=%s", url).isNotEmpty();
             }
@@ -169,7 +188,7 @@ class DeploymentCheckTest {
             // a bare host is not an origin -- CORS compares it against
             // `https://host` and never matches.
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, "reverie-frontend.onrender.com", PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, "reverie-frontend.onrender.com", PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
             assertThat(problems.get(0)).contains("https://reverie-frontend.onrender.com");
@@ -182,7 +201,7 @@ class DeploymentCheckTest {
             // browser, so this is the one URL where "it works on my machine" is
             // literally the failure.
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, FRONTEND, "http://localhost:8080", AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, "http://localhost:8080", AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
 
             assertThat(problems).hasSize(1);
             assertThat(problems.get(0)).contains("APP_PUBLIC_URL");
@@ -194,16 +213,16 @@ class DeploymentCheckTest {
             // AiClient repairs this one, because a private service on the
             // internal network can only mean http. Refusing it here would make
             // the blueprint's auto-wiring unusable for no gain.
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC,
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC,
                     "reverie-ai:10000", DB, MAIL_KEY, MAIL_FROM, false, "").problems()).isEmpty();
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC,
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC,
                     "http://reverie-ai:10000", DB, MAIL_KEY, MAIL_FROM, false, "").problems()).isEmpty();
         }
 
         @Test
         @DisplayName("but an unset ai-service URL is still refused")
         void theInternalUrlMustExist() {
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, "", DB, MAIL_KEY, MAIL_FROM, false, "")
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, "", DB, MAIL_KEY, MAIL_FROM, false, "")
                     .problems()).hasSize(1);
         }
     }
@@ -222,7 +241,7 @@ class DeploymentCheckTest {
                     MODE,
                     "https://touching-locust-18.clerk.accounts.dev",
                     "https://touching-locust-18.clerk.accounts.dev/.well-known/jwks.json",
-                    TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "");
+                    TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "");
 
             assertThat(check.problems()).isEmpty();
             assertThat(check.warnings()).singleElement()
@@ -236,7 +255,7 @@ class DeploymentCheckTest {
         // Fixing a deploy one restart per variable, each cycle revealing the
         // next thing wrong, is how a five-minute checklist becomes an afternoon.
         DeploymentCheck check = new DeploymentCheck(
-                "dev", "", "", "dev-internal-token", "http://localhost:3000", "", "", DB, MAIL_KEY, MAIL_FROM, false, "");
+                "dev", "", "", "dev-internal-token", SECRET, CLERK_SECRET, "http://localhost:3000", "", "", DB, MAIL_KEY, MAIL_FROM, false, "");
 
         assertThat(check.problems()).hasSize(5);
     }
@@ -245,7 +264,7 @@ class DeploymentCheckTest {
     @DisplayName("startup fails, and the exception carries the list")
     void theContextRefusesToStart() {
         DeploymentCheck check = new DeploymentCheck(
-                "dev", "", "", "dev-internal-token", "http://localhost:3000", "", "", DB, MAIL_KEY, MAIL_FROM, false, "");
+                "dev", "", "", "dev-internal-token", SECRET, CLERK_SECRET, "http://localhost:3000", "", "", DB, MAIL_KEY, MAIL_FROM, false, "");
 
         assertThatThrownBy(check::check)
                 .isInstanceOf(IllegalStateException.class)
@@ -280,7 +299,7 @@ class DeploymentCheckTest {
         @Test
         @DisplayName("a Neon pooled host is refused, and the message says what it looks like")
         void pooledHostIsRefused() {
-            List<String> problems = new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND,
+            List<String> problems = new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND,
                     PUBLIC, AI,
                     "jdbc:postgresql://ep-cool-sun-123-pooler.us-east-2.aws.neon.tech/neondb",
                     MAIL_KEY, MAIL_FROM, false, ""
@@ -297,7 +316,7 @@ class DeploymentCheckTest {
         @Test
         @DisplayName("a pgbouncer=true parameter is the same mistake spelled differently")
         void pgbouncerParameterIsRefused() {
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI,
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI,
                     "jdbc:postgresql://db.example.com/reverie?sslmode=require&pgbouncer=true",
                     MAIL_KEY, MAIL_FROM, false, ""
             ).problems()).hasSize(1);
@@ -314,7 +333,7 @@ class DeploymentCheckTest {
         void anUnrelatedHostPasses() {
             // The hyphen is what identifies it. Matching on `pooler` alone
             // would accuse this host, which is a perfectly ordinary one.
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI,
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI,
                     "jdbc:postgresql://carpooler-db.example.com/reverie",
                     MAIL_KEY, MAIL_FROM, false, "").problems()).isEmpty();
         }
@@ -322,7 +341,7 @@ class DeploymentCheckTest {
         @Test
         @DisplayName("an unset url is left to Spring, which has its own complaint")
         void unsetUrlIsNotThisCheckSProblem() {
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, "",
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, "",
                     MAIL_KEY, MAIL_FROM, false, "").problems()).isEmpty();
         }
     }
@@ -350,7 +369,7 @@ class DeploymentCheckTest {
         @DisplayName("refuses to start with no API key, and names what cannot be sent")
         void noKey() {
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, "", MAIL_FROM, false, "").problems();
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, "", MAIL_FROM, false, "").problems();
 
             assertThat(problems).anyMatch(p -> p.contains("RESEND_API_KEY"));
             assertThat(problems).anyMatch(p -> p.contains("account closed"));
@@ -360,7 +379,7 @@ class DeploymentCheckTest {
         @DisplayName("refuses to start with no sender")
         void noSender() {
             List<String> problems = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, "", false, "").problems();
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, MAIL_KEY, "", false, "").problems();
 
             assertThat(problems).anyMatch(p -> p.contains("REVERIE_MAIL_FROM is not set"));
         }
@@ -377,7 +396,7 @@ class DeploymentCheckTest {
              */
             String secret = "re_EXAMPLE_PRETEND_THIS_IS_PRODUCTION";
             DeploymentCheck check = new DeploymentCheck(
-                    MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB, secret, "", false, "");
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB, secret, "", false, "");
 
             String everything = String.join(" ", check.problems()) + String.join(" ", check.warnings());
 
@@ -391,7 +410,7 @@ class DeploymentCheckTest {
         void bothSenderForms() {
             for (String from : List.of("notifications@reverie.app",
                     "Reverie <notifications@reverie.app>")) {
-                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI,
+                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI,
                         DB, MAIL_KEY, from, false, "").mailProblem())
                         .as(from).isEmpty();
             }
@@ -402,7 +421,7 @@ class DeploymentCheckTest {
         void notAnAddress() {
             for (String from : List.of("Reverie", "notifications@", "@reverie.app",
                     "notifications at reverie.app")) {
-                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI,
+                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI,
                         DB, MAIL_KEY, from, false, "").mailProblem())
                         .as(from).isNotEmpty();
             }
@@ -418,7 +437,7 @@ class DeploymentCheckTest {
              * account-closure notice to the developer instead of the person
              * whose account it was.
              */
-            List<String> problems = new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND,
+            List<String> problems = new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND,
                     PUBLIC, AI, DB, MAIL_KEY, "Reverie <onboarding@resend.dev>", false, "").mailProblem();
 
             assertThat(problems).hasSize(1);
@@ -431,7 +450,7 @@ class DeploymentCheckTest {
             // `.env.example` ships REVERIE_MAIL_FROM=Reverie <notifications@yourdomain.com>.
             // Copying that file and filling in everything except this line is the
             // most likely way a deployment reaches production unable to send.
-            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB,
+            assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
                     MAIL_KEY, "Reverie <notifications@yourdomain.com>", false, "").mailProblem())
                     .isNotEmpty();
         }
@@ -441,7 +460,7 @@ class DeploymentCheckTest {
         void refusesUnroutable() {
             for (String from : List.of("reverie@localhost", "reverie@reverie.test",
                     "reverie@example.com", "reverie@mail.example.com")) {
-                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI,
+                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI,
                         DB, MAIL_KEY, from, false, "").mailProblem())
                         .as(from).isNotEmpty();
             }
@@ -476,7 +495,7 @@ class DeploymentCheckTest {
         class SelfOnly {
 
             private DeploymentCheck selfOnly(String key, String from, String allowed) {
-                return new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB,
+                return new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
                         key, from, true, allowed);
             }
 
@@ -567,7 +586,7 @@ class DeploymentCheckTest {
                 // gets the strict check, which is the correct way round.
                 assertThat(ready().problems()).isEmpty();
                 assertThat(ready().warnings()).noneMatch(w -> w.contains("SELF-ONLY"));
-                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB,
+                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
                         "", "", false, "").mailProblem()).isNotEmpty();
             }
 
@@ -576,10 +595,114 @@ class DeploymentCheckTest {
             void sharedSenderStaysRefusedOtherwise() {
                 // Naming the account does not help: without the mode it is not
                 // enforced, so the sender is simply wrong.
-                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, FRONTEND, PUBLIC, AI, DB,
+                assertThat(new DeploymentCheck(MODE, ISSUER, JWKS, TOKEN, SECRET, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
                         MAIL_KEY, "Reverie <onboarding@resend.dev>", false, SELF_USER)
                         .mailProblem()).isNotEmpty();
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("the Clerk Backend API key")
+    class ClerkSecret {
+
+        @Test
+        @DisplayName("an unset key is refused, because the allowance loses its identity")
+        void unsetIsRefused() {
+            /*
+             * Not about signing in: tokens verify against the JWKS without it.
+             * It is about the lifetime free allowance having something durable
+             * to key on when the session token has no email claim — which is
+             * Clerk's default. Without the key that fallback is gone, and the
+             * anti-reset guarantee would be back to depending on whether
+             * somebody wrote a JWT template.
+             */
+            List<String> problems = new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, "", FRONTEND, PUBLIC, AI, DB,
+                    MAIL_KEY, MAIL_FROM, false, "").problems();
+
+            assertThat(problems).hasSize(1);
+            assertThat(problems.get(0)).contains("CLERK_SECRET_KEY");
+            assertThat(problems.get(0)).contains("no free allowance at all");
+        }
+
+        @Test
+        @DisplayName("is not asked for in dev mode, which has no Clerk")
+        void devModeSaysOneThing() {
+            // Dev mode is one clear problem rather than four confusing ones --
+            // the same reasoning the JWKS and issuer checks already follow.
+            List<String> problems = new DeploymentCheck(
+                    "dev", "", "", TOKEN, SECRET, "", FRONTEND, PUBLIC, AI, DB,
+                    MAIL_KEY, MAIL_FROM, false, "").problems();
+
+            assertThat(problems).hasSize(1);
+            assertThat(problems.get(0)).contains("impersonate any user");
+        }
+
+        @Test
+        @DisplayName("the key itself is never in the message")
+        void theKeyIsNotEchoed() {
+            String problems = String.join(" ", new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN, SECRET, "", FRONTEND, PUBLIC, AI, DB,
+                    MAIL_KEY, MAIL_FROM, false, "").problems());
+
+            assertThat(problems).doesNotContain(CLERK_SECRET);
+        }
+    }
+
+    @Nested
+    @DisplayName("the free-tier identity key")
+    class FreeTierSecret {
+
+        @Test
+        @DisplayName("an unset key is refused, because signing in would fail")
+        void unsetIsRefused() {
+            List<String> problems = new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN, "", CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
+                    MAIL_KEY, MAIL_FROM, false, "").problems();
+
+            assertThat(problems).hasSize(1);
+            assertThat(problems.get(0)).contains("FREE_TIER_IDENTITY_HMAC_SECRET");
+            // The consequence, both ways round: nothing works now, and setting
+            // it to a fresh value later is the silent version of the same bug.
+            assertThat(problems.get(0)).contains("resets every existing account");
+        }
+
+        @Test
+        @DisplayName("the published development key is refused")
+        void theDevelopmentKeyIsRefused() {
+            /*
+             * This is the one that would otherwise reach production and work.
+             * A missing key throws on the first sign-in and gets noticed; the
+             * development key computes hashes perfectly well, using a value
+             * printed in this repository — so the ledger stops being
+             * pseudonymous and nothing anywhere complains.
+             */
+            List<String> problems = new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN,
+                    com.reverie.service.FreeTierIdentityHasher.DEVELOPMENT_SECRET, CLERK_SECRET,
+                    FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems();
+
+            assertThat(problems).hasSize(1);
+            assertThat(problems.get(0)).contains("development key");
+        }
+
+        @Test
+        @DisplayName("the key itself is never in the message")
+        void theKeyIsNotEchoed() {
+            String secret = "a-real-looking-secret-nobody-should-print";
+            List<String> problems = new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN, secret, CLERK_SECRET, FRONTEND, PUBLIC, AI, DB,
+                    MAIL_KEY, MAIL_FROM, false, "").problems();
+
+            // Nothing to report, and nothing to leak either way: a startup
+            // failure is logged, and logs are not where secrets go.
+            assertThat(problems).isEmpty();
+            assertThat(String.join(" ", new DeploymentCheck(
+                    MODE, ISSUER, JWKS, TOKEN, com.reverie.service.FreeTierIdentityHasher
+                            .DEVELOPMENT_SECRET, CLERK_SECRET,
+                    FRONTEND, PUBLIC, AI, DB, MAIL_KEY, MAIL_FROM, false, "").problems()))
+                    .doesNotContain(com.reverie.service.FreeTierIdentityHasher.DEVELOPMENT_SECRET);
         }
     }
 }

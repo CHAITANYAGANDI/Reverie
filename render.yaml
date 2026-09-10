@@ -99,8 +99,34 @@ services:
         sync: false
       - key: CLERK_JWKS_URL
         sync: false
+      # The Backend API credential, and the backend needs its own copy: it
+      # resolves the verified primary email of an already-verified token subject
+      # so the lifetime free allowance has a durable identity even when the
+      # session token carries no email claim (V69, ClerkDirectory).
+      #
+      # `sync: false` -- the same secret the frontend service holds, entered by
+      # hand rather than generated, because Clerk issues it.
+      - key: CLERK_SECRET_KEY
+        sync: false
       - key: REVERIE_INTERNAL_TOKEN
         generateValue: true   # must match the ai-service value; see docs/deploy.md
+
+      # The key that turns a verified email into the durable identity of one
+      # lifetime free allowance (V69).
+      #
+      # `generateValue: true` deliberately, and it is not the same statement it
+      # makes for the token above. Render generates this ONCE, on first deploy,
+      # and then keeps it -- which is exactly the requirement: every existing
+      # identity hash was computed with this value, so a new one would make
+      # every returning user look new and hand the whole estate another 100
+      # minutes and 3 imports. Silently, because nothing would break.
+      #
+      # OPERATIONAL NOTE: this belongs with the database backup. Restoring one
+      # without the other resets everybody's free allowance. Do not rotate it
+      # without a plan for the existing hashes -- `free_tier_identities`
+      # carries a `hash_version` so a rotation can be additive.
+      - key: FREE_TIER_IDENTITY_HMAC_SECRET
+        generateValue: true
 
       # --- Storage (Cloudflare R2) ------------------------------------------
       # R2 is S3-compatible and the client already uses path-style addressing

@@ -40,6 +40,17 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UserPreferencesTest {
 
+    /**
+     * The lifetime free allowance, stubbed away.
+     *
+     * <p>`UserService.provision` attaches one (see V69), and none of the
+     * cases in this file are about that. A Mockito mock rather than a real
+     * one so nothing here touches a repository: what is asserted is
+     * unchanged, and `FreeTierServiceTest` owns the allowance behaviour.
+     */
+    private static final com.reverie.service.FreeTierService FREE_TIER =
+            org.mockito.Mockito.mock(com.reverie.service.FreeTierService.class);
+
     private static final String USER = "usr_1";
 
     @Mock private UserRepository users;
@@ -104,7 +115,7 @@ class UserPreferencesTest {
 
     @BeforeEach
     void setUp() {
-        service = new UserService(users, new SelfOnlyAccess(false, ""), "dev");
+        service = new UserService(users, new SelfOnlyAccess(false, ""), FREE_TIER, "dev");
         user = new UserEntity();
         user.setId(USER);
         user.setClerkUserId("clerk_1");
@@ -141,7 +152,7 @@ class UserPreferencesTest {
             // `provision` rewrites this column from the sign-in token on the
             // very next request, so accepting the edit would be a control that
             // appeared to work and undid itself a second later.
-            var clerk = new UserService(users, new SelfOnlyAccess(false, ""), "clerk");
+            var clerk = new UserService(users, new SelfOnlyAccess(false, ""), FREE_TIER, "clerk");
             user.setEmail("old@example.com");
 
             assertThatThrownBy(() -> clerk.updatePreferences(USER, address("new@example.com")))
@@ -157,7 +168,7 @@ class UserPreferencesTest {
             // The profile form sends every field it shows. Somebody renaming
             // themselves under a provider must not be told they cannot change
             // an address they never touched.
-            var clerk = new UserService(users, new SelfOnlyAccess(false, ""), "clerk");
+            var clerk = new UserService(users, new SelfOnlyAccess(false, ""), FREE_TIER, "clerk");
             user.setEmail("same@example.com");
 
             clerk.updatePreferences(USER, address("same@example.com"));

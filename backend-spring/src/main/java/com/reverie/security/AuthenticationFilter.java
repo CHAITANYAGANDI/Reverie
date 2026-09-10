@@ -166,6 +166,28 @@ public class AuthenticationFilter extends OncePerRequestFilter {
         return new Identity(subject, (email == null || email.isBlank()) ? null : email, null);
     }
 
+    /** What the token said about the address being verified, or null. */
+    static Boolean verifiedClaim(Jwt jwt) {
+        for (String claim : EMAIL_VERIFIED_CLAIMS) {
+            Object value = jwt.getClaim(claim);
+            if (value instanceof Boolean b) {
+                return b;
+            }
+            // A template that renders it through string interpolation produces
+            // "true"/"false" rather than a JSON boolean -- same trap the
+            // second-factor claim has, and the same handling.
+            if (value instanceof String s) {
+                if ("true".equalsIgnoreCase(s.trim())) {
+                    return Boolean.TRUE;
+                }
+                if ("false".equalsIgnoreCase(s.trim())) {
+                    return Boolean.FALSE;
+                }
+            }
+        }
+        return null;
+    }
+
     /** What the token said about a second factor, or null if it said nothing. */
     static Boolean secondFactorClaim(Jwt jwt) {
         for (String claim : SECOND_FACTOR_CLAIMS) {
@@ -188,7 +210,37 @@ public class AuthenticationFilter extends OncePerRequestFilter {
         return null;
     }
 
+    /**
+     * Claim names that may say whether the address above has been verified.
+     *
+     * <p>`email_verified` is the OIDC spelling and the one a Clerk template
+     * renders if somebody adds it. Absent means unstated, which is treated as
+     * trustworthy: the claim carries the *primary* address, and a primary
+     * address is verified in an ordinary Clerk configuration.
+     *
+     * <p>What is not treated as trustworthy is an explicit false. See
+     * {@link #emailClaim}.
+     */
+    private static final List<String> EMAIL_VERIFIED_CLAIMS = List.of(
+            "email_verified", "emailVerified", "primary_email_verified");
+
     private static String emailClaim(Jwt jwt) {
+        /*
+         * AN EXPLICITLY UNVERIFIED ADDRESS IS NOT AN IDENTITY.
+         *
+         * <p>The lifetime free allowance is keyed to this address (see
+         * `FreeTierService`), so an unverified one would make the allowance
+         * transferable by typing: claim somebody's address, get their remaining
+         * minutes. Dropping the claim here sends that case to Clerk's Backend
+         * API, which applies the same rule against Clerk's own record.
+         *
+         * <p>It also stops an unverified address being stored as the account's
+         * recap address, which was never intended either.
+         */
+        if (Boolean.FALSE.equals(verifiedClaim(jwt))) {
+            log.debug("The token's email claim says it is unverified; ignoring it.");
+            return null;
+        }
         for (String claim : EMAIL_CLAIMS) {
             Object value = jwt.getClaim(claim);
             if (value instanceof String s && !s.isBlank()) {

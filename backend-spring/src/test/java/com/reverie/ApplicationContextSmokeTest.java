@@ -75,6 +75,18 @@ class ApplicationContextSmokeTest {
         // unprivileged role; here everything is the owner, because the point is
         // to load the context rather than to re-test row-level security, which
         // OutboxClaimConcurrencyTest covers against the real roles.
+        /*
+         * Clerk mode is the default and it now refuses to start without the two
+         * values the lifetime allowance is enforced with -- see
+         * ClerkIdentityCheck. Fixed throwaways: nothing here asserts anything
+         * about an identity hash, and the API url points at a dead local port
+         * so an unexpected Backend API call fails at once instead of leaving
+         * the machine.
+         */
+        registry.add("reverie.free-tier.identity-secret", () -> "smoke-test-secret");
+        registry.add("reverie.clerk.secret-key", () -> "sk_test_integration_only");
+        registry.add("reverie.clerk.api-url", () -> "http://127.0.0.1:1/v1");
+
         registry.add("spring.datasource.url", () -> url);
         registry.add("spring.datasource.username", () -> owner);
         registry.add("spring.datasource.password", () -> password);

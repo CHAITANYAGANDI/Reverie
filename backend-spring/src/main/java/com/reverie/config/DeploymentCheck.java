@@ -1,6 +1,7 @@
 package com.reverie.config;
 
 import com.reverie.security.SelfOnlyAccess;
+import com.reverie.service.FreeTierIdentityHasher;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Refuses to start a production deployment that is still wearing development
@@ -90,6 +92,8 @@ public class DeploymentCheck {
     private final String issuer;
     private final String jwksUrl;
     private final String internalToken;
+    private final String freeTierSecret;
+    private final String clerkSecretKey;
     private final String frontendUrl;
     private final String publicUrl;
     private final String aiServiceUrl;
@@ -104,6 +108,8 @@ public class DeploymentCheck {
             @Value("${reverie.clerk.issuer:}") String issuer,
             @Value("${reverie.clerk.jwks-url:}") String jwksUrl,
             @Value("${reverie.internal-token:}") String internalToken,
+            @Value("${reverie.free-tier.identity-secret:}") String freeTierSecret,
+            @Value("${reverie.clerk.secret-key:}") String clerkSecretKey,
             @Value("${app.frontend-url:}") String frontendUrl,
             @Value("${app.public-url:}") String publicUrl,
             @Value("${app.ai-service-url:}") String aiServiceUrl,
@@ -116,6 +122,11 @@ public class DeploymentCheck {
         this.issuer = issuer;
         this.jwksUrl = jwksUrl;
         this.internalToken = internalToken;
+        // Held only to answer "is it set" and "is it the published one". Never
+        // logged and never named in a problem message -- see freeTierProblem().
+        this.freeTierSecret = freeTierSecret;
+        // Held only to answer "is it set". Never logged, never in a message.
+        this.clerkSecretKey = clerkSecretKey;
         this.frontendUrl = frontendUrl;
         this.publicUrl = publicUrl;
         this.aiServiceUrl = aiServiceUrl;
@@ -150,6 +161,32 @@ public class DeploymentCheck {
      * that can only be exercised by starting an application context is a check
      * nobody adds a case to.
      */
+    /**
+     * The free-tier identity key is set, but it is the one in this repository.
+     *
+     * <p>The <em>presence</em> of the key is {@link ClerkIdentityCheck}'s, and
+     * is refused in clerk mode everywhere rather than only here. This is the
+     * half that is genuinely about production and nothing else: on a laptop the
+     * published development key is the intended value, and in production it is
+     * the failure that would otherwise arrive and <em>work</em>. Nothing breaks
+     * — the hashes are computed perfectly well, with a value printed in this
+     * repository, so anybody who can read the source can compute the free-tier
+     * identity of any address and the ledger stops being pseudonymous.
+     *
+     * <p>The value is never included in the message. What is actionable is
+     * which variable is wrong, not what it currently holds.
+     */
+    private Optional<String> publishedFreeTierKeyProblem() {
+        String secret = trim(freeTierSecret);
+        if (FreeTierIdentityHasher.DEVELOPMENT_SECRET.equals(secret)) {
+            return Optional.of("FREE_TIER_IDENTITY_HMAC_SECRET is still the development key "
+                    + "published in this repository. Anybody who can read the source can "
+                    + "compute the free-tier identity of any email address. Generate a random "
+                    + "one and keep it.");
+        }
+        return Optional.empty();
+    }
+
     List<String> problems() {
         List<String> problems = new ArrayList<>();
 
@@ -171,6 +208,26 @@ public class DeploymentCheck {
                 problems.add("CLERK_ISSUER is not set.");
             }
         }
+
+        /*
+         * THE TWO CLERK-MODE REQUIREMENTS, AND THEY ARE NOT THIS CLASS'S ALONE.
+         *
+         * <p>A missing identity key or Backend API key is not a
+         * development-shaped value that happens to be wrong on the internet --
+         * it is a configuration clerk mode cannot enforce the allowance under
+         * anywhere, laptop included. So the rule and its wording live in
+         * {@link ClerkIdentityCheck}, which refuses to start outside the
+         * production profile, and this class calls the same method so that a
+         * production deployment still gets one list and one restart rather than
+         * one problem per redeploy.
+         *
+         * <p>Returns empty in dev mode, which is why it sits outside the branch
+         * above: a dev-mode production deployment gets the one clear problem
+         * about the mode itself.
+         */
+        problems.addAll(ClerkIdentityCheck.missing(authMode, freeTierSecret, clerkSecretKey));
+
+        publishedFreeTierKeyProblem().ifPresent(problems::add);
 
         String token = trim(internalToken);
         if (token.isEmpty()) {

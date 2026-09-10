@@ -139,6 +139,31 @@ describe("the Privacy & Demo Notice", () => {
     expect(screen.getByText(/03:00 UTC/)).toBeInTheDocument();
   });
 
+  it("names the one record that outlives the account, and what it cannot do", () => {
+    /*
+     * THE PAGE CANNOT SAY EVERYTHING GOES ANY MORE.
+     *
+     * <p>Reverie's free allowance is a lifetime one and used to be enforced by
+     * a counter deleted with the account — so closing an account and signing up
+     * again with the same address handed out another 100 minutes and 3 imports.
+     * Closing that bypass means retaining something, and a privacy notice that
+     * did not say so would be false in the one direction that matters.
+     *
+     * <p>What is asserted is the shape of the disclosure: what is kept, that it
+     * is a hash rather than an address, and — the half somebody closing their
+     * account actually cares about — that it cannot bring any content back.
+     */
+    render(<PrivacyNoticePage />);
+
+    expect(screen.getByText(/One record does outlive the account/)).toBeInTheDocument();
+    expect(screen.getByText(/one-way keyed hash of the email address/)).toBeInTheDocument();
+    expect(screen.getByText(/cannot restore a recording/)).toBeInTheDocument();
+    // No claim that the retained row is anonymous in the absolute sense, and no
+    // claim that it is more than it is.
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/anonymised|anonymized/i);
+  });
+
   it("promises no deletion it cannot perform", () => {
     /*
      * THE TWO SENTENCES THAT WOULD HAVE BEEN FALSE.

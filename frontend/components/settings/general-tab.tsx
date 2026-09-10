@@ -439,10 +439,23 @@ function CloseAccountSection() {
       </h2>
 
       <div className="space-y-3 border-b py-4">
+        {/*
+          "Deletes everything, permanently" was true and is now very nearly
+          true, which is worse. The free allowance is a lifetime one and used to
+          be reset by deleting an account and making another, so a count of what
+          it has spent now outlives the account (V69).
+
+          <p>The strong half is kept and still first: everything you made is
+          gone and gone for good. What follows is the exception, stated as what
+          it is and what it cannot do — a sentence somebody can check against
+          the Privacy & Demo Notice, which describes the same row.
+        */}
         <p className="text-sm text-muted-foreground">
-          Deletes everything,{" "}
+          Deletes your meetings, recordings, transcripts, notes and chats{" "}
           <strong className="text-foreground">permanently</strong>. Export
-          anything you want to keep first.
+          anything you want to keep first. A count of the free minutes and
+          imports already used is kept, so the free allowance cannot be reset by
+          starting again; it holds no content and cannot restore any.
         </p>
 
         {open ? (

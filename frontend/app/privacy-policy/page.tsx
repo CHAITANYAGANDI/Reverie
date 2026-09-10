@@ -297,6 +297,37 @@ export default function PrivacyNoticePage() {
                 nothing here calls a provider to delete anything, and their
                 retention is theirs.
               </p>
+              {/*
+                THE ONE THING THAT SURVIVES, NAMED.
+
+                <p>Reverie's free allowance — 100 transcribed minutes and 3
+                imports — is described everywhere as being for the life of the
+                account, and it was enforced by a counter that was deleted with
+                the account. So closing one and signing up again with the same
+                address handed out a fresh allowance, indefinitely.
+
+                <p>The fix retains something after deletion, which means this
+                page can no longer say everything goes. It says what is kept and
+                what it cannot do, in that order, because the second half is
+                what somebody closing their account actually wants to know.
+
+                <p>Written from the schema rather than from intent: the row
+                holds a keyed hash of the address, two integers and two
+                timestamps. See `free_tier_entitlements` and
+                `free_tier_identities` in V69.
+              */}
+              <p className={`mt-4 ${PROSE}`}>
+                One record does outlive the account, and it is the only one: so
+                that the free allowance cannot be reset by closing an account and
+                opening another, Reverie keeps a count of the transcription
+                minutes and imports that allowance has already spent, alongside a
+                one-way keyed hash of the email address it belonged to. There is
+                no email address in it, no name, no meeting, and no way to work
+                backwards to any of them. It cannot restore a recording, a
+                transcript, a summary, a note, an action item, a chat or a folder,
+                and nothing in the product reads it except the check that decides
+                how much of the free tier is left.
+              </p>
             </Section>
 
             <Section heading="AI limitations">

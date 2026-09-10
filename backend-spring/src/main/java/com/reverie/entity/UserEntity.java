@@ -156,6 +156,22 @@ public class UserEntity {
     @Column(name = "allowance_email", nullable = false)
     private boolean allowanceEmail = false;
 
+    /**
+     * The lifetime free allowance this account spends against.
+     *
+     * <p>A pointer, not an owner. The allowance survives this row being deleted
+     * — that is the entire reason it is a separate table — so the foreign key
+     * runs this way round and nothing cascades from here to it. Set once, at
+     * provisioning, and never moved: see `FreeTierService` on why re-pointing
+     * an account at a different entitlement is never the right answer to
+     * anything.
+     *
+     * <p>Null only for an account provisioned by a build older than V69 that
+     * has not signed in since, or one whose token carried no email claim.
+     */
+    @Column(name = "free_tier_entitlement_id")
+    private String freeTierEntitlementId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -237,6 +253,9 @@ public class UserEntity {
 
     public boolean isAllowanceEmail() { return allowanceEmail; }
     public void setAllowanceEmail(boolean v) { this.allowanceEmail = v; }
+
+    public String getFreeTierEntitlementId() { return freeTierEntitlementId; }
+    public void setFreeTierEntitlementId(String id) { this.freeTierEntitlementId = id; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

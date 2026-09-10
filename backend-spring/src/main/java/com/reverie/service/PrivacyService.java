@@ -4,6 +4,7 @@ import com.reverie.common.ApiException;
 import com.reverie.dto.PrivacyOverviewResponse;
 import com.reverie.entity.Meeting;
 import com.reverie.entity.UserEntity;
+import com.reverie.security.TenantContext;
 import com.reverie.repository.ChatConversationRepository;
 import com.reverie.repository.MeetingActionItemRepository;
 import com.reverie.repository.MeetingRepository;
@@ -74,6 +75,7 @@ public class PrivacyService {
     private final StorageService storage;
     private final AuditService audit;
     private final AccountMail mail;
+    private final FreeTierService freeTier;
     private final String frontendUrl;
 
     public PrivacyService(MeetingRepository meetings,
@@ -87,6 +89,7 @@ public class PrivacyService {
                           StorageService storage,
                           AuditService audit,
                           AccountMail mail,
+                          FreeTierService freeTier,
                           @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl) {
         this.meetings = meetings;
         this.actionItems = actionItems;
@@ -99,6 +102,7 @@ public class PrivacyService {
         this.storage = storage;
         this.audit = audit;
         this.mail = mail;
+        this.freeTier = freeTier;
         this.frontendUrl = frontendUrl.endsWith("/")
                 ? frontendUrl.substring(0, frontendUrl.length() - 1)
                 : frontendUrl;
@@ -216,7 +220,48 @@ public class PrivacyService {
          * to consult and no bell to ring -- mail is the only channel left, and
          * the only record the account holder keeps of what was destroyed.
          */
-        String address = users.findById(userId).map(UserEntity::getEmail).orElse(null);
+        UserEntity account = users.findById(userId).orElse(null);
+        String address = account == null ? null : account.getEmail();
+
+        /*
+         * THE ONE PREREQUISITE, AND IT COMES BEFORE EVERYTHING.
+         *
+         * <p>The free allowance is a lifetime one, and the account's own link
+         * is what holds it to a person until an identity mapping says so.
+         * Deleting the account removes that link -- so if the verified primary
+         * address has changed since the last time it was seen, and the new one
+         * was never recorded as an alias, then signing up again with it is
+         * another 100 minutes. Half an hour of cached address is enough for
+         * that to happen; see `FreeTierService`.
+         *
+         * <p>So the current address is confirmed with Clerk, uncached, and
+         * aliased onto the existing entitlement first. It throws rather than
+         * proceeding if that cannot be done.
+         *
+         * <p><b>Before `eraseAccount`, and that ordering is load-bearing.</b>
+         * Erasure deletes storage objects before it deletes any row, and no
+         * transaction rolls an object store back -- a check that ran afterwards
+         * would be a check that had already lost somebody's audio. Nothing
+         * above this line has written or destroyed anything, so a refusal here
+         * leaves the account exactly as it was.
+         *
+         * <p>`runAsSystem` because the identity ledger has no RLS policy and
+         * a request holds a tenant connection; the method is REQUIRES_NEW, so
+         * the new transaction checks out a privileged connection and commits
+         * the alias before erasure begins. Its own note has the reasoning.
+         *
+         * <p>The Clerk subject comes off the row rather than from the request:
+         * `provision` looks that row up *by* clerk_user_id from the verified
+         * token, so the value stored on it is the subject of the session making
+         * this call. There is no path by which a caller can name a different
+         * one.
+         */
+        if (account != null) {
+            String subject = account.getClerkUserId();
+            TenantContext.runAsSystem(
+                    () -> freeTier.bindCurrentIdentityBeforeDeletion(userId, subject));
+        }
+
         int objects = erasure.eraseAccount(userId);
         log.info("Account {} closed: {} meeting(s), {} stored object(s).", userId, meetingCount, objects);
         /*

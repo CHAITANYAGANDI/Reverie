@@ -5,6 +5,7 @@ import com.reverie.common.IdGenerator;
 import com.reverie.domain.Plan;
 import com.reverie.dto.UsageResponse;
 import com.reverie.entity.UsageLimit;
+import com.reverie.repository.FreeTierEntitlementRepository;
 import com.reverie.repository.MeetingUsageChargeRepository;
 import com.reverie.repository.UsageLimitRepository;
 import com.reverie.repository.UserRepository;
@@ -52,6 +53,24 @@ import org.springframework.transaction.annotation.Transactional;
  * mean the only way to hold the line against a recording is to destroy a
  * meeting somebody sat through, which is why the two halves exist together.
  *
+ * <p><b>Where the numbers live, and why it is not one table.</b> The two
+ * capped figures — minutes and imports — are on {@code free_tier_entitlements},
+ * which no account owns and no cascade reaches. {@code usage_limits} keeps
+ * {@code meetings_used}, which is a per-account tally rather than a limit: a
+ * new account genuinely has no meetings, and it is only ever shown as a figure.
+ *
+ * <p>That split is the fix for a real bypass. {@code usage_limits} is
+ * {@code ON DELETE CASCADE} from {@code users}, so "for the life of the
+ * account" meant "for the life of the row": closing an account and signing up
+ * again with the same address handed out another 100 minutes and another three
+ * imports, indefinitely. See {@link FreeTierService} and V69.
+ *
+ * <p><b>Both capped counters are now written by SQL that carries its own
+ * arithmetic</b> rather than by dirty-checking an entity, which closes the
+ * other half of the same problem: two imports confirmed in the same instant
+ * both read "2 used" and both wrote 3, spending one free import twice. See
+ * {@link com.reverie.repository.FreeTierEntitlementRepository}.
+ *
  * <p>{@link RateLimitService} is a different thing and still separate: it is
  * requests per minute, to stop a loop, not an allowance.
  */
@@ -71,14 +90,39 @@ public class UsageLimitService {
     private final UsageLimitRepository usage;
     private final UserRepository users;
     private final MeetingUsageChargeRepository charges;
+    private final FreeTierEntitlementRepository entitlements;
+    private final FreeTierService freeTier;
 
     public UsageLimitService(UsageLimitRepository usage, UserRepository users,
                              MeetingUsageChargeRepository charges,
+                             FreeTierEntitlementRepository entitlements,
+                             FreeTierService freeTier,
                              AccountMail mail) {
         this.usage = usage;
         this.users = users;
         this.charges = charges;
+        this.entitlements = entitlements;
+        this.freeTier = freeTier;
         this.mail = mail;
+    }
+
+    /**
+     * What this account has spent of its lifetime allowance.
+     *
+     * <p>Zeroes rather than a throw if the row cannot be read. Unreachable —
+     * provisioning links every account before it can reach any of this — and a
+     * refusal here would mean a recording somebody has already made cannot be
+     * saved, which is a worse failure than a balance read as untouched.
+     */
+    private Spent spent(String userId) {
+        String id = freeTier.forAccount(userId);
+        return freeTier.read(id)
+                .map(e -> new Spent(id, e.getRecordingMinutesUsed(), e.getImportsUsed()))
+                .orElseGet(() -> new Spent(id, 0, 0));
+    }
+
+    /** One entitlement's two counters, read together. */
+    private record Spent(String entitlementId, int minutes, int imports) {
     }
 
     /**
@@ -120,17 +164,32 @@ public class UsageLimitService {
         });
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * The balance, as the Usage panel shows it.
+     *
+     * <p>The two capped figures come from the lifetime entitlement, so an
+     * account recreated by somebody who has been here before opens showing what
+     * they actually have left rather than a full allowance that their first
+     * upload would contradict.
+     *
+     * <p>No longer {@code readOnly}: resolving the entitlement may attach one
+     * for an account provisioned before V69. That is one write, on the first
+     * read after the deploy, and the alternative is a panel showing an
+     * untouched allowance for an account whose usage is sitting in the old
+     * table.
+     */
+    @Transactional
     public UsageResponse getUsage(String userId) {
         Plan plan = planOf(userId);
+        Spent s = spent(userId);
         // Read rather than created: a GET that writes a row is a GET that fails
         // on a read-only replica and creates rows for anybody who opens the app.
         UsageLimit u = usage.findByUserId(userId).orElse(null);
         return new UsageResponse(
                 plan.name(),
-                u == null ? 0 : u.getAiMinutesUsed(),
+                s.minutes(),
                 MINUTES_ALLOWANCE,
-                u == null ? 0 : u.getImportsUsed(),
+                s.imports(),
                 IMPORT_ALLOWANCE,
                 u == null ? 0 : u.getMeetingsUsed());
     }
@@ -144,10 +203,11 @@ public class UsageLimitService {
     @Transactional
     public void chargeMeetingOrThrow(String userId, boolean recordedHere, Integer durationSeconds) {
         UsageLimit u = forUser(userId);
+        Spent s = spent(userId);
 
-        int left = Math.max(0, MINUTES_ALLOWANCE - u.getAiMinutesUsed());
+        int left = Math.max(0, MINUTES_ALLOWANCE - s.minutes());
 
-        if (!recordedHere && u.getImportsUsed() >= IMPORT_ALLOWANCE) {
+        if (!recordedHere && s.imports() >= IMPORT_ALLOWANCE) {
             // "Recording still works" only when it does. Somebody who is out of
             // imports *and* out of minutes is out, and telling them to go and
             // record instead sends them to a second refusal -- which reads as
@@ -180,10 +240,30 @@ public class UsageLimitService {
             }
         }
 
-        u.setMeetingsUsed(u.getMeetingsUsed() + 1);
         if (!recordedHere) {
-            u.setImportsUsed(u.getImportsUsed() + 1);
+            /*
+             * THE IMPORT IS CLAIMED, NOT COUNTED.
+             *
+             * <p>The check above exists for the message; this is the decision.
+             * It is one statement whose WHERE clause carries the limit, so two
+             * imports confirmed in the same instant against a balance of one
+             * end with one refused — where a read-modify-write let both read
+             * "2 used" and both write 3, spending the last free import twice.
+             *
+             * <p>Which means the refusal can also happen here, having passed
+             * the check a moment ago. Same sentence either way: what somebody
+             * needs to be told is that the imports are gone, not that they lost
+             * a race.
+             */
+            if (entitlements.claimImport(s.entitlementId(), IMPORT_ALLOWANCE) == 0) {
+                throw ApiException.usageLimitReached(
+                        "You have used all " + IMPORT_ALLOWANCE + " imports on this account."
+                                + (left > 0 ? " Recording in the browser still works." : ""));
+            }
         }
+        // After the claim, because a meeting refused for having no import left
+        // is not a meeting and must not appear in the tally as one.
+        u.setMeetingsUsed(u.getMeetingsUsed() + 1);
     }
 
     /**
@@ -237,10 +317,9 @@ public class UsageLimitService {
      * name they typed. This declines to do more work; it does not take away
      * work already done, and each refusal below says which of the two it is.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public void requireAiOrThrow(String userId, AiFeature feature) {
-        UsageLimit u = usage.findByUserId(userId).orElse(null);
-        int used = u == null ? 0 : u.getAiMinutesUsed();
+        int used = spent(userId).minutes();
         if (used >= MINUTES_ALLOWANCE) {
             throw ApiException.usageLimitReached(
                     "You have used all " + MINUTES_ALLOWANCE
@@ -259,9 +338,10 @@ public class UsageLimitService {
      */
     @Transactional
     public void addAiMinutes(String userId, int minutes) {
-        UsageLimit u = forUser(userId);
-        u.setAiMinutesUsed(u.getAiMinutesUsed() + Math.max(0, minutes));
-        announceBalance(userId, u.getAiMinutesUsed());
+        Spent s = spent(userId);
+        int billed = Math.max(0, minutes);
+        entitlements.addMinutes(s.entitlementId(), billed);
+        announceBalance(userId, s.minutes() + billed);
     }
 
     /**
@@ -289,9 +369,12 @@ public class UsageLimitService {
             log.debug("Attempt {} of meeting {} was already charged; adding nothing.", attempt, meetingId);
             return false;
         }
-        UsageLimit u = forUser(userId);
-        u.setAiMinutesUsed(u.getAiMinutesUsed() + billed);
-        announceBalance(userId, u.getAiMinutesUsed());
+        Spent s = spent(userId);
+        // One statement, so two meetings finishing together cannot lose one of
+        // the two charges — the same lost update as the import race, in the
+        // direction that quietly hands minutes back.
+        entitlements.addMinutes(s.entitlementId(), billed);
+        announceBalance(userId, s.minutes() + billed);
         return true;
     }
 }

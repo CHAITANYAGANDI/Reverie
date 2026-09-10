@@ -67,6 +67,47 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AiAllowanceGateTest {
 
+    /**
+     * The lifetime allowance the two capped figures now live on.
+     *
+     * <p>V69 moved them off `usage_limits`, which cascades away with the
+     * account, so that closing an account and signing up again stops handing
+     * out another 100 minutes. Nothing this file asserts changed; the numbers
+     * are read from here.
+     */
+    @Mock private com.reverie.repository.FreeTierEntitlementRepository entitlements;
+    @Mock private FreeTierService freeTier;
+    private final com.reverie.entity.FreeTierEntitlement entitlement =
+            new com.reverie.entity.FreeTierEntitlement();
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireTheEntitlement() {
+        entitlement.setId("fte_1");
+        org.mockito.Mockito.when(freeTier.forAccount(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("fte_1");
+        org.mockito.Mockito.when(freeTier.read("fte_1"))
+                .thenAnswer(i -> java.util.Optional.of(entitlement));
+        org.mockito.Mockito.when(entitlements.addMinutes(
+                        org.mockito.ArgumentMatchers.eq("fte_1"),
+                        org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> {
+                    entitlement.setRecordingMinutesUsed(
+                            entitlement.getRecordingMinutesUsed() + (int) i.getArgument(1));
+                    return 1;
+                });
+        org.mockito.Mockito.when(entitlements.claimImport(
+                        org.mockito.ArgumentMatchers.eq("fte_1"),
+                        org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> {
+                    int limit = i.getArgument(1);
+                    if (entitlement.getImportsUsed() >= limit) {
+                        return 0;
+                    }
+                    entitlement.setImportsUsed(entitlement.getImportsUsed() + 1);
+                    return 1;
+                });
+    }
+
     private static final String USER = "usr_1";
     private static final String MEETING = "mtg_1";
 
@@ -91,12 +132,12 @@ class AiAllowanceGateTest {
         row.setUserId(USER);
         when(usageRows.findByUserId(USER)).thenReturn(Optional.of(row));
         when(usageRows.save(any(UsageLimit.class))).thenAnswer(i -> i.getArgument(0));
-        usage = new UsageLimitService(usageRows, users, charges, mail);
+        usage = new UsageLimitService(usageRows, users, charges, entitlements, freeTier, mail);
     }
 
     /** Spend the whole allowance. */
     private void spendEverything() {
-        row.setAiMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE);
+        entitlement.setRecordingMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE);
     }
 
     @Nested
@@ -106,7 +147,7 @@ class AiAllowanceGateTest {
         @Test
         @DisplayName("lets every feature through with a minute left")
         void oneMinuteLeftIsEnough() {
-            row.setAiMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE - 1);
+            entitlement.setRecordingMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE - 1);
 
             for (UsageLimitService.AiFeature feature : UsageLimitService.AiFeature.values()) {
                 assertThatCode(() -> usage.requireAiOrThrow(USER, feature)).doesNotThrowAnyException();
@@ -131,7 +172,7 @@ class AiAllowanceGateTest {
         @Test
         @DisplayName("refuses an account that overran, not just one exactly at the line")
         void overrunIsStillOver() {
-            row.setAiMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE + 40);
+            entitlement.setRecordingMinutesUsed(UsageLimitService.MINUTES_ALLOWANCE + 40);
 
             assertThatThrownBy(() -> usage.requireAiOrThrow(USER, UsageLimitService.AiFeature.CHAT))
                     .isInstanceOf(ApiException.class);

@@ -62,6 +62,18 @@ class SpeakerOwnershipRoundTripTest {
         String owner = env("REVERIE_IT_DB_OWNER_USER", "REVERIE_IT_DB_USER");
         String password = env("REVERIE_IT_DB_OWNER_PASSWORD", "REVERIE_IT_DB_PASSWORD");
 
+        /*
+         * Clerk mode is the default and it now refuses to start without the two
+         * values the lifetime allowance is enforced with -- see
+         * ClerkIdentityCheck. Fixed throwaways: nothing here asserts anything
+         * about an identity hash, and the API url points at a dead local port
+         * so an unexpected Backend API call fails at once instead of leaving
+         * the machine.
+         */
+        registry.add("reverie.free-tier.identity-secret", () -> "speaker-round-trip-test-secret");
+        registry.add("reverie.clerk.secret-key", () -> "sk_test_integration_only");
+        registry.add("reverie.clerk.api-url", () -> "http://127.0.0.1:1/v1");
+
         registry.add("spring.datasource.url", () -> url);
         registry.add("spring.datasource.username", () -> owner);
         registry.add("spring.datasource.password", () -> password);

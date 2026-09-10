@@ -60,13 +60,24 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class SelfOnlyAccessTest {
 
+    /**
+     * The lifetime free allowance, stubbed away.
+     *
+     * <p>`UserService.provision` attaches one (see V69), and none of the
+     * cases in this file are about that. A Mockito mock rather than a real
+     * one so nothing here touches a repository: what is asserted is
+     * unchanged, and `FreeTierServiceTest` owns the allowance behaviour.
+     */
+    private static final com.reverie.service.FreeTierService FREE_TIER =
+            org.mockito.Mockito.mock(com.reverie.service.FreeTierService.class);
+
     private static final String ME = "user_2abcMineOwnAccount";
     private static final String SOMEBODY_ELSE = "user_2xyzNotMine";
 
     @Mock private UserRepository users;
 
     private UserService serviceWith(SelfOnlyAccess gate) {
-        return new UserService(users, gate, "clerk");
+        return new UserService(users, gate, FREE_TIER, "clerk");
     }
 
     private static SelfOnlyAccess enforcing() {
