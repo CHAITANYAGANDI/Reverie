@@ -72,9 +72,11 @@
  * `Ask Reverie` is the same statement the orb was making, in type instead of
  * in a picture, and it is the only azure word on Home.
  *
- * <p>What goes with the orb is the hover sequence and the open-state glow: the
- * button keeps its own ghost hover and `aria-expanded` still reports whether
- * the panel is open, but nothing draws that state any more.
+ * <p>What went with the orb was the hover sequence and the open-state glow.
+ * The hover is back, on the word: `.v2-ask-word` gives it the same two-stop
+ * glow the hero's `AI` carries, in the orb's own sampled blue, so reaching for
+ * the control lights it. The open state is still only `aria-expanded` —
+ * nothing draws it.
  *
  * <p>`aria-expanded` rather than `aria-haspopup="dialog"`. It reveals a region
  * that is a sibling of the page and does not trap focus or take a modal
@@ -123,7 +125,7 @@ export function AskLauncher() {
           is the tier that clears contrast at a body size. `--brand` is for
           fills and marks and is 5.98:1 — legible, and not what a 15px label
           should be set in. */}
-      <span className="text-[0.9375rem] text-brand-text">Ask Reverie</span>
+      <span className="v2-ask-word text-[0.9375rem] text-brand-text">Ask Reverie</span>
       <span className="sr-only"> about your conversations</span>
     </Button>
   );

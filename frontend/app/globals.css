@@ -116,6 +116,28 @@
     --brand-hover: 214 100% 66%;  /* #529dff  7.01:1 */
     --brand-deep: 217 70% 30%;    /* #174082  white on it 10.04:1 — the mark's tail */
 
+    /*
+     * THE ORB'S OWN BLUE, SAMPLED RATHER THAN CHOSEN.
+     *
+     * <p>#087afd, which is the median of the 97,336 lit, saturated pixels
+     * inside the sphere in assets/brand-sources/reverie-ai-orb.png — the two
+     * flowing bands, excluding the near-white waveform and the dark channel.
+     * The six most common values in that region all sit between hue 209 and
+     * 219 at full saturation, so the median is the artwork's blue rather than
+     * an average of two different ones.
+     *
+     * <p>It exists because one word has to match the artwork exactly: `AI` in
+     * the landing hero's wordmark, directly under the orb. `--brand` at 62%
+     * lightness and `--brand-text` at 72% are both visibly lighter beside it,
+     * which is right for a mark or a word elsewhere on a page and wrong for a
+     * word whose whole job is to be the same blue as the thing above it.
+     *
+     * <p>4.75:1 on the canvas — measured, not estimated — so it clears normal
+     * text as well as the 3:1 the hero's 28-62px actually needs. Nothing else
+     * should reach for this: it is a colour match, not a tier in the ramp.
+     */
+    --brand-orb: 212 98% 51%;     /* #087afd  4.75:1 — the artwork's own blue */
+
     /* Three semantic hues. Not four, not six. Each is paired with a word and a
      * glyph everywhere it appears, so the colour is confirmation and never the
      * message. Recording is deliberately the same red as danger: they never
@@ -379,6 +401,36 @@
    * <p>`closest-side` and a circle, unlike the hero's ellipse: the orb is round
    * and a round mark takes a round halo.
    */
+  /*
+   * `Ask Reverie`, LIGHTING UP UNDER THE POINTER.
+   *
+   * <p>The two Ask controls lost their orb and kept its colour, so the label is
+   * the whole identity of the control. This is what happens when you reach for
+   * it: the word gains the same two-stop glow the hero's `AI` carries, in the
+   * orb's own sampled blue.
+   *
+   * <p>Light rather than a colour change, and that is the point. Azure in this
+   * product means "Reverie is doing this"; the word is already saying that, so
+   * a hover that shifted the hue would be saying something else. A word that
+   * brightens is the same statement, louder — and it is the language the orb,
+   * the halo and the hero's fields all speak.
+   *
+   * <p>`em`, so a 15px label gets a 2px glow and the same rule would scale if
+   * the label ever grew. And keyed off `button:hover` rather than a `group`
+   * class: both call sites are buttons, this way there is nothing to remember
+   * to add at a third one, and `:focus-visible` comes along for free — a
+   * keyboard reaches this control too.
+   */
+  .v2-ask-word {
+    transition: text-shadow var(--m-panel) var(--ease-soft);
+  }
+  button:hover .v2-ask-word,
+  button:focus-visible .v2-ask-word {
+    text-shadow:
+      0 0 0.16em hsl(var(--brand-orb) / 0.5),
+      0 0 0.6em hsl(var(--brand-orb) / 0.34);
+  }
+
   .v2-ai-halo {
     background-image: radial-gradient(
       closest-side,

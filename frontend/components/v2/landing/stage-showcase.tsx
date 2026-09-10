@@ -30,7 +30,7 @@
 import * as React from "react";
 import { m, useInView, AnimatePresence } from "framer-motion";
 import { Mic, Check } from "lucide-react";
-import { BrandMark } from "@/components/v2/brand-mark";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { LANDING_EASE, useMotionAllowed } from "@/components/v2/landing/reveal";
 import { cn } from "@/lib/utils";
 
@@ -279,7 +279,12 @@ function Window({
     >
       <div className="v2-band flex h-band items-center gap-1 px-3">
         <span className="flex h-8 w-8 items-center justify-center text-ink">
-          <BrandMark size={18} />
+          {/* THE SAME SIZE THE REAL BAND DRAWS, not a smaller stand-in. This
+              mock is a picture of the application at full scale — a real 48px
+              band with the real three places in it — so a mark at 18 where the
+              band has 32 was the one thing in the frame that was not true.
+              It was an 18px lens, and the discrepancy came along with it. */}
+          <ReverieAiMark size={32} />
         </span>
         <span className="ml-1 flex items-center">
           {["Home", "Library", "Ask"].map((place) => (

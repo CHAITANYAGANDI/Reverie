@@ -115,43 +115,39 @@ describe("what is always there", () => {
     expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute("href", "/ask");
   });
 
-  it("wears the product's identity in the corner, never the AI orb", () => {
+  it("wears the orb in the corner, which is now the only mark", () => {
     /*
-     * THE ABSENCE THAT MATTERS.
+     * INVERTED, AND IT WAS THE LAST OF THE TWO-IDENTITY RULES TO GO.
      *
-     * <p>Reverie has two marks and this corner is the first one: it answers
-     * "which product am I using?", which is what a logo in a corner has meant
-     * for as long as there have been corners. The orb answers "where is
-     * Reverie's assistant?" and belongs on the controls that open it.
+     * <p>This asserted the opposite: that the corner is the *product's* lens
+     * and never the orb, because a logo in a corner answers "which product am
+     * I using?" while the orb answers "where is Reverie's assistant?" — and an
+     * orb here would make the whole application look like an AI feature.
      *
-     * <p>Asserted as an absence because the failure is a plausible one — the
-     * orb is the newer and better-looking mark, and putting it here would make
-     * the whole application look like an AI feature.
+     * <p>The product owner asked for one mark everywhere. The reasoning is
+     * kept in components/v2/reverie-ai-mark rather than deleted, because it is
+     * a real argument and this is the place somebody would reach for it again.
+     *
+     * <p>32px of sphere in a 38px box, which leaves five pixels of air inside
+     * a 48px band. It was 28 and came up a step with every other orb in the
+     * product. The lens needed 42 to read at all, being a wide, short shape; a
+     * round mark carries at less.
      */
     band();
 
     const home = screen.getByRole("link", { name: "Reverie — home" });
-    const mark = home.querySelector("svg")!;
+    const mark = home.querySelector("[data-ai-mark]") as HTMLElement;
 
-    expect(home.querySelector("[data-ai-mark]")).toBeNull();
-    /*
-     * And it is drawn at the size the band has room for. 44px of *visible
-     * lens*, where it was an 18px square box painting a 15px-wide, 11px-tall
-     * drawing — a favicon in the corner of a premium interface, which is how
-     * it was reported. The box was the ceiling, not the band: the lens is
-     * 1.75 times as wide as it is tall, so a square element is a quarter empty
-     * above and below the drawing. `crop` makes the element the drawing, which
-     * is what let this grow at all — see `lensBox` in mark-geometry.
-     */
-    expect(mark.getAttribute("width")).toBe("42");
-    expect(mark.getAttribute("viewBox")).not.toBe("0 0 32 32");
-    expect(Number(mark.getAttribute("height"))).toBeLessThan(28);
-    /* Five bars, not the artwork's nine. The nine-bar cut is a *display* cut —
-       at 42px it is 3px bars on a 5px pitch against a 1.9px ribbon, so the
-       waveform swamps the lens and the mark reads as a cluster of vertical
-       bars. Only the hero, at 264px, is large enough for it. See the boundary
-       note in mark-geometry. */
-    expect(mark.querySelectorAll("rect")).toHaveLength(5);
+    expect(mark).not.toBeNull();
+    expect(home.querySelector("svg")).toBeNull();
+    expect(mark.querySelector("img")!.getAttribute("src")).toBe(
+      "/brand/reverie-ai-orb-mark.webp",
+    );
+    // Inline, so no descendant selector in a shell can shrink it.
+    expect(mark.style.width).toBe("38px");
+    // Decorative: the link is named, and a named mark inside it would be read
+    // twice.
+    expect(mark.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("takes the mark home", () => {

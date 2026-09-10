@@ -269,10 +269,14 @@ describe("the hero", () => {
     expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
     expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
 
-    const art = container.querySelector("main > section img")!;
-    expect(art.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
-    expect(art.getAttribute("alt")).toBe("");
-    expect(art.getAttribute("aria-hidden")).toBe("true");
+    /* And no artwork in the hero at all any more: the identity here is type,
+       and the orb is in the bar above — see the test below.
+
+       <p>Scoped to the hero rather than written as `main > section img`, which
+       matches a descendant of *any* section: `StageShowcase` draws a mock band
+       with the same orb in it, four screens down, and that selector found it. */
+    const heroSection = container.querySelectorAll("main > section")[0];
+    expect(heroSection.querySelector("img")).toBeNull();
   });
 
   it.each([
@@ -302,15 +306,19 @@ describe("the hero", () => {
     const { container } = render(<LandingPage />);
 
     const hero = container.querySelector("main > section")!;
-    /* One element where there were three. The mark, the wordmark and the
-       tagline were separate nodes in the vector lockup and could be ordered
-       against each other; they are pixels in one file now, so what is left to
-       assert is that the identity comes before the claim — which is the thing
-       the test was always about. */
-    const mark = hero.querySelector("img")!;
+    /* The identity is the wordmark now — no mark, no picture — so what is
+       ordered against the claim is the word. Which is the thing this test was
+       always about: something identifies the product before anything claims
+       anything about it.
+
+       <p>Found within the hero rather than with `screen`, because `Reverie` is
+       also the footer's lockup word and an unscoped query is ambiguous. */
+    const mark = [...hero.querySelectorAll("span")].find(
+      (el) => el.textContent === "Reverie AI",
+    )!;
     const heading = screen.getByRole("heading", { level: 1 });
 
-    expect(mark).not.toBeNull();
+    expect(mark).toBeDefined();
     expect(mark.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -330,33 +338,30 @@ describe("the hero", () => {
      * design position, not a constraint, and this test now holds the position
      * that replaced it.
      *
-     * <p>WHAT STILL HOLDS, and it has narrowed to one place: the FOOTER is the
-     * vector lens with its word beside it. The nav's became the orb too, on
-     * request, because a lens in the bar and an orb in the hero forty pixels
-     * below it are two identities on one screen.
+     * <p>NOTHING STILL HOLDS, and that is the honest state: the lens is gone
+     * from this page. It went from the hero, then from the bar, then from the
+     * footer — one request at a time — and the orb is the product's only mark.
      *
-     * <p>Which leaves the footer as the only lens on the page, and that is
-     * worth keeping rather than tidying away: `Lockup` is the *functional*
-     * identity — the thing that is a link home in the application's band, in
-     * the auth shell and on the SSO screen — and the day this page has no lens
-     * on it at all is the day somebody swaps the band's too.
+     * <p>So what this test does now is count where the mark appears and where
+     * it does not. Two places: the bar, and the mock band inside
+     * `StageShowcase`, which is a picture of the application and so wears
+     * whatever the application wears. Not the hero, which is type — a mark
+     * there would put a 320px object back above a 56px headline, which is what
+     * its removal was for. And not the footer, which was asked for as the word
+     * by itself.
      */
     const { container } = render(<LandingPage />);
 
-    // Two orbs: the bar's and the hero's, both the approved file.
     const orbs = [...container.querySelectorAll("img")];
     expect(orbs).toHaveLength(2);
     for (const img of orbs) {
       expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
     }
-    const hero = container.querySelector("main > section")!;
-    expect(hero.querySelector("img")).not.toBeNull();
-
-    // The footer's, unchanged: `svg`, named, and not the orb.
-    const lockups = screen.getAllByRole("img", { name: "Reverie" });
-    const lens = lockups.filter((el) => el.tagName.toLowerCase() === "svg");
-    expect(lens).toHaveLength(1);
-    expect(lens[0].closest("footer")).not.toBeNull();
+    expect(container.querySelector("header img")).not.toBeNull();
+    expect(container.querySelectorAll("main > section")[0].querySelector("img")).toBeNull();
+    expect(container.querySelector("footer img")).toBeNull();
+    // And no lens anywhere: the drawn mark is gone from this page with it.
+    expect(container.querySelectorAll("svg[aria-label]")).toHaveLength(0);
   });
 
   it("keeps the headline exactly, on its two authored lines", () => {
@@ -405,31 +410,43 @@ describe("the hero", () => {
      */
     render(<LandingPage />);
 
-    /* Two marks named `Reverie`, and they are now different objects: the
-       footer's vector lockup and the bar's orb. It has been three, then two
-       vector lockups, and the count is what matters — one accessible name per
-       mark, never two on one, so a stray extra label cannot appear unnoticed.
+    /* ONE mark named `Reverie` now: the bar's. The count has been three, then
+       two drawn lockups, then one lens and one orb, then two orbs — and it is
+       one, because the footer was asked for as the word alone.
 
-       <p>The bar's is an `img` because it is the approved artwork; the
-       footer's is an `svg` because it is drawn. Asserted as a pair rather than
-       looped over with one expectation, because they are no longer alike. */
+       <p>The count is what matters rather than the number: one accessible name
+       per mark, never two on one, so a stray extra label cannot appear
+       unnoticed. The showcase's mock band carries an orb too and is
+       deliberately *not* named — it is a picture of an interface, not a second
+       identity, and naming it would announce the product twice. */
     const named = screen.getAllByRole("img", { name: "Reverie" });
-    expect(named).toHaveLength(2);
-    expect(named.map((el) => el.tagName.toLowerCase()).sort()).toEqual(["img", "svg"]);
+    expect(named).toHaveLength(1);
+    expect(named[0].getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
+    expect(named[0].closest("header")).not.toBeNull();
     expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
   });
 
   it("adds the hero's own light without replacing the page's", () => {
     /*
-     * Three layers and they are all decoration: the page's wash, the bloom
-     * behind the mark, and one line of light where the identity gives way to
-     * the page. `AmbientCanvas` is untouched — the brief was explicit that the
-     * global system stays — and every one of them is out of the accessibility
-     * tree.
+     * Four layers and they are all decoration: the page's wash, and the hero's
+     * three — a field above, a field below, and the lit curve where the
+     * identity gives way to the page. `AmbientCanvas` is untouched, the brief
+     * having been explicit that the global system stays, and every one of them
+     * is out of the accessibility tree.
+     *
+     * <p>`.v2-hero-bloom` was in this list and is gone: it lived inside the
+     * identity's wrapper so it could scale with the mark, and with no mark
+     * drawn there is nothing for it to scale to. The two fields replaced it
+     * and are sized against the section.
      */
     const { container } = render(<LandingPage />);
 
-    for (const cls of [".v2-ambient", ".v2-hero-bloom", ".v2-hero-arc"]) {
+    for (const cls of [
+      ".v2-ambient",
+      ".v2-hero-light-top",
+      ".v2-hero-light-bottom",
+      ".v2-hero-arc",
+    ]) {
       const el = container.querySelector(cls);
       expect(el, cls).not.toBeNull();
       expect(el!.getAttribute("aria-hidden"), cls).toBe("true");
@@ -448,16 +465,10 @@ describe("the hero", () => {
     const { container } = render(<LandingPage />);
 
     expect(container.textContent).not.toMatch(/meeting-tool clutter/i);
-    /* The identity above the headline it introduces. Matched by element rather
-       than by accessible name: the artwork is decorative now — `alt=""`,
-       `aria-hidden` — and its words are the `sr-only` line beside it. */
+    /* The identity above the headline it introduces — and it is type, so the
+       words *are* the identity. There is no mark in the hero to position. */
     const hero = container.querySelector("main > section")!;
-    const mark = hero.querySelector("img");
-    expect(mark).not.toBeNull();
-    expect(
-      mark!.compareDocumentPosition(screen.getByRole("heading", { level: 1 })),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    // And the words are there too, before the headline.
+    expect(hero.querySelector("img")).toBeNull();
     expect(
       screen
         .getByText(HERO_TAGLINE)
@@ -530,15 +541,16 @@ describe("the product identity", () => {
     /*
      * The nav and the footer — two, as rendered *text*.
      *
-     * <p>Two: the hero's and the footer's. The count has been three, two,
-     * three and is two again — the hero's word became pixels and came back as
-     * type, and the bar's went when the bar became the orb alone.
+     * <p>Three: the bar's, the hero's and the footer's. The count has been
+     * three, two, three, two — the hero's word became pixels and came back as
+     * type, and the bar's went when the bar became the orb alone and returned
+     * when the word was asked for again.
      *
      * <p>Counted rather than merely asserted present, because the word is the
      * one thing on this page that could quietly appear again inside a showcase
      * and turn the identity into a repetition.
      */
-    expect(screen.getAllByText("Reverie").length).toBe(2);
+    expect(screen.getAllByText("Reverie").length).toBe(3);
     expect(screen.getAllByText(HERO_TAGLINE)).toHaveLength(1);
   });
 });

@@ -135,6 +135,8 @@ const config: Config = {
           fill: "hsl(var(--brand-fill))",
           hover: "hsl(var(--brand-hover))",
           deep: "hsl(var(--brand-deep))",
+          /* The orb's own blue. One caller — see the note in globals.css. */
+          orb: "hsl(var(--brand-orb))",
         },
         danger: {
           DEFAULT: "hsl(var(--danger))",

@@ -18,109 +18,63 @@
  * lifts off the ground. Placed side by side that difference is the whole
  * difference between a logo and a lockup — so the hero now loads the render.
  *
- * <p>`BrandMark` and `mark-geometry` are untouched and still draw the band's
- * corner, the nav lockup, the auth shell and the footer, where a 42px mark
- * wants vector edges and no 600 kB file.
+ * <p>`BrandMark` and `mark-geometry` drew the band's corner, the nav lockup,
+ * the auth shell and the footer for as long as there were two identities. They
+ * draw nothing now: the orb replaced the lens everywhere, on request, and both
+ * modules are unreferenced by production code. They are left in place rather
+ * than deleted in the same change that stopped using them — reversing one
+ * decision should not mean restoring two files.
  *
- * <h2>THE ORB, NOT THE LOCKUP — and this reverses a rule</h2>
+ * <h2>NO MARK AT ALL, which is where four passes landed</h2>
  *
- * <p>This drew `reverie-main-hero.webp`: the approved product lockup, its lens
- * over the `Reverie` wordmark over `CONVERSATIONAL INTELLIGENCE`, all three
- * inside one picture. It now draws `reverie-ai-orb-mark.webp`, the Reverie AI
- * orb, at the direct request of the product owner.
+ * <p>This has drawn: vector geometry composed from `mark-geometry`; then
+ * `reverie-main-hero.webp`, the approved product lockup with its lens, wordmark
+ * and tagline in one picture; then `reverie-ai-orb-mark.webp` at 320px of
+ * sphere, which overturned the rule that the orb must never lead a front page.
+ * It now draws no mark: the identity here is `Reverie AI` set in type, with the
+ * tagline under it.
  *
- * <p>Which is worth stating plainly, because it overturns something this
- * codebase argued at length and tested for: that the orb answers "where is
- * Reverie's assistant?" and must never be the landing page's corporate
- * identity, on the grounds that leading with it claims the product *is* an
- * assistant. That reasoning is recorded rather than deleted — see the placement
- * note in components/v2/reverie-ai-mark — and it is overruled. It was a design
- * position, not a constraint.
+ * <p>Which is not the absence of an identity. The orb is 26px away in the bar
+ * above — see the note in app/page — and the light it used to sit in is still
+ * behind this, so the hero opens on a lit field, the product's name, and the
+ * claim. What it no longer opens on is a 320px object competing with a 56px
+ * headline for the same glance.
  *
- * <h2>The words are type again</h2>
+ * <h2>The words are type, and that is now the whole of it</h2>
  *
- * <p>The orb asset is the orb alone, so the wordmark and the tagline could not
- * come with it. They are set in type under it, which is where they were two
- * passes ago and is what was asked for: `Reverie` in the headline face, and
- * `CONVERSATIONAL INTELLIGENCE` in letterspaced caps.
+ * <p>`Reverie` in the headline face with `AI` in the orb's own sampled blue,
+ * and `CONVERSATIONAL INTELLIGENCE` in letterspaced caps.
  *
- * <p>Which the lockup could not do, and that is the whole reason it was a
- * picture: the approved render sets `Reverie` in a face this product does not
+ * <p>Type is what the lockup could not be, and that was the whole reason it was
+ * a picture: the approved render sets `Reverie` in a face this product does not
  * ship, lit with a gradient CSS cannot reproduce, so reproducing it in markup
- * meant a wordmark that was visibly not the artwork's. That objection does not
- * apply any more — the artwork here is the orb, and the words beside it are
- * simply the product's name in the product's own typeface rather than an
- * imitation of somebody else's.
+ * meant a wordmark visibly not the artwork's. With no artwork beside them the
+ * objection is gone — these are the product's name in the product's own
+ * typeface rather than an imitation of somebody else's.
  *
- * <p>NO `sr-only` COPY. There was one, while the words lived inside the
- * picture; with them on the page it would announce the identity twice. The
- * image is `alt=""` and `aria-hidden` because it is now decoration beside real
- * text, which is the only arrangement in which that is true.
+ * <h2>The light is the page's, not a file's</h2>
  *
- * <h2>The horizon is the page's, not the file's</h2>
- *
- * <p>The approved render has a lit curve across its lower third. It is cropped
- * out and drawn here instead — see `HeroHorizon` — because in the file it is
- * fixed at one width and one brightness, and on the page it has to span a
- * viewport that ranges from 390px to 1600 and sit *behind* the copy. The CSS
- * version came down from 22% to 12% when the artwork arrived, because the
- * artwork brings light of its own and two curves read as one effect drawn
- * twice.
- *
- * <h2>Scale</h2>
- *
- * <p>One `clamp()` rather than a pile of breakpoints, and refitted for a round
- * subject. The lockup's table was widths of a wide, short object — 555px at
- * 1440 — and applied to a square one it would have put a 462px sphere in the
- * middle of the page. The orb is sized by its sphere instead: 320px at 1440,
- * 170 at 390, capped at 340. A plain `vw` cannot do that, because the mark has
- * to be a *larger* fraction of a narrow viewport than of a wide one.
+ * <p>`HeroHorizon` draws the three fields the approved render is lit by — one
+ * above, one below, and the lit curve across its lower third — because in a
+ * file they are fixed at one width and one brightness, and on the page they
+ * have to span a viewport from 390px to 1600 and sit *behind* the copy. They
+ * are what is left of the artwork here, and they are why the hero still reads
+ * as the artwork's space with nothing drawn in it.
  */
 
 import * as React from "react";
 import { m, useReducedMotion } from "framer-motion";
-import { AI_ORB_INTRINSIC, AI_ORB_SRC } from "@/components/v2/ai-mark-asset";
 import { LANDING_EASE } from "@/components/v2/landing/reveal";
-
-/**
- * The element's width, as one clamp. See the note on Scale.
- *
- * <p>Written against the *element*, which is `AI_ORB_BLOOM` times the sphere
- * inside it — the crop keeps the artwork's own glow, so 320px of sphere is a
- * 384px box. Fitted rather than chosen: `17.14vw + 137px` passes through
- * (390, 204) and (1440, 384), which are 170 and 320 of sphere.
- *
- * <p>320 at 1440 is a judgement call and the reasoning is: the lockup this
- * replaces was 555px wide and 390 tall, so an orb of comparable *mass* is
- * around 320 square. Reusing the lockup's own clamp would have given a 462px
- * sphere, which reads as a poster rather than as an identity.
- */
-const HERO_WIDTH = "clamp(204px, 17.14vw + 137px, 408px)";
-
-/**
- * The extracted orb, and its intrinsic pixels.
- *
- * <p>256 square, which was sized for the 56px resting orb in an Ask panel —
- * four times its largest placement there. Drawn at 384px here it is 0.67 device
- * pixels per CSS pixel on a 1x panel, so it is being *upscaled*, and that is
- * the one real cost of using the AI mark as the hero. It survives it: the orb
- * is a smooth, high-contrast object with no fine detail to lose, and the
- * artwork's own bloom hides the interpolation. Upscaling the file would not add
- * detail — the pixels are the pixels — so what would actually fix it is a
- * larger crop from the 1254px source, one line in
- * `scripts/extract-brand-assets.py`.
- */
-const HERO_SRC = AI_ORB_SRC;
-const HERO_W = AI_ORB_INTRINSIC;
-const HERO_H = AI_ORB_INTRINSIC;
 
 /**
  * When the identity arrives.
  *
- * <p>One beat now, where there were five. The parts cannot be animated
- * separately any more — they are pixels in one file — and the brief asks for
- * exactly this instead: the whole identity fading, lifting and settling, then
- * the headline, then the copy, then the buttons. `HERO_BEATS` holds the rest.
+ * <p>One beat: the name and the tagline fading, lifting and settling together,
+ * then the headline, then the copy, then the cost line. `HERO_BEATS` holds the
+ * rest. It was five beats when the identity was vector geometry with parts to
+ * stagger, and one when it was a single picture; it stays one now that it is
+ * two lines of type, because a wordmark and its own tagline arriving separately
+ * reads as a layout settling rather than as an identity.
  */
 const IDENTITY_IN = 0.1;
 const IDENTITY_FOR = 0.95;
@@ -157,12 +111,10 @@ export function HeroBrandLockup() {
      */
     <m.div
       data-reveal
-      /* `items-center` because the wrapper now holds three stacked things —
-         the orb, the wordmark and the tagline — where it held one. The width
-         clamp sizes the *orb*; the type is free to be wider than it if a
-         narrow viewport ever makes it so. */
-      className="relative isolate flex flex-col items-center"
-      style={{ width: HERO_WIDTH }}
+      /* No width of its own any more. It held a clamp that sized the orb, and
+         with the orb gone the type sizes itself — a fixed width here would only
+         be something for the tagline to wrap inside. */
+      className="relative flex flex-col items-center"
       /* opacity, scale and a lift — the whole identity, as one object. Which
          is what the brief asks for and, now that the parts are pixels, the
          only thing there is to animate. */
@@ -170,55 +122,14 @@ export function HeroBrandLockup() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={clock(still, IDENTITY_FOR, IDENTITY_IN)}
     >
-      {/* The bloom, behind the artwork and inside its own box so it scales
-          with it. `-z-10` puts it under the image without a stacking context
-          of its own — the `isolate` above is what keeps it out of the page's.
-          The artwork has a bloom baked in; this is the wider, dimmer field it
-          sits in, which is what stops the mark reading as pasted on.
-
-          <p>Square now, where it was 150% by 132%. That ellipse was shaped for
-          a lockup twice as wide as it was tall; behind a round mark it reads as
-          a glow that has been stretched. */}
-      <div
-        aria-hidden
-        data-breathe
-        className="v2-hero-bloom pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[155%] w-[155%] -translate-x-1/2 -translate-y-1/2"
-      />
-      {/*
-        NO OPACITY, NO FILTER, NO BLEND, NO TINT.
-
-        <p>The artwork's colour is the identity. `width`/`height` are the
-        intrinsic pixels — square, so the reserved box is square — and the CSS
-        width overrides them for layout. The pair is what stops the headline
-        jumping when the image lands.
-
-        <p>`priority` in spirit rather than `next/image`: this is the first
-        paint of the front door, so it is not lazy and not deferred. It is a
-        plain `img` because `next/image` would re-encode the approved pixels
-        through its optimiser, and "identical to the supplied source" is the
-        requirement.
-      */}
-      <img
-        src={HERO_SRC}
-        /* Decorative. The words are the `sr-only` span below — in the document
-           rather than in an attribute. See the head of this file. */
-        alt=""
-        aria-hidden
-        width={HERO_W}
-        height={HERO_H}
-        draggable={false}
-        fetchPriority="high"
-        decoding="sync"
-        className="relative block h-auto w-full select-none"
-      />
       {/*
         THE IDENTITY, AS TYPE.
 
         <p>`Reverie` in the headline face and the tagline in letterspaced caps,
-        both clamped so they hold their proportion to the orb across the range.
-        The wordmark tops out at 62px rather than the 74 the vector lockup used:
-        the orb is a 320px object and a 74px word beside it competes with it,
-        where 62 reads as its caption.
+        both clamped across the range. The wordmark tops out at 62px rather than
+        the 74 the vector lockup used: 74 was set against a 230px lens directly
+        above it, and with nothing above it at all 62 sits better under a 56px
+        headline without the two reading as a tie.
 
         <p>`--ink` for the name and `--ink-2` for the line under it. The tagline
         is a qualifier, not a second headline, and the letterspacing is what
@@ -230,33 +141,34 @@ export function HeroBrandLockup() {
         the first frame — before the entrance finishes, and whether or not the
         entrance runs at all.
       */}
-      <div className="relative mt-[clamp(0.75rem,1.6vh,1.5rem)] flex flex-col items-center">
+      <div className="relative flex flex-col items-center">
         <span
           className="font-headline leading-[1.02] text-ink"
           style={{ fontSize: "clamp(28px, 3.3vw + 15px, 62px)", letterSpacing: "-0.03em" }}
         >
           Reverie{" "}
           {/*
-            `AI` IN THE LIGHT'S OWN COLOUR, and only `AI`.
+            `AI` IN THE ORB'S OWN COLOUR, and only `AI`.
 
-            <p>`--brand-text` rather than `--brand`: the palette's
-            azure-as-a-word. At 62px either would clear contrast — large text
-            needs 3:1 and `--brand` is 5.98 — but this word is 28px at 390 and
-            the text tier is the one that holds there too, so one value serves
-            the whole clamp.
+            <p>`--brand-orb`, which is #087afd sampled from the approved
+            artwork: the median of the lit, saturated pixels inside the sphere.
+            Not `--brand-text` and not `--brand` — both were tried and both are
+            visibly lighter than the mark forty pixels above, which is fine for
+            a word anywhere else on a page and wrong for the one word whose job
+            is to be the same blue as the orb. See the note on the token.
 
-            <p>The glow is `em`-based, so it scales with the word instead of
-            being a 24px halo around a 28px letter pair on a phone. Two stops:
-            a tight one that reads as the letters being lit and a wide one that
-            reads as the light around them — which is what the artwork's own
-            wordmark does, and the reason "blue" alone would have looked like
-            coloured text rather than light.
+            <p>The glow is the same colour and `em`-based, so it scales with
+            the word instead of being a 24px halo around a 28px letter pair on
+            a phone. Two stops: a tight one that reads as the letters being lit
+            and a wide one that reads as the light around them — which is what
+            the artwork's own wordmark does, and the reason a flat blue would
+            have looked like coloured text rather than light.
           */}
           <span
-            className="text-brand-text"
+            className="text-brand-orb"
             style={{
               textShadow:
-                "0 0 0.14em hsl(var(--brand) / 0.45), 0 0 0.5em hsl(var(--brand) / 0.35)",
+                "0 0 0.14em hsl(var(--brand-orb) / 0.5), 0 0 0.5em hsl(var(--brand-orb) / 0.38)",
             }}
           >
             AI

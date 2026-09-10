@@ -14,15 +14,14 @@ import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand
  * ribbon's rotation sat on a `<g>` and not on the path; and that
  * `CONVERSATIONAL INTELLIGENCE` was live text.
  *
- * <p>None of that survives. The hero loads approved artwork, cropped, with its
- * baked background turned into alpha. The vector reconstruction was faithful to
- * the geometry and was visibly not the artwork.
+ * <p>None of that survives, and neither does what replaced it. The hero drew
+ * the approved product lockup as a picture, then the Reverie AI orb at 320px,
+ * and now draws no mark at all — the identity here is `Reverie AI` in type with
+ * the tagline under it, and the orb lives in the bar above.
  *
- * <p>And the artwork it loads has since changed: it was the product lockup —
- * lens, wordmark and tagline in one picture — and is now the Reverie AI orb, at
- * the product owner's request. The orb carries no text, so the wordmark and the
- * tagline are set in type under it, which is where they were before the lockup
- * became a picture.
+ * <p>So what is left to hold is the type: that both lines are there, once,
+ * visibly, in the right order, with `AI` in the orb's own sampled blue. Plus
+ * the no-JavaScript contract, which has survived every one of those passes.
  *
  * <p>Which costs something real, and the cost is asserted rather than glossed:
  * the words are inside a picture, so they are put back beside it as live
@@ -44,21 +43,22 @@ function lockup() {
 }
 
 describe("the hero identity", () => {
-  it("is the approved AI orb rather than a drawing of anything", () => {
+  it("draws no mark at all", () => {
     /*
-     * Two changes in one assertion, and both were deliberate: the hero stopped
-     * being vector geometry, and then stopped being the product lockup. It is
-     * the same file every Ask control draws — see components/v2/ai-mark-asset —
-     * so there is one orb in the product and the hero is simply its largest
-     * placement.
+     * THREE MARKS, THEN NONE. Vector geometry, then the approved product
+     * lockup as a picture, then the AI orb at 320px of sphere — each on
+     * request, and the last request was to take it out.
+     *
+     * <p>Which does not leave the hero unbranded: the orb is 26px away in the
+     * bar, and the light it stood in is still behind this — see `HeroHorizon`.
+     * What the hero no longer opens with is a 320px object competing with a
+     * 56px headline for the same glance.
      */
     const { container } = lockup();
 
-    const img = container.querySelector("img")!;
-    expect(img).not.toBeNull();
-    expect(img.getAttribute("src")).toBe("/brand/reverie-ai-orb-mark.webp");
-    // No vector identity left in the hero at all — that was the first change.
+    expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector("[data-ai-mark]")).toBeNull();
   });
 
   it("sets the name and the tagline in visible type, each once", () => {
@@ -81,23 +81,51 @@ describe("the hero identity", () => {
     expect(screen.getAllByText("Reverie")).toHaveLength(1);
     expect(screen.getAllByText("CONVERSATIONAL INTELLIGENCE")).toHaveLength(1);
     expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
-
-    const img = container.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe("");
-    expect(img.getAttribute("aria-hidden")).toBe("true");
+    // Nothing in the accessibility tree but the words themselves.
     expect(screen.queryAllByRole("img")).toHaveLength(0);
   });
 
-  it("reads mark, then name, then tagline", () => {
-    // The order is the lockup, and it is the one thing about this arrangement
-    // that a refactor could quietly invert.
-    const { container } = lockup();
+  it("sets `AI` in the orb's own blue, and only `AI`", () => {
+    /*
+     * A COLOUR MATCH, WHICH IS WHY IT IS PINNED.
+     *
+     * <p>`--brand-orb` is #087afd, sampled from the approved artwork: the
+     * median of the 97,336 lit, saturated pixels inside the sphere. It exists
+     * for this one word and nothing else should reach for it — it is not a tier
+     * in the ramp, it is "the same blue as the thing above it".
+     *
+     * <p>`--brand-text` and `--brand` were both tried here. Both are visibly
+     * lighter beside the mark, which is correct for a word anywhere else on a
+     * page and wrong forty pixels under the orb. So the specific token is
+     * asserted rather than "some brand colour": swapping it back for a tier
+     * that merely looks blue is exactly the regression this catches.
+     *
+     * <p>And `Reverie` stays ink. The pair is a white word and a lit one, not
+     * two blue ones.
+     */
+    lockup();
 
-    const img = container.querySelector("img")!;
+    const ai = screen.getByText("AI");
+    expect(ai.className).toContain("text-brand-orb");
+    expect(ai.getAttribute("style")).toContain("--brand-orb");
+    // The glow is the same colour as the word, in `em` so it scales with it.
+    expect(ai.getAttribute("style")).toMatch(/text-shadow:[^;]*0\.14em/);
+    expect(ai.getAttribute("style")).not.toMatch(/\dpx/);
+
+    const word = screen.getByText("Reverie");
+    expect(word.className).toContain("text-ink");
+    expect(word.className).not.toMatch(/text-brand/);
+  });
+
+  it("reads name, then tagline", () => {
+    // The order is the lockup's, and it is the one thing about this
+    // arrangement a refactor could quietly invert. It was mark, name, tagline
+    // while there was a mark.
+    lockup();
+
     const name = screen.getByText("Reverie");
     const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
 
-    expect(img.compareDocumentPosition(name)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(name.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -115,38 +143,21 @@ describe("the hero identity", () => {
     expect(container.querySelector("[hidden]")).toBeNull();
   });
 
-  it("does nothing whatever to the artwork's colour", () => {
+  it("cannot shift the page as it loads, having nothing to load", () => {
     /*
-     * The identity *is* the colour. No opacity, no filter, no blend, no tint —
-     * on the image or on the element that animates it. The entrance animates
-     * opacity, which is the one exception the brief allows and is on the
-     * wrapper: it ends at 1 and is what makes the arrival an arrival.
+     * WITHDRAWN RATHER THAN REWRITTEN, and worth a line so the loss is on the
+     * record. This asserted the image's intrinsic `width`/`height` and
+     * `fetchPriority`, which together stopped everything below the hero
+     * jumping when a 152 kB file landed.
+     *
+     * <p>With no image there is no such risk — the identity is type, which
+     * arrives with the document. So the guard becomes the simpler fact, and if
+     * a mark ever comes back here the intrinsic-size assertions have to come
+     * back with it.
      */
     const { container } = lockup();
-    const img = container.querySelector("img")!;
 
-    expect(img.className).not.toMatch(/\bopacity-\d/);
-    expect(img.className).not.toMatch(
-      /(grayscale|saturate|mix-blend|hue-rotate|\bfilter\b|brightness|contrast)/,
-    );
-    expect(img.getAttribute("style")).toBeNull();
-  });
-
-  it("reserves its box so the headline under it cannot jump", () => {
-    // The intrinsic pixels as attributes, with the CSS width overriding them
-    // for layout. Without the pair the browser has no aspect ratio until the
-    // file arrives, and everything below the hero shifts when it lands.
-    //
-    // Square, because the orb is. The lockup this replaced was 820x576.
-    const { container } = lockup();
-    const img = container.querySelector("img")!;
-
-    expect(img.getAttribute("width")).toBe("256");
-    expect(img.getAttribute("height")).toBe("256");
-    expect(img.className).toContain("h-auto");
-    // Not lazy: this is the first paint of the front door.
-    expect(img.getAttribute("loading")).not.toBe("lazy");
-    expect(img.getAttribute("fetchpriority")).toBe("high");
+    expect(container.querySelectorAll("img")).toHaveLength(0);
   });
 
   it("carries data-reveal on everything that starts hidden", () => {
@@ -164,37 +175,53 @@ describe("the hero identity", () => {
     expect(animated!.hasAttribute("data-reveal")).toBe(true);
   });
 
-  it("hides the bloom from the accessibility tree and lets CSS stop it", () => {
+  it("carries no light of its own any more", () => {
     /*
-     * `data-breathe` is unconditional. An attribute that appears on the server
-     * and not on the client is a hydration mismatch — the server cannot know
-     * the motion preference — and the `prefers-reduced-motion` block in
-     * globals.css already zeroes every animation, which is the right layer for
-     * a CSS animation to be suppressed at.
+     * The bloom lived here, inside the wrapper, so it scaled with the mark it
+     * sat behind. With no mark there is nothing for it to scale to, and the
+     * hero's light is `HeroHorizon`'s three fields — which are sized against
+     * the *section* and are tested below.
      */
     const { container } = lockup();
 
-    const bloom = container.querySelector(".v2-hero-bloom")!;
-    expect(bloom.getAttribute("aria-hidden")).toBe("true");
-    expect(bloom.hasAttribute("data-breathe")).toBe(true);
-    // Behind the artwork, never over it.
-    expect(bloom.className).toContain("-z-10");
-    expect(bloom.className).toContain("pointer-events-none");
+    expect(container.querySelector(".v2-hero-bloom")).toBeNull();
   });
 });
 
 describe("the hero horizon", () => {
-  it("is decoration and says so", () => {
-    // A line of light where the identity gives way to the page. It is not
-    // content and must never be announced or intercept a click.
-    const { container } = render(
+  function horizon() {
+    return render(
       <LazyMotion features={domAnimation} strict>
         <HeroHorizon />
       </LazyMotion>,
     );
+  }
 
-    const arc = container.querySelector(".v2-hero-arc")!;
-    expect(arc.getAttribute("aria-hidden")).toBe("true");
-    expect(arc.className).toContain("pointer-events-none");
+  it("draws the three fields the artwork is lit by", () => {
+    /*
+     * One above, one below, and the lit curve across the render's lower third.
+     * They are what is left of the artwork in this hero now that no mark is
+     * drawn, and they are the reason it still reads as the artwork's space.
+     */
+    const { container } = horizon();
+
+    for (const cls of [".v2-hero-light-top", ".v2-hero-light-bottom", ".v2-hero-arc"]) {
+      expect(container.querySelector(cls), cls).not.toBeNull();
+    }
+  });
+
+  it("is decoration and says so", () => {
+    // Light where the identity gives way to the page. None of it is content,
+    // and none of it may be announced or intercept a click.
+    const { container } = horizon();
+
+    const fields = container.querySelectorAll("div");
+    expect(fields.length).toBeGreaterThanOrEqual(3);
+    for (const el of fields) {
+      expect(el.getAttribute("aria-hidden"), el.className).toBe("true");
+      expect(el.className).toContain("pointer-events-none");
+      // Behind everything: the copy sits over these, never under them.
+      expect(el.className).toContain("-z-10");
+    }
   });
 });

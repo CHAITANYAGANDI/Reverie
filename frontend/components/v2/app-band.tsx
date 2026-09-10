@@ -43,7 +43,7 @@ import { Mic, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HOME } from "@/lib/routes";
 import { openSearch } from "@/lib/search-overlay";
-import { BrandMark } from "@/components/v2/brand-mark";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { Places } from "@/components/v2/places";
 import { useStartRecording } from "@/components/v2/record-action";
 import { NotificationBell } from "@/components/notification-bell";
@@ -93,34 +93,31 @@ export function AppBand({ pathname, create, recording, onImport }: AppBandProps)
         <Link
           href={HOME}
           aria-label="Reverie — home"
-          /* `px-2` and no fixed width: the mark is wider than it is tall, so a
-             square hit area either crops the lens or wastes half its height.
-             36px of height keeps the target comfortable inside a 48px band. */
-          className="flex h-9 shrink-0 items-center justify-center rounded-md px-2 text-ink opacity-90 transition-opacity duration-press ease-soft hover:opacity-100"
+          /* `h-10 w-10`: square, now the mark is, and 40px so a 38px box has
+             somewhere to sit. It was `h-9 px-2` for a lens twice as wide as it
+             was tall, which left a 58px hit area whose hover tint was visibly
+             wider than the mark inside it. */
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink opacity-90 transition-opacity duration-press ease-soft hover:opacity-100"
         >
           {/*
-            44px OF LENS, WHERE THERE WERE 18 OF BOX.
+            THE ORB, WHERE THE LENS WAS.
 
-            <p>`size` is the visible width now, because of `crop` — and that is
-            the whole reason this could grow. At 18px square the drawing was
-            15px wide and 11px tall in a 48px band: a favicon in the corner of
-            a premium interface, and the reported problem. The box was the
-            ceiling, not the band.
+            <p>This corner has held a `<Mic />` glyph, an 18px lens box, a 42px
+            cropped lens, and now the orb at 28px of sphere — on request, and it
+            retires the last argument this codebase made about two identities.
+            The rule was that the corner answers "which product am I using?"
+            and the orb answers "where is Reverie's assistant?", so they must
+            never be interchanged. The product owner asked for one mark
+            everywhere; the reasoning is kept in components/v2/reverie-ai-mark
+            rather than deleted.
 
-            <p>42 wide is 27 tall, measured. It takes the middle optical cut
-            — five bars and a 1.9-unit ribbon — and NOT the artwork's nine-bar
-            one, which was the first thing this change got wrong: at 44px that
-            cut is 3px bars on a 5px pitch against a 1.9px ribbon, so the
-            waveform swamps the lens and the mark reads as a cluster of
-            vertical bars. See the boundary note in mark-geometry; the nine-bar
-            cut is a display cut and the hero is the only thing large enough
-            for it.
-
-            <p>Still the product's mark and not the AI orb. This corner answers
-            "which product am I using?"; the orb answers "where is Reverie's
-            assistant?", and the two are never interchanged.
+            <p>32 of sphere is a 38px box, which leaves five pixels of air
+            above and below inside a 48px band. It was 28, and came up a step on
+            request along with every other orb in the product. The lens needed
+            42 to read at all because it is a wide, short shape; a round mark
+            carries at less.
           */}
-          <BrandMark size={42} crop />
+          <ReverieAiMark size={32} />
         </Link>
 
         {/* Below `md` these are the bottom tabs instead. Three words plus five

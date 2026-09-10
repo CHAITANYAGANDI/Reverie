@@ -1551,7 +1551,9 @@ export default function MeetingDetailPage() {
                     Reverie about this conversation" and contains the visible
                     text, so what is read and what is spoken cannot disagree.
                   */}
-                  <span className="text-[0.9375rem] text-brand-text">Ask Reverie</span>
+                  <span className="v2-ask-word text-[0.9375rem] text-brand-text">
+                    Ask Reverie
+                  </span>
                   <span className="sr-only"> about this conversation</span>
                 </Button>
               )}

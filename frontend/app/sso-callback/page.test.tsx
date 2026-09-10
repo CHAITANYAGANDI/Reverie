@@ -543,10 +543,12 @@ describe("what it wears", () => {
 
   it("carries Reverie's mark on the one page it does draw", async () => {
     // Which is not the waiting state any more. This screen used to carry the
-    // generic microphone glyph the V2 identity study rejected.
+    // generic microphone glyph the V2 identity study rejected, then the lens,
+    // and now the orb — `Lockup`'s mark changed under it, which is exactly why
+    // this asserts "a mark and the word" rather than which mark.
     const { container } = await failed();
 
-    expect(container.querySelector("svg")).not.toBeNull();
+    expect(container.querySelector("[data-ai-mark]")).not.toBeNull();
     expect(container.textContent).toContain("Reverie");
   });
 

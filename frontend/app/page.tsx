@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Lockup } from "@/components/v2/lockup";
-import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand";
 import { HeroBeat } from "@/components/v2/landing/hero-beat";
 import { HERO_BEATS } from "@/components/v2/landing/hero-beats";
@@ -162,42 +161,27 @@ export default function LandingPage() {
  * this page has one job, and a bar competing with the claim under it is the
  * commonest way a landing page loses that job.
  *
- * <p>The mark alone, with no word beside it. It was a `<Mic />` glyph in a
- * filled rounded square — the generic recorder logo the V2 identity study
- * rejected — then the product lockup at 21px, and it is now the orb on its own.
+ * <p>The mark and the word. It was a `<Mic />` glyph in a filled rounded square
+ * — the generic recorder logo the V2 identity study rejected — then the lens
+ * lockup, then the orb on its own with the word taken off, and the word is back
+ * beside it on request.
  *
- * <p>Two reasons the word could go. The hero forty pixels below it says
- * `Reverie` in 62px type, so the bar was naming the product immediately above
- * the place the product names itself; and this mark is not a link — you are
- * already home — so it had no label to carry either. What is left is a mark
- * that says which page you are on and gets out of the way, which is the whole
- * brief for this bar.
+ * <p>Which reads better than the argument for removing it, in the end. That
+ * argument was that the hero names the product a few hundred pixels below, so
+ * the bar was saying it twice; but a bar with a single small mark in the corner
+ * and nothing else is a bar that has lost something, and the hero is far enough
+ * down the page that the two never read as a repetition.
  */
 function Header() {
   return (
     <header className="relative z-10">
       <div className="mx-auto flex h-[68px] max-w-doc items-center gap-8 px-6 lg:px-8">
-        {/*
-          THE ORB, AND NO WORDMARK.
-
-          <p>The orb rather than the lens, because the hero below is the orb:
-          a lens up here and an orb down there would be two identities on one
-          screen, forty pixels apart. `Lockup` is untouched and still draws the
-          lens with its word in the footer, the auth shell and the SSO screen —
-          and in the application's band, where the mark *is* a link home and
-          the orb would claim the whole product is the assistant.
-
-          <p>30px, which puts its box at 36 — exactly the height of `Sign in`
-          and `Get started` at the other end of the bar. 26 is the nav scale
-          elsewhere and read as an afterthought here: with the word gone this
-          is the only thing on the left of a 68px bar, where before it was a
-          43px-wide lens with a 21px word beside it.
-
-          <p>`title` because with the word gone the mark is the only identity
-          in the bar, and an unnamed image in a header says nothing to a
-          reader.
-        */}
-        <ReverieAiMark size={30} title="Reverie" />
+        {/* 21px of wordmark with a 30px orb beside it — see `MARK` in
+            components/v2/lockup, which is where that ratio lives so the bar,
+            the auth shell and the SSO screen cannot drift apart. 30 is also
+            what the bare orb here measured before the word came back, so the
+            mark itself did not change size. */}
+        <Lockup size={21} />
         <nav aria-label="Reverie" className="ml-auto flex items-center gap-6">
           {/* A 36px target, not a 20px line of text. It sits beside a filled
               button of the same height, and a link half its neighbour's height
@@ -571,7 +555,11 @@ function Footer() {
   return (
     <footer className="border-t border-line">
       <div className="mx-auto flex max-w-doc flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row lg:px-8">
-        <Lockup size={14} muted />
+        {/* THE WORD ALONE. Asked for as just `Reverie` at the bottom of the
+            page, so the mark is withdrawn here and only here — the bar above
+            carries it, and so does every other lockup in the product. `muted`
+            still takes the line to `--ink-3`. */}
+        <Lockup size={14} muted mark={false} />
         {/* `-mx-2` so the padding that makes these tappable does not push them
             off the footer's own alignment. */}
         <div className="-mx-2 flex items-center text-callout text-ink-3">

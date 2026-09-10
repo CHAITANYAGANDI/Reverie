@@ -96,12 +96,14 @@ export function MobileTabs({
             {/*
               24px OF ORB, AND THE LABEL CARRIES THE STATE.
 
-              <p>24 is the floor for this mark: rasterised at true device pixels
-              the approved artwork keeps its sphere, its rim light and a bright
-              waveform core down to 20, and 24 is where the waveform is still
-              legible as bars. It is larger than the 18px glyphs beside it,
-              which is the cost of a filled colour mark in a row of monochrome
-              line icons.
+              <p>26, up a step from 24 with the rest of them. 24 was the floor:
+              rasterised at true device pixels the approved artwork keeps its
+              sphere, its rim light and a bright waveform core down to 20, and
+              24 is where the waveform is still legible as bars. 26 puts its box
+              at 31, which with a 13px label and a 2px gap is 46 of the bar's
+              56 — so there is room and no more. It is larger than the 18px
+              glyphs beside it, which is the cost of a filled colour mark in a
+              row of monochrome line icons.
 
               <p>The orb never dims, because tinting this artwork is the one
               thing the identity rules forbid. So the tab's state is carried by
@@ -113,7 +115,7 @@ export function MobileTabs({
             {Icon ? (
               <Icon className="h-[18px] w-[18px]" strokeWidth={on ? 2.1 : 1.7} />
             ) : (
-              <ReverieAiMark size={24} active={on} />
+              <ReverieAiMark size={26} active={on} />
             )}
             <span className={cn(on && !here.nested && "font-headline")}>{tab.label}</span>
           </Link>

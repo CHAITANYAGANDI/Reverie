@@ -110,9 +110,10 @@ export function ProcessingChatRail() {
       {/* The orb, the same identity the panel will carry once there is a
           transcript to answer from. It was a `Sparkles`; this is the AI
           surface, announcing itself as unavailable rather than as unnamed.
-          40px — smaller than the resting orb, because the sentence under it
-          is the message here and the mark is not. */}
-      <ReverieAiMark size={40} />
+          44px, up a step with the rest of them, and still smaller than the
+          resting orb was — the sentence under it is the message here and the
+          mark is not. */}
+      <ReverieAiMark size={44} />
       <p className="text-sm font-medium">AI Chat will be available once the transcript is ready.</p>
       <p className="max-w-xs text-xs text-muted-foreground">
         It answers from this meeting&rsquo;s transcript, so there is nothing for it to read yet.

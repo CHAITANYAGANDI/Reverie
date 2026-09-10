@@ -1,27 +1,25 @@
-import { BrandMark } from "@/components/v2/brand-mark";
+import { ReverieAiMark } from "@/components/v2/reverie-ai-mark";
 
 /**
- * The lens's visible width, as a multiple of the wordmark's size.
+ * The orb's sphere, as a multiple of the wordmark's size.
  *
- * <p>1.95, which sounds enormous and is not: the lens is 1.56 times as wide as
- * it is tall at this cut, so at a 21px wordmark this is 41px of width and 26px
- * of height — a mark about half as wide as the word beside it, standing a
- * little taller than its capitals. Which is the proportion the supplied artwork
- * draws.
+ * <p>1.45: a 21px word carries a 30px sphere, which stands a good deal taller
+ * than its capitals without out-weighing them. A round mark at parity with the
+ * type reads front-heavy — it is solid where the type is not — and much under
+ * 1.2 it disappears beside the word.
  *
- * <p>It was `size * 0.92` against the mark's **square box**, on the reasoning
- * that a solid mark at parity with the type reads front-heavy. That reasoning
- * was sound and was being applied to the wrong number: 0.92 of the box is 0.8
- * of the lens's width and, because the lens fills a little over half its box's
- * height, 0.46 of its height — so a 21px word carried a mark 11px tall. The
- * mark did not out-weigh the type; it disappeared next to it. Reported as
- * exactly that, everywhere the lockup appears.
+ * <p>It was 1.25, which put a 26px sphere beside that word. Raised on request:
+ * every orb in the product came up a step, and here the number that decides it
+ * is this ratio rather than a size at a call site.
  *
- * <p>Expressed against the *visible* lens rather than the box, so the same
- * number holds at every size and there is nothing to recompute if a cut
- * changes — see `crop` in `BrandMark` and `lensBox` in `mark-geometry`.
+ * <p>It was 1.95 against the *lens's visible width*, which is a different
+ * question with a different answer: that mark is 1.56 times as wide as it is
+ * tall, so 1.95 of the word bought 41px of width and only 26 of height. The orb
+ * is square, so one number does both and the ratio comes down accordingly.
+ * Getting this wrong in either direction is what made every previous pass at
+ * the lockup either front-heavy or weightless.
  */
-const MARK = 1.95;
+const MARK = 1.45;
 
 /**
  * The mark and the word.
@@ -33,17 +31,52 @@ const MARK = 1.95;
  * where somebody first types their password is the last place to have a second
  * one.
  */
-export function Lockup({ size, muted = false }: { size: number; muted?: boolean }) {
+export function Lockup({
+  size,
+  muted = false,
+  /**
+   * Draw the mark. The word alone when this is false.
+   *
+   * <p>For the landing page's footer, which was asked for as the word by
+   * itself. Worth a prop rather than a second component: the type is the same
+   * face, size and tracking either way, and a footer that set its own
+   * `font-headline` and `letterSpacing` inline is how two lockups come to
+   * disagree by a hundredth of an em.
+   */
+  mark = true,
+}: {
+  size: number;
+  muted?: boolean;
+  mark?: boolean;
+}) {
   return (
     <span
       className={muted ? "inline-flex items-center text-ink-3" : "inline-flex items-center text-ink"}
-      style={{ gap: Math.max(6, Math.round(size * 0.38)) }}
+      /* No gap with nothing to space. `Math.max(6, …)` would otherwise leave
+         six pixels of air before a word with nothing in front of it, which
+         reads as a mark that failed to load. */
+      style={{ gap: mark ? Math.max(6, Math.round(size * 0.38)) : undefined }}
     >
-      {/* `mono` when muted, and the gradient otherwise. A footer sets this
-          whole line to `--ink-3`; the mark is the one thing in it that would
-          not obey, and a blue mark in a grey line is the loudest thing on the
-          page. */}
-      <BrandMark size={Math.round(size * MARK)} crop title="Reverie" mono={muted} />
+      {/*
+        THE ORB, AT FULL COLOUR EVEN WHEN THE LINE IS MUTED.
+
+        <p>`muted` used to pass `mono` to the lens, which drew it in
+        `currentColor` — the footer sets this whole line to `--ink-3`, and a
+        blue mark in a grey line is the loudest thing on the page. The orb
+        cannot do that: recolouring the artwork is the one thing the identity
+        rules forbid, and there is no monochrome version of a lit sphere that is
+        still recognisably it.
+
+        <p>So `muted` now only quietens the *type*, and the mark stays itself.
+        Which is a real change in the footer — a small blue orb beside grey
+        words where there was a grey mark beside grey words — and the honest
+        trade: an 18px orb is quiet because it is small, not because it has been
+        drained.
+
+        <p>`title` because the shape of this is unchanged: the mark carries the
+        accessible name and the word sits beside it, exactly as the lens did.
+      */}
+      {mark && <ReverieAiMark size={Math.round(size * MARK)} title="Reverie" />}
       <span
         className="font-headline leading-none"
         style={{ fontSize: size, letterSpacing: "-0.028em" }}

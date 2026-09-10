@@ -56,15 +56,17 @@ interface Item {
  * own colour, and a CSS height on an `svg` would silently override the size and
  * collapse the sphere.
  *
- * <p>20px, which is the smallest the approved artwork is drawn at anywhere.
- * Rasterised at true device pixels it still carries the sphere, the rim light
- * and a bright waveform core at 20; by 16 the waveform has gone and only the
- * orb is left. 20 in a row of 16px glyphs is a 24px element, so `-my-1`
- * absorbs the four pixels that would otherwise make this one row taller than
+ * <p>22px, up a step with the rest of them, and still the smallest the
+ * approved artwork is drawn at anywhere. Rasterised at true device pixels it
+ * carries the sphere, the rim light and a bright waveform core down to 20; by
+ * 16 the waveform has gone and only the orb is left.
+ *
+ * <p>22 is a 26px element in a row whose text line is 20, so `-my-[3px]`
+ * absorbs the six pixels that would otherwise make this one row taller than
  * the six around it.
  */
 function AskGlyph() {
-  return <ReverieAiMark size={20} className="-my-1" />;
+  return <ReverieAiMark size={22} className="-my-[3px]" />;
 }
 
 /**
