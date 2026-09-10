@@ -51,6 +51,7 @@ import { useThreadScroll } from "@/lib/use-thread-scroll";
 import { WORKSPACE_PROMPTS, toPrompts } from "@/lib/chat-prompts";
 import { useRotatingPrompts } from "@/lib/use-rotating-prompts";
 import { useSidePane, toggleSidePaneExpanded, closeSidePane } from "@/components/side-pane";
+import { clearAskHandoff, useAskHandoff } from "@/lib/ask-handoff";
 
 export function WorkspaceAsk({
   surface,
@@ -69,6 +70,31 @@ export function WorkspaceAsk({
   // being sent. The composer owns what is typed; this is only the handover.
   const [compose, setCompose] =
     React.useState<{ text: string; nonce: number } | null>(null);
+
+  /*
+   * A QUESTION HANDED OVER BY SEARCH.
+   *
+   * <p>The global search box has an Ask row: somebody types "diarization",
+   * sees four passages, and wants the question rather than the passages. It
+   * puts the words in `lib/ask-handoff` and navigates here; this picks them up
+   * and drops them into the composer through the same `compose` handover an
+   * unfinished starter chip uses.
+   *
+   * <p>Filled, not sent — see the note on `lib/ask-handoff`. What arrives from
+   * a search box is a term, and turning a term into a question is the reader's
+   * job rather than the search box's.
+   *
+   * <p>Cleared as it is read, so coming back to `/ask` tomorrow does not type
+   * last week's search into the box. The nonce is the effect's only dependency
+   * for the reason the composer's own is: the same question may be handed over
+   * twice, and comparing the text would swallow the second one.
+   */
+  const handoff = useAskHandoff();
+  React.useEffect(() => {
+    if (!handoff) return;
+    setCompose({ text: handoff.text, nonce: handoff.nonce });
+    clearAskHandoff();
+  }, [handoff?.nonce, handoff]);
   // The thread, not the document, and only while the reader is at the bottom of
   // it. See lib/use-thread-scroll.
   const threadRef = useThreadScroll([chat.messages, chat.pending]);

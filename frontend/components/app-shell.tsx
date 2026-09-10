@@ -393,6 +393,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         open={searching.open}
         initial={searching.initial}
         onOpenChange={(next) => (next ? openSearch() : closeSearch())}
+        /* Search's resting state offers `Import a file`, and importing is a
+           dialog rather than a route — the shell owns both, so it is the one
+           place that can hand one to the other without a second module store
+           for a button. */
+        onImport={() => setImporting(true)}
       />
       {/* Opened from the band, and finished with before anybody navigates away.
           It files into the folder the page is inside, which is why the shell

@@ -59,6 +59,16 @@ export const SIGN_UP = "/sign-up";
 export const PRIVACY_NOTICE = "/privacy-policy";
 
 /**
+ * Account Settings, at its own front door.
+ *
+ * <p>`/settings` rather than `/settings/general`: the route is a catch-all and
+ * reads the tab from the path, so the bare form is the one that means "settings"
+ * rather than "the General tab of settings". The account menu already links
+ * here; this is the same string, named, now that the search box offers it too.
+ */
+export const SETTINGS = "/settings";
+
+/**
  * The chat.
  *
  * <p>The third place in the band. A constant rather than six literals, for the

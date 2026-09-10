@@ -18,17 +18,34 @@ import type {
  */
 
 /**
- * The groups this page renders.
+ * The groups this search renders, of the six the API answers with.
  *
- * A subset of what the API answers with. People, decisions, commitments and
- * risks were four more lists on a page whose question is "where was this
- * discussed" — and the answer to that is a conversation and the sentence inside
- * it. Each of the other four was the same meeting reached by a longer route.
- * They are still on the meeting itself, which is the place they mean something.
+ * <h2>It was two, and the other four were being thrown away</h2>
+ *
+ * <p>`meetings` and `mentions`, on the reasoning that the question a search box
+ * answers is "where was this discussed", and the answer to that is a
+ * conversation and the sentence inside it — so people, decisions, commitments
+ * and risks were four more lists reaching the same meeting by a longer route.
+ *
+ * <p>That argument is right about commitments and risks and wrong about the
+ * other two, which is why this is now four. A decision is not a route to a
+ * meeting: "what did we settle about the provider" is answered by the sentence
+ * that settled it, and `meeting_insights` holds exactly that. A person is not a
+ * route either — it is the one query in the archive that cannot be expressed as
+ * a term, because "everything Priya said" is a filter and not a search.
+ *
+ * <p>`commitments` and `risks` stay unrequested, and deliberately: an action
+ * item is a thing to work through rather than a thing to find, the Now page and
+ * the meeting both list them, and a risk is a line in a brief. Both are one
+ * entry in {@link SEARCH_SCOPES} away if that turns out to be wrong — the API
+ * has answered with them all along.
  */
-export type ShownGroupKey = Extract<SearchGroupKey, "meetings" | "mentions">;
+export type ShownGroupKey = Extract<
+  SearchGroupKey,
+  "meetings" | "mentions" | "decisions" | "people"
+>;
 
-/** `all` is the overview: both groups at once, a few rows each. */
+/** `all` is the overview: every group at once, a few rows each. */
 export type GroupSelection = ShownGroupKey | "all";
 
 export type DatePreset =
@@ -72,17 +89,97 @@ export const EMPTY_SEARCH: SearchState = {
 export const UNFILED_PROJECT = "none";
 
 /**
- * The groups asked for, in the order they are drawn.
+ * The groups asked for.
  *
- * Named on every request, so the API stops answering with what nobody renders.
- * Meetings first because it is the coarsest answer — which conversations is
- * this about — and mentions second because it is the longest list and the one
- * you scroll.
- *
- * This used to be a table with a label and a hint per group, for the tabs on
- * the results page. The page is gone and the box does not tab.
+ * <p>Named on every request, so the API stops answering with what nobody
+ * renders — it has six and this asks for four. The order here is the request's,
+ * not the screen's: what is drawn first is decided in `lib/search-rows`, where
+ * transcript moments lead because a sentence somebody said is a better answer
+ * than the name of the meeting it was said in.
  */
-const SHOWN_GROUPS: ShownGroupKey[] = ["meetings", "mentions"];
+const SHOWN_GROUPS: ShownGroupKey[] = ["meetings", "mentions", "decisions", "people"];
+
+/**
+ * What the scope control offers, in the order it lists them.
+ *
+ * <p>Two kinds of thing in one list, which is a compromise worth naming.
+ * `meetings`, `mentions`, `decisions` and `people` narrow the *request* — the
+ * API takes a `groups` parameter, so choosing one is a cheaper search and not
+ * merely a shorter list. `folders` and `tags` narrow only what is drawn: both
+ * are matched in the browser against lists already held for the filter
+ * autocompletion, because neither is a server-side result group.
+ *
+ * <p>Nothing here is offered that cannot answer. There is no `Risks` and no
+ * `Action items` entry, because nothing renders those; a scope that empties the
+ * panel is worse than one option fewer.
+ */
+export const SEARCH_SCOPES = [
+  { value: "all", label: "Everything" },
+  { value: "mentions", label: "Transcripts" },
+  { value: "decisions", label: "Decisions" },
+  { value: "meetings", label: "Meetings" },
+  { value: "people", label: "People" },
+  { value: "folders", label: "Folders" },
+  { value: "tags", label: "Tags" },
+] as const;
+
+/** One of {@link SEARCH_SCOPES}. */
+export type SearchScope = (typeof SEARCH_SCOPES)[number]["value"];
+
+/** The two scopes that are drawn in the browser rather than asked of the API. */
+export type LocalScope = Extract<SearchScope, "folders" | "tags">;
+
+const LOCAL_SCOPES: LocalScope[] = ["folders", "tags"];
+
+/**
+ * True where the scope narrows what is drawn rather than what is requested.
+ *
+ * <p>A type predicate rather than a boolean, so {@link groupFor} can hand the
+ * remainder straight to the request: the four that are left are exactly the
+ * four server groups, and proving that here is better than repeating the list.
+ */
+export function isLocalScope(scope: SearchScope): scope is LocalScope {
+  return (LOCAL_SCOPES as readonly string[]).includes(scope);
+}
+
+/**
+ * The `group` a scope selects, for {@link toQueryArgs}.
+ *
+ * <p>A local scope still asks for everything: `Folders` is a filter over a list
+ * the box already has, and dropping the request would mean switching to it and
+ * back re-running the search for no reason.
+ */
+export function groupFor(scope: SearchScope): GroupSelection {
+  return scope === "all" || isLocalScope(scope) ? "all" : scope;
+}
+
+/**
+ * The same search with its last word dropped, or `""` when there is no shorter
+ * one to try.
+ *
+ * <h2>Why this is honest and not a guess</h2>
+ *
+ * <p>`SearchTerms.toTsQuery` ANDs the terms — "onboarding funnel" means both
+ * words, and only the last is a prefix — so a two-word search returning nothing
+ * says nothing about whether either word appears. Dropping the last one is a
+ * real, broader search of the same archive, and its results are results rather
+ * than similar-looking suggestions.
+ *
+ * <p>Which is the whole reason the zero state can offer anything at all. The
+ * alternative — a list of terms "close to" what was typed — would have to come
+ * from a suggestion engine this product does not have, and inventing one out of
+ * string edit distance would put words on screen that nobody in the archive
+ * ever said.
+ *
+ * <p>The trailing word rather than any other, because it is the one being
+ * typed: the prefix match makes it the least settled part of the query, and it
+ * is where a typo is.
+ */
+export function broaden(query: string): string {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return "";
+  return words.slice(0, -1).join(" ");
+}
 
 /**
  * A preset as an absolute lower bound.
@@ -136,13 +233,15 @@ export function toQueryArgs(
 /**
  * How many results there are — counting only what the box draws.
  *
- * The server still answers with people, decisions, commitments and risks.
- * Adding those in would put the box into its "there are results" branch and
- * then render nothing: an empty panel insisting it found something.
+ * The server still answers with commitments and risks. Adding those in would
+ * put the box into its "there are results" branch and then render nothing: an
+ * empty panel insisting it found something.
  */
 export function totalResults(res: SearchResponse | undefined): number {
   if (!res) return 0;
-  return res.meetings.total + res.mentions.total;
+  return (
+    res.meetings.total + res.mentions.total + res.decisions.total + res.people.total
+  );
 }
 
 // ---- Text ----------------------------------------------------------------- //
