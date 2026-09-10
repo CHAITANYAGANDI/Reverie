@@ -280,70 +280,28 @@ export function ChatComposer({
         />
       )}
 
-      {chips && (
-        /* Tight. This row exists to name things, not to be a section: `pt-2.5`
-           and no bottom padding puts the chips 10px off the box's top edge and
-           lets the control row's own `py-2` be the gap under them. It was
-           `pt-3 pb-0.5`, which cost the meeting chat -- whose chip is always
-           there -- six pixels of permanent height. */
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5">
-          {scope ? (
-            // Bounded and truncated, with the full name on hover: a meeting
-            // title is whatever somebody called it, and an untruncated one
-            // wraps the chip onto three lines and pushes the box off the panel.
-            <span
-              title={scope}
-              className="flex max-w-[240px] items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-text"
-            >
-              <AtSign className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{scope}</span>
-            </span>
-          ) : null}
-
-          {context.projectIds.map((id) => (
-            <Chip
-              key={id}
-              icon={<Folder className="h-3 w-3" />}
-              label={projects.find((p) => p.id === id)?.name ?? "Folder"}
-              onRemove={() =>
-                onContextChange?.({
-                  ...context,
-                  projectIds: context.projectIds.filter((p) => p !== id),
-                })
-              }
-            />
-          ))}
-          {context.meetingIds.map((id) => (
-            <Chip
-              key={id}
-              icon={<FileAudio className="h-3 w-3" />}
-              label={meetings.find((m) => m.id === id)?.title ?? "Conversation"}
-              onRemove={() =>
-                onContextChange?.({
-                  ...context,
-                  meetingIds: context.meetingIds.filter((m) => m !== id),
-                })
-              }
-            />
-          ))}
-        </div>
-      )}
-
       {/*
-        `items-end` and `px-2 py-2`: the controls hold the bottom of the box as
-        the text grows to its eight-row ceiling, and 8px of padding round a
-        32px control against a 36px line of text is what centres the row at one
-        line without pinning it there.
-      */}
-      <div className="flex items-end gap-1 px-2 py-2">
-        {/*
-          THE CONTEXT CONTROL, AS A GLYPH.
+        THE TOP ROW: what the question is about.
 
-          <p>It read `@ Add context` and on a 383px rail that is a third of the
-          row. The words are on the `aria-label` and the `title`, so a screen
-          reader and a hover both get them — and what is actually selected is
-          never hidden behind this glyph: the chips above name every one of
-          them, which is more than the words ever did.
+        <p>The context control and the chips together, above the text, which is
+        the reference layout and is also the truer grouping — `Add context` and
+        the chips it produces are one subject, and they were in two places.
+
+        <p>Always drawn. Either there is a context control (the workspace chat)
+        or there is a scope chip (a meeting's), and there is no chat with
+        neither. `min-h-[2.25rem]` so the row is the same height whether it
+        holds a 36px button or a 26px chip, and the text below it never shifts
+        as chips come and go.
+      */}
+      <div className="flex min-h-[2.25rem] flex-wrap items-center gap-1.5 px-2.5 pt-2.5">
+        {/*
+          THE CONTEXT CONTROL, WITH ITS WORDS BACK.
+
+          <p>It read `@ Add context`, was cut to a bare `@` glyph because on a
+          383px rail the words were a third of the control row, and has its
+          label again now that it is not on that row: a button alone at the top
+          of the box has the width for two words, and `@` alone was a symbol
+          somebody had to press to find out what it did.
 
           <p>Absent entirely where the scope is fixed. A meeting chat reads one
           meeting through one endpoint and has no way to widen, so a control
@@ -356,25 +314,78 @@ export function ChatComposer({
             onClick={() => setPicking((v) => !v)}
             aria-expanded={picking}
             aria-label="Add context"
-            title="Add context"
-            /* 32px, down from 36. At 36 the glyph pair was heavier than the
-               line of text it sits on and the bar read as a toolbar with a
-               field in it. 32 is the same height as the mode trigger beside
-               it, so all three controls share one line. */
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-press ease-soft",
+              "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors duration-press ease-soft",
               // Brand, not ink: what is in the context chips is what Reverie
               // will read, which is the one meaning the accent carries here.
               selectedCount > 0
-                ? "bg-brand/12 text-brand-text"
-                : "text-ink-3 hover:bg-surface-hover hover:text-ink",
+                ? "border-brand/40 bg-brand/10 text-brand-text"
+                : "border-line text-ink-2 hover:border-edge hover:bg-surface-hover hover:text-ink",
             )}
           >
-            <AtSign className="h-4 w-4" />
+            <AtSign className="h-3.5 w-3.5" />
+            Add context
           </button>
         )}
 
-        <textarea
+        {chips && (
+          <>
+            {scope ? (
+            // Bounded and truncated, with the full name on hover: a meeting
+            // title is whatever somebody called it, and an untruncated one
+            // wraps the chip onto three lines and pushes the box off the panel.
+              <span
+                title={scope}
+                className="flex max-w-[240px] items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-text"
+              >
+                <AtSign className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{scope}</span>
+              </span>
+            ) : null}
+
+            {context.projectIds.map((id) => (
+              <Chip
+                key={id}
+                icon={<Folder className="h-3 w-3" />}
+                label={projects.find((p) => p.id === id)?.name ?? "Folder"}
+                onRemove={() =>
+                  onContextChange?.({
+                    ...context,
+                    projectIds: context.projectIds.filter((p) => p !== id),
+                  })
+                }
+              />
+            ))}
+            {context.meetingIds.map((id) => (
+              <Chip
+                key={id}
+                icon={<FileAudio className="h-3 w-3" />}
+                label={meetings.find((m) => m.id === id)?.title ?? "Conversation"}
+                onRemove={() =>
+                  onContextChange?.({
+                    ...context,
+                    meetingIds: context.meetingIds.filter((m) => m !== id),
+                  })
+                }
+              />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/*
+        THE TEXT, ACROSS THE WHOLE BOX.
+
+        <p>`block w-full`, where it was `flex-1` in a row with three controls.
+        That row was the reported problem: the text shared its line with the
+        context glyph, the mode trigger and Send, so a paragraph wrapped inside
+        about two thirds of the box and left the rest of every line empty. On
+        `/ask` at 1440 that is a 680px box typing in 520 of it.
+
+        <p>Nothing else on this line, so a long question uses the measure it is
+        going to be read at.
+      */}
+      <textarea
           ref={areaRef}
           rows={1}
           value={text}
@@ -397,25 +408,39 @@ export function ChatComposer({
           // `scrollbar-none` scrolls without drawing the bar — see globals.css.
           // On a box this small the bar is more furniture than the two lines it
           // is measuring, and the caret already says where you are.
-          className="scrollbar-none block min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1.5 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:shadow-none disabled:opacity-60"
-        />
+        className="scrollbar-none block w-full resize-none overflow-y-auto bg-transparent px-3 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:shadow-none disabled:opacity-60"
+      />
 
-        {modes && modes.length > 0 && (
+      {/*
+        THE BOTTOM ROW: how hard to think, and go.
+
+        <p>`justify-between` puts the effort level at the left edge and Send at
+        the right, which is the reference layout and is why there is no longer a
+        gap to the right of the text: nothing on this row is competing with the
+        question for horizontal space.
+      */}
+      <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+        {modes && modes.length > 0 ? (
           <ModePicker
             modes={modes}
             value={mode}
             label={chosen?.label ?? "Quick"}
             onChange={(next) => onModeChange?.(next)}
           />
+        ) : (
+          /* A spacer, so Send stays at the right edge when the modes query has
+             not answered. `justify-between` with one child centres it, which
+             reads as a button that has slipped. */
+          <span aria-hidden />
         )}
 
         <Button
           type="button"
           size="icon"
-          /* 32px, and `ml-0.5` so there is a hair of air between the mode
-             trigger's hover shade and the filled circle. Without it the two
-             read as one control with a lump on the end. */
-          className="ml-0.5 h-8 w-8 shrink-0 rounded-full"
+          /* 36px, up from 32. It was sharing a line with the text and had to
+             sit inside it; alone on its own row it is the one thing to press
+             and takes the touch target it should have had. */
+          className="h-9 w-9 shrink-0 rounded-full"
           disabled={busy || shut || !text.trim()}
           onClick={submit}
           aria-label="Send"
@@ -488,10 +513,11 @@ function ModePicker({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        /* `h-8` so it matches the two round buttons beside it: three controls
-           on one line that are three different heights is what made the bar
-           look unaligned. */
-        className="flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
+        /* `h-9`, matching Send at the other end of its row. It was `h-8` to
+           match two 32px round buttons on the text's own line; that line is
+           gone, and 36 is the height the rest of the box's controls settled at
+           once none of them had to fit beside a paragraph. */
+        className="flex h-9 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-ink-3 transition-colors duration-press ease-soft hover:bg-surface-hover hover:text-ink"
       >
         {label}
         {/* Turns over when the list is showing. The menu opens *upwards* here
@@ -505,22 +531,27 @@ function ModePicker({
 
       {open && (
         /*
-         * RIGHT-ANCHORED, AND IT HAS TO BE.
+         * LEFT-ANCHORED, AND IT FOLLOWS THE TRIGGER.
          *
-         * <p>It was `left-0`: the menu's left edge on the picker's, growing
-         * rightward. The picker sits at the right-hand end of the composer,
-         * beside Send, so a 256px menu opening rightward from there runs off
-         * the panel — in the 383px side pane both hints were cut mid-word
-         * ("Answers from the str…"), which is how it was reported.
+         * <p>This has been both, and each was right for where the picker was
+         * standing at the time — which is the whole point, and why the anchor
+         * is worth a note rather than a guess.
          *
-         * <p>`right-0` grows it leftward instead. In the rail that puts its
-         * left edge about 80px in from the box, and on `/ask` it sits under the
-         * picker with room to spare, so one rule is right at both widths and
-         * there is no breakpoint to keep in step.
+         * <p>It was `left-0` when the picker sat at the right-hand end of a
+         * one-row composer, beside Send. A 256px menu growing rightward from
+         * there ran off the panel: in the 383px side pane both hints were cut
+         * mid-word ("Answers from the str…"). So it became `right-0`, growing
+         * leftward, which fitted at both widths.
+         *
+         * <p>The picker is now at the *left* edge of its own row, so `right-0`
+         * would grow the menu leftward off the other side of the box. `left-0`
+         * again, and this time there is 256px of composer to its right at every
+         * width the panel has — the box is never narrower than the rail's
+         * 383px, and the menu is two thirds of that.
          *
          * <p>`mb-3` rather than `mb-2`. The menu's bottom corner was almost
-         * touching Send; twelve pixels reads as a menu above the bar rather
-         * than one growing out of the button next to it.
+         * touching the row; twelve pixels reads as a menu above it rather than
+         * one growing out of the button.
          *
          * <p>`rounded-xl`, `border-line` and `shadow-e2` — the popover shape
          * the rest of V2 uses. It was `rounded-lg`, a default `border` and
@@ -528,7 +559,7 @@ function ModePicker({
          */
         <div
           role="menu"
-          className="absolute bottom-full right-0 z-30 mb-3 w-64 overflow-hidden rounded-xl border border-line bg-popover p-1 shadow-e2"
+          className="absolute bottom-full left-0 z-30 mb-3 w-64 overflow-hidden rounded-xl border border-line bg-popover p-1 shadow-e2"
         >
           {modes.map((m) => (
             <button
