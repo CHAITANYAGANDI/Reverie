@@ -140,6 +140,61 @@ describe("AskThread", () => {
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 
+  it("keeps the question on screen while the new thread's history loads", () => {
+    /*
+     * A REGRESSION TEST FOR A TWO-SECOND FLICKER, reported from a screenshot.
+     *
+     * <p>Ask the first question of a new conversation and the question bubble
+     * and `Thinking…` appeared, vanished for about two seconds, and came back.
+     *
+     * <p>The cause is a real state this component is handed and had no answer
+     * for. Asking that first question moves `conversationId` from null to an
+     * id, which starts the messages query on a key with nothing cached under
+     * it; both surfaces compute `isLoading = isFetching && !messages`, so for
+     * the length of that fetch `loading` is true *with a turn already on
+     * screen*. The skeleton branch took precedence and replaced it.
+     *
+     * <p>So `loading` and `pending` arrive together, which sounds
+     * contradictory and is not: `loading` means "nothing persisted to show and
+     * something coming", and the pending turn is not persisted. When both are
+     * true the turn wins, because it is the only evidence the click did
+     * anything and a placeholder is not worth taking it off the screen for.
+     */
+    render(
+      <AskThread
+        messages={undefined}
+        loading
+        pending={{ id: "pending:1", question: "What changed recently?", status: "asking" }}
+      />,
+    );
+
+    expect(screen.getByText("What changed recently?")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/thinking/i);
+  });
+
+  it("still shows the bars when there is genuinely nothing to show", () => {
+    // The other half of the pair above: the guard is `loading && !pending`, so
+    // a first load with no turn in flight is unaffected.
+    const { container } = render(<AskThread messages={undefined} loading pending={null} />);
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the question on screen instead of the resting identity too", () => {
+    // The same rule, on the branch that already had it. An empty thread with a
+    // question in flight is not an empty panel.
+    render(
+      <AskThread
+        messages={[]}
+        pending={{ id: "pending:1", question: "What changed recently?", status: "asking" }}
+        resting={<p>Ask about your conversations</p>}
+      />,
+    );
+
+    expect(screen.getByText("What changed recently?")).toBeInTheDocument();
+    expect(screen.queryByText("Ask about your conversations")).not.toBeInTheDocument();
+  });
+
   it("renders nothing for an empty thread rather than a wall of chips", () => {
     const { container } = render(<AskThread messages={[]} />);
 

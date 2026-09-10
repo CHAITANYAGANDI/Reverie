@@ -119,7 +119,34 @@ export function AskThread({
 }) {
   const exchanges = React.useMemo(() => exchangesOf(messages), [messages]);
 
-  if (loading) {
+  /*
+   * THE SKELETON, AND WHY IT DEFERS TO A PENDING TURN.
+   *
+   * <p>`&& !pending` is a bug fix, and the bug was visible: ask a question and
+   * the question bubble and `Thinking…` appeared, vanished for about two
+   * seconds, and came back. Reported from a screenshot of exactly that state.
+   *
+   * <p>The cause is that asking the first question of a *new* conversation
+   * moves `conversationId` from null to an id — see `submit` in
+   * lib/use-workspace-chat — which starts the messages query on a key with
+   * nothing cached under it. Both surfaces compute
+   * `isLoading = isFetching && !messages`, so for the length of that fetch
+   * `loading` is true with a turn already on screen, and this branch replaced
+   * it with two grey bars.
+   *
+   * <p>Which is not what the prop means. `loading` is documented as "nothing to
+   * show and something coming", and a question in flight is emphatically
+   * something to show — it is the only evidence the click did anything. The
+   * resting branch below already made this distinction; this one was written
+   * before there was a pending turn to make it about, and never caught up.
+   *
+   * <p>Fixed here rather than in either caller's `isLoading`, deliberately.
+   * That value also feeds `isNew` and `showPrompts`, and widening it to mean
+   * "and no pending turn either" would quietly change what the conversation
+   * picker thinks a new chat is. The invariant belongs to the thread: never
+   * take a turn off the screen to put a placeholder in its place.
+   */
+  if (loading && !pending) {
     return (
       <div className="space-y-7">
         <Skeleton className="h-16 w-3/4" />
