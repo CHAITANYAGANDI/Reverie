@@ -44,10 +44,25 @@ export function Lockup({
    * disagree by a hundredth of an em.
    */
   mark = true,
+  /**
+   * Hide the mark from assistive technology, leaving the word to name it.
+   *
+   * <p>The mark carries `title="Reverie"` by default, which becomes the image's
+   * `alt` — so the lockup is announced "Reverie Reverie", once for the artwork
+   * and once for the wordmark beside it. That is the textbook redundant-alt
+   * problem, and it is why this exists.
+   *
+   * <p>Not the default, because changing it would change the accessible name of
+   * the nav, the auth shell and the SSO screen in one commit, and in the nav the
+   * lockup is the only thing identifying the product. Opt in where the word is
+   * unambiguously there to read — which today is the Privacy &amp; Demo Notice.
+   */
+  decorative = false,
 }: {
   size: number;
   muted?: boolean;
   mark?: boolean;
+  decorative?: boolean;
 }) {
   return (
     <span
@@ -76,7 +91,15 @@ export function Lockup({
         <p>`title` because the shape of this is unchanged: the mark carries the
         accessible name and the word sits beside it, exactly as the lens did.
       */}
-      {mark && <ReverieAiMark size={Math.round(size * MARK)} title="Reverie" />}
+      {mark && (
+        <ReverieAiMark
+          size={Math.round(size * MARK)}
+          /* No `title` when decorative: the mark's own wrapper then takes
+             `aria-hidden` and the image an empty `alt`, which is what makes it
+             a decoration rather than a second reading of the same word. */
+          title={decorative ? undefined : "Reverie"}
+        />
+      )}
       <span
         className="font-headline leading-none"
         style={{ fontSize: size, letterSpacing: "-0.028em" }}

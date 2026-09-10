@@ -23,9 +23,14 @@
  * this is not silent — it is the browser's prompt, it names the site, and it is
  * the only consent gate Reverie relies on.
  *
- * The consent tick going means Reverie no longer has anything to say about
- * consent for a recording, and says nothing rather than something convenient.
- * See where the meeting is created in components/recording-bar.tsx.
+ * The consent tick going means Reverie no longer *asks* about consent, and it
+ * still claims nothing about it — the flag it used to set is not set by
+ * anything here. What it does now is smaller and does not stand in the way: one
+ * line at the foot of the page saying to make sure the room has been told, with
+ * the sentence to read out one keystroke behind it. Nothing to tick, nothing to
+ * dismiss, and no bearing on when the microphone opens. See
+ * `RecordResponsibly`, and where the meeting is created in
+ * components/recording-bar.tsx.
  *
  * The recorder itself lives in the shell too, so navigating away mid-meeting no
  * longer destroys the recording. This page is a view onto it: mount, unmount,
@@ -41,6 +46,7 @@ import type { LiveTurn } from "@/lib/use-live-transcript";
 import { Button } from "@/components/ui/button";
 import { stopwatch } from "@/lib/format";
 import { folderHref, folderIdFrom, returnPath } from "@/lib/routes";
+import { RECORDING_ANNOUNCEMENT } from "@/lib/privacy";
 import { useAllowance, recordRefusal } from "@/lib/allowance";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -230,11 +236,81 @@ export default function RecordPage() {
           onRetry={() => void onStart()}
         />
       )}
+
+      {/* Last, and only ever a footnote. See `RecordResponsibly`. */}
+      <RecordResponsibly />
     </div>
   );
 }
 
 /* --------------------------------- pieces -------------------------------- */
+
+/**
+ * One line about the room, and the words to say to it.
+ *
+ * <h2>What this is not</h2>
+ *
+ * <p>Not the consent gate that used to be here. That was a checkbox somebody
+ * had to tick before Start, it was removed on request, and it is not coming
+ * back: a tick box is a click to get past, and having got past it the product
+ * then claimed the room had been told. Nothing here blocks, gates, focuses
+ * itself, or has to be dismissed. The microphone opens on arrival exactly as it
+ * did, and this renders under the result.
+ *
+ * <p>It also does not say that the browser's permission prompt is consent. It
+ * is a decision by the person at the keyboard, and everybody else in the
+ * conversation is unrepresented in it — which is the entire reason a sentence
+ * has to be read out loud.
+ *
+ * <h2>Why the announcement is behind a disclosure</h2>
+ *
+ * <p>`RECORDING_ANNOUNCEMENT` is three sentences. Standing open, it is a
+ * paragraph of somebody else's words on a page whose whole redesign was about
+ * having no standing paragraphs — and it is only wanted once, at the start,
+ * by somebody who has not thought of what to say. So the line is one sentence
+ * and the words are one keystroke away.
+ *
+ * <p>The region is always rendered and toggled with `hidden`, rather than
+ * mounted on open. `aria-controls` must point at something that exists, and
+ * `hidden` is what keeps the collapsed text out of both the accessibility tree
+ * and a find-in-page.
+ *
+ * <p>The sentence itself is imported, never retyped. It is tested in
+ * lib/privacy.test.ts and it is the one string in this product that is meant to
+ * be read aloud to other people; two copies of that is how one of them comes to
+ * be wrong.
+ */
+function RecordResponsibly() {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    /* The margin note at its quietest: a left hairline and `--ink-4` type. No
+       fill, no icon, no tone colour — a tinted panel with a warning triangle
+       would read as something having gone wrong with the recording. */
+    <div className="v2-note" data-tone="quiet">
+      <p className="text-foot leading-[1.5] text-ink-4">
+        Record responsibly. Make sure everyone who needs to know has been
+        informed before recording.{" "}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls="recording-announcement"
+          className="rounded-sm text-ink-3 underline underline-offset-2 outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          What can I say?
+        </button>
+      </p>
+      <p
+        id="recording-announcement"
+        hidden={!open}
+        className="mt-2 text-foot leading-[1.55] text-ink-3"
+      >
+        “{RECORDING_ANNOUNCEMENT}”
+      </p>
+    </div>
+  );
+}
 
 /**
  * The body of a meeting that is being recorded.

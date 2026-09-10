@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { SIGN_IN } from "@/lib/routes";
+import { PRIVACY_NOTICE, SIGN_IN } from "@/lib/routes";
 
 /**
  * Nobody reaches the app without being somebody.
@@ -44,11 +44,32 @@ const DEV_MODE = process.env.NEXT_PUBLIC_AUTH_MODE === "dev";
  * <p>Written as what is *public* rather than as what is protected, so a route
  * added later is private until somebody says otherwise. The alternative gets
  * this backwards exactly once and nobody notices.
+ *
+ * <p>Exported for the tests, and only for them — nothing else imports it. This
+ * list is the whole of the app's authentication boundary and the two mistakes
+ * it can make are opposite and both silent: a page that should be public
+ * bouncing off the login, or a page that should be private answering to
+ * anybody. Neither is visible in a diff of a page component, so both are
+ * asserted directly against the matcher. Next.js allows named exports from
+ * `middleware.ts` alongside the default; `config` below is already one.
  */
-const isPublic = createRouteMatcher([
+export const isPublicPath = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  /*
+   * The Privacy & Demo Notice.
+   *
+   * <p>It has to be readable by somebody who has not signed up, because the
+   * decision it informs is whether to. The landing footer's old `Privacy` link
+   * went to `/privacy` — Account Settings — so following it signed out
+   * redirected to the sign-in form: a privacy link that demands an account
+   * before it will tell you anything.
+   *
+   * <p>Exact, with no `(.*)`. There is one page here and nothing nested under
+   * it, and a wildcard would open any route added below it later.
+   */
+  PRIVACY_NOTICE,
   /*
    * Where Google sends somebody back to. It has to be reachable signed out:
    * the whole job of that route is to turn the token in the URL into the
@@ -68,7 +89,7 @@ const isPublic = createRouteMatcher([
 const guard = DEV_MODE
   ? null
   : clerkMiddleware((auth, request) => {
-      if (isPublic(request)) return;
+      if (isPublicPath(request)) return;
       // `auth()` first: in Clerk 5 the handler is handed a getter, and the
       // object it returns is what carries the session.
       const { userId, redirectToSignIn } = auth();

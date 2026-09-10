@@ -534,32 +534,53 @@ function Row({
  * this same page, a few hundred pixels away and reachable by scrolling. A
  * footer link to the middle of the page you are already on is furniture.
  *
- * <p>What is left appears only when somebody has supplied the URLs. Reverie ships
- * no terms of service or privacy policy of its own — those are documents
- * somebody has to write and be bound by — and with neither set this renders
- * nothing at all rather than an empty strip of padding.
+ * <h2>What it says now, and what it stopped saying</h2>
+ *
+ * <p>It read "By using Reverie you agree to the …" and rendered nothing at all
+ * unless a deployment had supplied both URLs. There is a privacy document in
+ * the repository now — `app/privacy-policy`, the Privacy &amp; Demo Notice — so
+ * `LEGAL_LINKS` carries it by default and this is no longer empty.
+ *
+ * <p>Which makes the sentence wrong. Reverie asks nobody to agree to anything:
+ * there are no terms, no acceptance checkbox and no contract, so an agreement
+ * sentence wrapped around a link to a *disclosure* would be inventing the one
+ * thing the notice is careful not to claim. So the agreement framing appears
+ * only where a deployment has actually supplied terms — which is the only case
+ * where there is something to agree to — and otherwise the links stand on their
+ * own.
+ *
+ * <p>Internal links are `next/link` in the same tab; an external policy still
+ * opens in a new one. Sending somebody out of the product to read the product's
+ * own page would be the sort of small wrongness nobody files a bug about.
  */
 function Footer() {
   if (LEGAL_LINKS.length === 0) return null;
+  // Terms are the only document anybody could be agreeing to. Its presence is
+  // what decides the sentence, rather than a count of links.
+  const agreeing = LEGAL_LINKS.some((link) => link.label === "Terms of Service");
+  const links = LEGAL_LINKS.map((link, i) => (
+    <React.Fragment key={link.href}>
+      {i > 0 && (agreeing ? " and " : " · ")}
+      {link.internal ? (
+        <Link href={link.href} className="text-primary underline-offset-2 hover:underline">
+          {link.label}
+        </Link>
+      ) : (
+        <a
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {link.label}
+        </a>
+      )}
+    </React.Fragment>
+  ));
+
   return (
     <div className="space-y-1 pt-8 text-center text-xs text-muted-foreground">
-      <p>
-        By using Reverie you agree to the{" "}
-        {LEGAL_LINKS.map((link, i) => (
-          <React.Fragment key={link.href}>
-            {i > 0 && " and "}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline-offset-2 hover:underline"
-            >
-              {link.label}
-            </a>
-          </React.Fragment>
-        ))}
-        .
-      </p>
+      <p>{agreeing ? <>By using Reverie you agree to the {links}.</> : links}</p>
     </div>
   );
 }

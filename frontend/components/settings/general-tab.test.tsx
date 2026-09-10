@@ -376,11 +376,29 @@ describe("the rest of the page", () => {
     expect(screen.getByRole("heading", { name: /Delete this account/i })).toBeInTheDocument();
   });
 
-  it("shows no legal line when there are no documents to link to", () => {
+  it("links the notice without claiming anybody agreed to anything", () => {
+    /*
+     * WHAT CHANGED, AND WHAT DID NOT.
+     *
+     * <p>This footer used to render nothing at all, because Reverie shipped
+     * neither document and `LEGAL_LINKS` was empty. There is a privacy document
+     * in the repository now — the Privacy & Demo Notice at `/privacy-policy` —
+     * so the line appears, and it is an internal `next/link` rather than an
+     * external one opening a new tab: sending somebody out of the product to
+     * read the product's own page is a small wrongness nobody files.
+     *
+     * <p>What did not change is the absence of terms, and the sentence that
+     * wrapped them. "By using Reverie you agree to the …" is an acceptance
+     * claim, and there is nothing here to accept: no terms, no checkbox, no
+     * contract. It reappears only for a deployment that has actually supplied
+     * `NEXT_PUBLIC_TERMS_URL`, which is the one case where there is.
+     */
     render(<GeneralTab />);
 
-    // Reverie ships no terms of service of its own, and a link to a page that
-    // does not exist is worse than no link.
+    const link = screen.getByRole("link", { name: "Privacy & Demo Notice" });
+    expect(link).toHaveAttribute("href", "/privacy-policy");
+    expect(link).not.toHaveAttribute("target");
+
     expect(screen.queryByText(/Terms of Service/)).not.toBeInTheDocument();
     expect(screen.queryByText(/By using Reverie/)).not.toBeInTheDocument();
   });

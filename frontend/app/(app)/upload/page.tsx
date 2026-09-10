@@ -174,6 +174,27 @@ export default function UploadPage() {
               )}
             </div>
 
+            {/*
+              WHOSE CONVERSATION THIS IS.
+
+              <p>Informational, and that is the whole design. There is no
+              checkbox, no confirmation and no gate: the file was recorded
+              somewhere Reverie was not present, so a tick here could only
+              assert something the product has no way to know — and the
+              recording page's consent tick was removed for exactly that
+              reason.
+
+              <p>Under the drop area rather than beside the submit button,
+              because the decision it speaks to is which file to choose, and it
+              takes the form's own `space-y-5` rhythm rather than a margin of
+              its own. `--ink-4` at `text-foot` is what keeps it a caption on
+              the thing above it instead of a row competing with it.
+            */}
+            <p className="text-foot leading-[1.5] text-ink-4">
+              Only upload conversations you&apos;re authorized to record and
+              process.
+            </p>
+
             {/* The one piece of metadata worth asking for before anyone has
                 heard a word of it: whoever is uploading already knows which
                 project this belongs to, and filing it later means going back

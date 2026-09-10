@@ -42,6 +42,23 @@ export const SIGN_IN = "/sign-in";
 export const SIGN_UP = "/sign-up";
 
 /**
+ * The Privacy & Demo Notice, which is public.
+ *
+ * <p>Four files write this path and none of them can be wrong about it: the
+ * landing footer links to it, `middleware.ts` has to name it as public or the
+ * gate sends a signed-out reader to the sign-in form, `lib/build-info` uses it
+ * as the internal default for the privacy link, and the page itself lives at
+ * it. A literal in the middleware that drifted from a literal in the footer
+ * would be a published link that bounces off the login — which is precisely
+ * what `/privacy` in that footer already did.
+ *
+ * <p><b>Not `/privacy`.</b> That path is Account Settings → Data Retention and
+ * has to stay that way: `RETENTION_APPLIED` notifications written months ago
+ * carry it in their link column. See `LEGACY_PATHS` in lib/settings-tabs.
+ */
+export const PRIVACY_NOTICE = "/privacy-policy";
+
+/**
  * The chat.
  *
  * <p>The third place in the band. A constant rather than six literals, for the

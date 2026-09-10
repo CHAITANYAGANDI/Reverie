@@ -9,6 +9,7 @@ import { AskShowcase } from "@/components/v2/landing/ask-showcase";
 import { LanguageMoment } from "@/components/v2/landing/language-moment";
 import { AmbientCanvas } from "@/components/v2/ambient-canvas";
 import { LandingMotion } from "@/components/v2/landing/motion-provider";
+import { PRIVACY_NOTICE } from "@/lib/routes";
 
 /**
  * The front door.
@@ -550,7 +551,26 @@ const KEEPING = [
   },
 ];
 
-/** A hairline, the lockup, and only links that go somewhere. */
+/**
+ * A hairline, the lockup, and only links that go somewhere.
+ *
+ * <h2>The privacy link was pointing at the login</h2>
+ *
+ * <p>It read `Privacy` and went to `/privacy`, which is Account Settings → Data
+ * Retention: a route inside the authenticated group. So the one link on the
+ * public page that a visitor follows *because* they have not decided to sign up
+ * yet redirected them to the sign-in form. It now goes to
+ * {@link PRIVACY_NOTICE}, which is a public page and is the document the label
+ * promises.
+ *
+ * <p>Repointed rather than joined by a second link. Two privacy links in a
+ * two-link footer — one working, one bouncing off the gate — is worse than the
+ * bug it would be fixing, and `/privacy` keeps working for the notification
+ * rows that carry it.
+ *
+ * <p>Still no Terms, no Cookies, no Security and no Legal. Reverie asks nobody
+ * to agree to anything and `app/page.test.tsx` pins the absence.
+ */
 function Footer() {
   return (
     <footer className="border-t border-line">
@@ -564,10 +584,10 @@ function Footer() {
             off the footer's own alignment. */}
         <div className="-mx-2 flex items-center text-callout text-ink-3">
           <Link
-            href="/privacy"
+            href={PRIVACY_NOTICE}
             className="flex h-9 items-center px-2 transition-colors hover:text-ink"
           >
-            Privacy
+            Privacy &amp; Demo Notice
           </Link>
           <Link
             href="/sign-in"

@@ -206,10 +206,52 @@ describe("the way in", () => {
     for (const link of signIn) expect(link).toHaveAttribute("href", "/sign-in");
   });
 
-  it("keeps Privacy, which is a route that exists", () => {
+  it("points the privacy link at a page a visitor can actually read", () => {
+    /*
+     * IT USED TO POINT AT THE LOGIN.
+     *
+     * <p>The link read `Privacy` and went to `/privacy`, which is Account
+     * Settings → Data Retention — inside the authenticated group. So the one
+     * link on this page that somebody follows *before* deciding whether to sign
+     * up redirected them to the sign-in form. `/privacy` itself is unchanged
+     * and still lands on that tab, because notification rows carry it.
+     *
+     * <p>One link, not two: a second privacy link beside a broken one would be
+     * worse than the bug. And the label is the document's real name — the page
+     * is a Privacy & Demo Notice and deliberately not a privacy policy.
+     */
     render(<LandingPage />);
 
-    expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
+    const link = screen.getByRole("link", { name: "Privacy & Demo Notice" });
+    expect(link).toHaveAttribute("href", "/privacy-policy");
+    expect(screen.queryByRole("link", { name: "Privacy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Privacy Policy$/ })).not.toBeInTheDocument();
+  });
+
+  it("adds no legal furniture beside the notice", () => {
+    /*
+     * The footer gained a privacy link that works. It did not gain a Terms, and
+     * this is here so it cannot: Reverie asks nobody to agree to anything, has
+     * no terms of service, sets no cookies it needs to announce, and makes no
+     * compliance claim. A portfolio project with a DPA link is a portfolio
+     * project pretending to be a company.
+     *
+     * <p>Read off the links rather than the page text, for the reason the case
+     * below gives: a word in a sentence is not a nav item.
+     */
+    const { container } = render(<LandingPage />);
+
+    const footer = container.querySelector("footer")!;
+    expect([...footer.querySelectorAll("a")].map((a) => a.textContent?.trim())).toEqual([
+      "Privacy & Demo Notice",
+      "Sign in",
+    ]);
+    for (const link of container.querySelectorAll("a")) {
+      expect(link.textContent ?? "").not.toMatch(/terms|cookie|legal|\bDPA\b|compliance|security/i);
+    }
+    // And nothing anywhere asks for consent to a document.
+    expect(container.querySelector("input[type=checkbox]")).toBeNull();
+    expect(container.textContent).not.toMatch(/by using .*you agree/i);
   });
 
   it("invents no links that go nowhere", () => {

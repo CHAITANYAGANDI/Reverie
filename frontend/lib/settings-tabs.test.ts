@@ -114,6 +114,22 @@ describe("the paths that used to be pages", () => {
     expect(LEGACY_PATHS["/privacy"]).toBe("data");
   });
 
+  it("matches a legacy path whole, so /privacy-policy is not settings", () => {
+    /*
+     * `/privacy-policy` is the public Privacy & Demo Notice — a page outside
+     * the authenticated group with no settings shell on it. It shares five
+     * characters with a legacy path, and the mapping is exact rather than by
+     * prefix, so it cannot be read as one.
+     *
+     * <p>Asserted because the failure would be quiet and confusing: a prefix
+     * match here would not break the route (it renders its own page) but would
+     * make any future code asking "which settings tab is this URL?" answer
+     * `data` for a page that has no tabs at all.
+     */
+    expect(LEGACY_PATHS["/privacy-policy"]).toBeUndefined();
+    expect(tabFromPath("/privacy-policy")).toBe(DEFAULT_TAB);
+  });
+
   it("sends every removed tab's URL to General rather than to a blank pane", () => {
     for (const gone of ["integrations", "meetings", "emails", "security"]) {
       expect(tabFromPath(`/settings/${gone}`)).toBe("general");
