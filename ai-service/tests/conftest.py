@@ -31,6 +31,20 @@ def rag_settings(**overrides):
 
 @pytest.fixture(scope="session")
 def client() -> TestClient:
+    """The app as Spring reaches it: authenticated to the internal router.
+
+    Every `/ai/*` route now requires the shared internal token, so a client
+    without it exercises the 401 path rather than the endpoint. Setting the
+    header here rather than overriding the dependency keeps the guard itself in
+    the path for every test -- an override would switch off the thing most
+    likely to break the whole surface at once.
+
+    `tests/test_service_auth.py` deliberately builds its own client without
+    this, which is where refusal is asserted.
+    """
+    from app.config import Settings
+
     # The context manager runs startup/shutdown (lifespan) once for the session.
     with TestClient(app) as c:
+        c.headers.update({"X-Internal-Token": Settings().reverie_internal_token})
         yield c

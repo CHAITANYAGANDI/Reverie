@@ -28,33 +28,45 @@ public class AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(AiClient.class);
 
-    private final RestClient client;
-
-    /** Bounded, for the one call a user waits on synchronously. */
-    private final RestClient indexClient;
-
     /**
-     * How long re-indexing may take before the edit that triggered it gives up.
+     * The four patiences, because one number cannot be right for all of them.
      *
      * <p>The JDK's {@code HttpClient} has no read timeout unless one is set, so
-     * an unbounded call waits forever — and {@link #reindex} is made inside a
-     * user's own request, in a transaction, in one case while the meeting row is
-     * locked. An ai-service that is cold, restarting or wedged then hangs the
-     * correction with no error and nothing on screen but a disabled button, and
-     * every retry queues behind the first.
+     * before these every call here could wait forever: connect succeeded, the
+     * ai-service went quiet, and the request thread parked with a user in front
+     * of it. An ai-service that is cold, restarting or wedged hung the browser
+     * with no error and nothing on screen to explain it.
      *
-     * <p>Generous, because embedding a long transcript is real work and giving
-     * up early would leave chat stale on every edit. Finite, because indexing is
-     * already best-effort — losing it means chat may quote the old text until
-     * the next edit, which is a far smaller failure than never answering at all.
+     * <p>A single timeout could not fix that. Short enough for a token fetch is
+     * far too short for a model call on an hour of transcript; long enough for
+     * ffmpeg to remux a long recording is indistinguishable from no timeout at
+     * all on a dropdown. So they are split by what the call actually does, and
+     * every one is configurable — the right value depends on the deployment's
+     * model, its plan and its cold-start behaviour, none of which belong in
+     * source.
      *
-     * <p>Only this call is bounded here. Summarizing and chatting spend a model
-     * call whose honest worst case is minutes, and one timeout that suited both
-     * would be too short for those or too long to be worth having.
+     * <p>{@code generative} is the default the plain client carries, so a new
+     * endpoint is bounded by existing rather than by somebody remembering.
      */
-    private static final Duration INDEX_TIMEOUT = Duration.ofSeconds(30);
+    private final RestClient client;
+    private final RestClient fastClient;
+    private final RestClient retrievalClient;
+    private final RestClient transcodeClient;
 
-    public AiClient(@Value("${app.ai-service-url:http://localhost:8000}") String aiServiceUrl) {
+    public AiClient(@Value("${app.ai-service-url:http://localhost:8000}") String aiServiceUrl,
+                    @Value("${reverie.internal-token:}") String internalToken,
+                    // A control call. Nothing here is thinking, so waiting
+                    // minutes for one only makes a dead service look slow.
+                    @Value("${app.ai.timeout.fast-seconds:15}") long fastSeconds,
+                    // Embedding a transcript is real work; giving up early
+                    // would leave chat stale after every edit.
+                    @Value("${app.ai.timeout.retrieval-seconds:30}") long retrievalSeconds,
+                    // A model call, possibly with the provider's own retries
+                    // inside it. Finite, but the honest worst case is minutes.
+                    @Value("${app.ai.timeout.generative-seconds:180}") long generativeSeconds,
+                    // ffmpeg over a long recording, bounded by the length of
+                    // the audio rather than by anything Reverie controls.
+                    @Value("${app.ai.timeout.transcode-seconds:600}") long transcodeSeconds) {
         String baseUrl = withScheme(aiServiceUrl);
         // Pin HTTP/1.1. RestClient's default JDK HttpClient negotiates HTTP/2 over
         // cleartext with an h2c upgrade handshake, which uvicorn rejects
@@ -64,18 +76,36 @@ public class AiClient {
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        this.client = RestClient.builder()
-                .requestFactory(new JdkClientHttpRequestFactory(jdkClient))
-                .baseUrl(baseUrl)
-                .build();
 
-        // Same connection, different patience. The timeout belongs to the
-        // factory rather than the request, so the bounded call needs its own.
-        var indexFactory = new JdkClientHttpRequestFactory(jdkClient);
-        indexFactory.setReadTimeout(INDEX_TIMEOUT);
-        this.indexClient = RestClient.builder()
-                .requestFactory(indexFactory)
+        this.client = bounded(baseUrl, jdkClient, internalToken, Duration.ofSeconds(generativeSeconds));
+        this.fastClient = bounded(baseUrl, jdkClient, internalToken, Duration.ofSeconds(fastSeconds));
+        this.retrievalClient = bounded(baseUrl, jdkClient, internalToken, Duration.ofSeconds(retrievalSeconds));
+        this.transcodeClient = bounded(baseUrl, jdkClient, internalToken, Duration.ofSeconds(transcodeSeconds));
+    }
+
+    /**
+     * One client, with a deadline and the credential the ai-service now wants.
+     *
+     * <p>The timeout belongs to the request factory rather than to the request,
+     * which is why a per-operation deadline means a per-operation client rather
+     * than an argument. They share the one {@code HttpClient}, so this is four
+     * configurations of a connection pool, not four pools.
+     *
+     * <p>The token is a default header rather than something each method adds:
+     * the ai-service refuses the whole {@code /ai} router without it, so a call
+     * that forgot would fail in production and nowhere else. Sent even when
+     * blank — the ai-service answers that with a 401 naming the configuration,
+     * which is a better failure than a request that looks anonymous by design.
+     * It is never logged; see {@code InternalTokenFilter} for the other half.
+     */
+    private static RestClient bounded(String baseUrl, HttpClient jdkClient,
+                                      String internalToken, Duration readTimeout) {
+        var factory = new JdkClientHttpRequestFactory(jdkClient);
+        factory.setReadTimeout(readTimeout);
+        return RestClient.builder()
+                .requestFactory(factory)
                 .baseUrl(baseUrl)
+                .defaultHeader("X-Internal-Token", internalToken == null ? "" : internalToken)
                 .build();
     }
 
@@ -130,7 +160,7 @@ public class AiClient {
      */
     public StreamingToken streamingToken() {
         try {
-            JsonNode body = client.post()
+            JsonNode body = fastClient.post()
                     .uri("/ai/streaming-token")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of())
@@ -222,7 +252,7 @@ public class AiClient {
         if (limit != null) {
             payload.put("limit", limit);
         }
-        JsonNode body = client.post()
+        JsonNode body = retrievalClient.post()
                 .uri("/ai/semantic-search")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)
@@ -260,7 +290,7 @@ public class AiClient {
      * list only changes when the ai-service is redeployed.
      */
     public List<SummaryTemplateSummary> listTemplates() {
-        JsonNode body = client.get()
+        JsonNode body = fastClient.get()
                 .uri("/ai/templates")
                 .retrieve()
                 .body(JsonNode.class);
@@ -477,7 +507,7 @@ public class AiClient {
                 })
                 .toList());
 
-        indexClient.post()
+        retrievalClient.post()
                 .uri("/ai/index")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)
@@ -626,7 +656,7 @@ public class AiClient {
         payload.put("targetKey", targetKey);
         payload.put("format", "mp3");
         try {
-            JsonNode body = client.post()
+            JsonNode body = transcodeClient.post()
                     .uri("/ai/transcode")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
