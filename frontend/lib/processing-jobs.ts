@@ -43,6 +43,26 @@
  * Nothing sensitive is stored. Meeting ids are opaque and are already in the
  * URL of the page that lists them.
  *
+ * ## Why what is stored names its owner
+ *
+ * `sessionStorage` is scoped to the tab, and a tab outlives a sign-in. Signing
+ * out navigates the document, which destroys every module store in this file —
+ * but not `sessionStorage`, which is the one thing that survives precisely
+ * because it was built to. So the sequence
+ *
+ * <pre>  A tracks a meeting → A signs out → B signs in, same tab  </pre>
+ *
+ * used to end with B's browser polling A's meeting every five seconds. The
+ * server refuses it, so no content crossed; what crossed was the *claim* that
+ * B has a job running, and a request loop nothing would ever stop.
+ *
+ * It cannot be fixed by clearing on sign-out alone — a tab closed mid-job, or a
+ * crash, never reaches that code — nor by asking the in-memory cache owner,
+ * which after a document reload starts out null while the stored entry is still
+ * there. The stored value has to be able to answer "whose is this?" on its own,
+ * so it carries the session that wrote it and is adopted only by that session.
+ * See `claimProcessingOwner`.
+ *
  * ## The store is not the source of truth
  *
  * It holds ids, not statuses. Whether a meeting is still processing is decided
@@ -60,6 +80,22 @@ let ids: string[] = [];
 const listeners = new Set<() => void>();
 
 /**
+ * Which sign-in these ids belong to, or null before anybody has claimed them.
+ *
+ * <p>Null is not "everyone" — it is "nobody yet", and it is deliberately
+ * unadoptable: a stored entry written while unclaimed names `null` as its owner
+ * and no session id ever equals that. Ids tracked before a claim still work in
+ * memory for the life of the document; they simply cannot be inherited.
+ */
+let owner: string | null = null;
+
+/** The persisted shape. The owner is the half that makes it safe to read back. */
+interface Stored {
+  owner: string | null;
+  ids: string[];
+}
+
+/**
  * The array handed to `useSyncExternalStore`, rebuilt only when it changes.
  *
  * Required, not a micro-optimisation: the hook compares snapshots with `Object.is`
@@ -73,38 +109,79 @@ function emit(): void {
   try {
     // Best effort. Private-mode Safari throws on write, and a tracking
     // convenience must never be why a save fails.
-    window.sessionStorage.setItem(KEY, JSON.stringify(ids));
+    const stored: Stored = { owner, ids };
+    window.sessionStorage.setItem(KEY, JSON.stringify(stored));
   } catch {
     /* not being able to remember across a reload is survivable */
   }
   for (const listener of listeners) listener();
 }
 
+/**
+ * Whatever is in storage, if it is the shape this version writes.
+ *
+ * <p>An array is what the previous version wrote, and it is dropped rather than
+ * migrated: it names no owner, so there is no way to tell whose it was, and
+ * "assume it belongs to whoever is here now" is the bug. The cost is that a
+ * tab already mid-job when this ships stops watching it — one poll cycle of
+ * inconvenience against restoring a stranger's job.
+ */
+function read(): Stored | null {
+  try {
+    const raw = window.sessionStorage.getItem(KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const candidate = parsed as Partial<Stored>;
+    if (!Array.isArray(candidate.ids)) return null;
+    return {
+      owner: typeof candidate.owner === "string" ? candidate.owner : null,
+      ids: candidate.ids.filter((v): v is string => typeof v === "string" && v.length > 0),
+    };
+  } catch {
+    // A corrupt entry is not worth a crash on a cold start; watching nothing
+    // is exactly what happens today without this file.
+    return null;
+  }
+}
+
 let loaded = false;
 
 /**
- * Read back what this tab was watching before the reload.
+ * Nothing is read back until somebody proves who they are.
  *
- * Lazy rather than at module scope: this file is imported by components that
- * render on the server during the initial pass, where `sessionStorage` does not
- * exist.
+ * <p>This used to restore the stored ids. It no longer restores anything —
+ * {@link claimProcessingOwner} is the only door, and it is the only place that
+ * can compare the stored owner against the current session. What is left here
+ * is the lazy flag, because this file is imported by components that render on
+ * the server during the initial pass, where `sessionStorage` does not exist.
  */
 function load(): void {
   if (loaded) return;
   loaded = true;
-  try {
-    const raw = window.sessionStorage.getItem(KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) {
-      ids = parsed.filter((v): v is string => typeof v === "string" && v.length > 0);
-      snapshot = [...ids];
-    }
-  } catch {
-    // A corrupt entry is not worth a crash on a cold start; watching nothing
-    // is exactly what happens today without this file.
-    ids = [];
-    snapshot = [];
-  }
+}
+
+/**
+ * Hand this tab's watched jobs to a session, and read back only that session's.
+ *
+ * <p>Called from the one place that already decides cache ownership, so a
+ * sign-in cannot open the app under one session while this store still holds
+ * another's. Idempotent: the same session claiming twice is the ordinary case
+ * (re-render, token refresh) and must not discard live jobs.
+ *
+ * @param sessionId the sign-in now in charge, never null — an unauthenticated
+ *     tab has nothing to claim and nothing it may read back
+ */
+export function claimProcessingOwner(sessionId: string): void {
+  loaded = true;
+  if (owner === sessionId) return;
+
+  const stored = read();
+  owner = sessionId;
+  // Adopted only on an exact match. A different owner, a null owner, a legacy
+  // array or nothing at all all mean the same thing: not ours, start empty.
+  ids = stored && stored.owner === sessionId ? [...stored.ids] : [];
+  emit();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -151,6 +228,7 @@ export function processingJobs(): readonly string[] {
  */
 export function resetProcessingJobs(): void {
   loaded = true;
+  owner = null;
   try {
     window.sessionStorage.removeItem(KEY);
   } catch {

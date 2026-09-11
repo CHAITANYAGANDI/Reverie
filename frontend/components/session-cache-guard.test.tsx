@@ -56,6 +56,8 @@ import {
   authPhase,
   subscribeAuthReady,
 } from "@/lib/auth-store";
+import { processingJobs, resetProcessingJobs } from "@/lib/processing-jobs";
+import { activeChat, resetActiveChats, setActiveChat } from "@/lib/active-chat";
 
 function testStore() {
   return configureStore({
@@ -350,5 +352,81 @@ describe("the barrier", () => {
 
     expect(isAuthReady()).toBe(true);
     expect(entriesWhenOpened).toBe(0);
+  });
+});
+
+/**
+ * The rest of the client state, handed over at the same barrier.
+ *
+ * <p>The API cache was never the only thing keyed by nothing. Watched jobs,
+ * the active conversation and an unanswered question all live outside Redux,
+ * and all of them belong to a sign-in.
+ *
+ * <p>They divide into two kinds, and the difference is what the guard does
+ * about them. The module stores die with the document a sign-out navigates
+ * away from, so they only need clearing in the one case that document survives:
+ * an in-process change of tenant. `sessionStorage` is the exception — it was
+ * built to outlive exactly that navigation — so it cannot be handled by
+ * noticing a change, only by proving ownership.
+ */
+describe("the rest of the session's client state", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    resetProcessingJobs();
+    resetActiveChats();
+  });
+
+  it("gives a signing-in session its own watched jobs back", () => {
+    // The legitimate half, which the fix must not cost: a reload by the same
+    // session still restores what it was watching.
+    window.sessionStorage.setItem(
+      "reverie:processing",
+      JSON.stringify({ owner: "sess_a", ids: ["mtg_a"] }),
+    );
+    const store = testStore();
+    mountGuard(store);
+
+    act(() => sessionArrives("sess_a"));
+
+    expect(processingJobs()).toEqual(["mtg_a"]);
+  });
+
+  it("refuses the previous session's watched jobs to the next one", () => {
+    // The regression. Storage survives the sign-out navigation that clears
+    // everything else, so without an owner on it these ids were adopted by
+    // whoever signed in next and polled every five seconds under their token.
+    window.sessionStorage.setItem(
+      "reverie:processing",
+      JSON.stringify({ owner: "sess_a", ids: ["mtg_a"] }),
+    );
+    const store = testStore();
+    mountGuard(store);
+
+    act(() => sessionArrives("sess_b"));
+
+    expect(processingJobs()).toEqual([]);
+  });
+
+  it("clears the previous tenant's conversation when the tenant changes", () => {
+    const store = testStore();
+    mountGuard(store);
+    act(() => sessionArrives("sess_a"));
+    setActiveChat("workspace:home", "conv_a");
+
+    act(() => sessionArrives("sess_b"));
+
+    expect(activeChat("workspace:home")).toBeNull();
+  });
+
+  it("leaves a first sign-in's own state alone", () => {
+    // An unclaimed start has no previous tenant to protect anybody from, and
+    // clearing here would throw away a question the user is waiting on.
+    const store = testStore();
+    mountGuard(store);
+    setActiveChat("workspace:home", "conv_a");
+
+    act(() => sessionArrives("sess_a"));
+
+    expect(activeChat("workspace:home")).toBe("conv_a");
   });
 });

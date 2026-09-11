@@ -10,6 +10,9 @@ import {
   currentSessionId,
   subscribeAuthReady,
 } from "@/lib/auth-store";
+import { claimProcessingOwner } from "@/lib/processing-jobs";
+import { resetActiveChats } from "@/lib/active-chat";
+import { resetPendingTurns } from "@/lib/pending-turn";
 
 /**
  * The API cache belongs to exactly one sign-in, and this is where it changes
@@ -89,7 +92,34 @@ export function SessionCacheGuard() {
      * rather than a skeleton. Right for a refresh of your own data; wrong
      * across a change of tenant.
      */
-    if (previous !== null) dispatch(api.util.resetApiState());
+    if (previous !== null) {
+      dispatch(api.util.resetApiState());
+      /*
+       * The module stores, for the same reason and only in the same case.
+       *
+       * These live in plain module scope, so an ordinary sign-out -- which
+       * navigates the document -- already destroys them, and clearing them on
+       * an unclaimed first load would throw away a question somebody is
+       * waiting on. `previous !== null` is exactly "the tenant changed inside
+       * one document", which is the only way they can survive into a session
+       * that did not create them.
+       */
+      resetActiveChats();
+      resetPendingTurns();
+    }
+
+    /*
+     * Watched jobs, which are a different problem with a different answer.
+     *
+     * `sessionStorage` outlives the document, so unlike the two above this
+     * cannot be guarded by `previous !== null`: after a sign-out and a reload
+     * the cache owner starts null again while the stored ids are still sitting
+     * there. The store is handed the session instead and decides for itself
+     * whether what it saved belongs to this one -- so a claim both restores
+     * this session's jobs and refuses everybody else's, whether or not this
+     * document ever saw the sign-in that wrote them.
+     */
+    claimProcessingOwner(sessionId);
 
     // Only now. The claim is what releases the gate, so publishing it before
     // the cache is actually empty is the bug this component exists to prevent.
