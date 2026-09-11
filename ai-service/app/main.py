@@ -16,7 +16,7 @@ from app.callback import SpringCallbackClient
 from app.config import get_settings
 from app.deployment_check import verify_production
 from app.kafka_worker import KafkaWorker
-from app.observability import init_sentry, report_unexpected
+from app.observability import FailureSite, init_sentry, report_unexpected
 from app.pipeline import Pipeline
 from app.providers.factory import AiProviderFactory
 from app.rag import RagService
@@ -119,7 +119,7 @@ async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     component; see app/observability.
     """
     logger.exception("Unhandled error serving %s", request.url.path)
-    report_unexpected(component="api", operation="request", error=exc)
+    report_unexpected(site=FailureSite.API_REQUEST, error=exc)
     # The client learns nothing about the failure. Exception text here is built
     # from transcripts, prompts and provider responses.
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})

@@ -11,8 +11,14 @@ So no exception object is ever handed to Sentry. ``capture_exception`` is not
 used anywhere in this codebase, and neither is the logging integration: this
 module logs meeting ids and exception strings through ``logger.exception`` all
 over the worker, and Sentry's default ``LoggingIntegration`` would forward every
-one of those as an event. Events here are constructed from a fixed vocabulary --
-service, component, operation, exception type -- and nothing else.
+one of those as an event.
+
+Events here are constructed from a fixed vocabulary -- service, component,
+operation, exception type -- and nothing else. The component and operation are
+not strings a caller chooses: :func:`report_unexpected` accepts only a
+:class:`FailureSite`, a closed enum of the four places this service reports
+from, so a request-, meeting-, object-key-, filename-, transcript-, prompt-,
+provider- or user-derived value cannot become a tag.
 
 The traceback stays in this service's own log, where Reverie controls the
 infrastructure. Sentry is told that something broke and where; the log says
@@ -29,6 +35,7 @@ semantics.
 from __future__ import annotations
 
 import logging
+from enum import Enum
 
 import sentry_sdk
 
@@ -41,6 +48,44 @@ SERVICE = "reverie-ai"
 
 #: The fixed label. Deliberately says nothing about the failure.
 MESSAGE = "Unexpected AI service error"
+
+
+class FailureSite(Enum):
+    """The complete set of places this service reports a failure from.
+
+    A closed enum rather than two string parameters, and that is the whole
+    point of it. The previous signature took ``component`` and ``operation`` as
+    free strings with a comment claiming a meeting id could not be passed by
+    mistake -- which was not true, because nothing stopped
+
+        report_unexpected(component="kafka-worker", operation=meeting_id, ...)
+
+    from putting a meeting id straight into a Sentry tag. A type hint is not a
+    runtime check, and a comment is not a boundary.
+
+    Each member is the exact ``(component, operation)`` pair of one real
+    reporting site. Adding a member is the only way to add a site, which makes
+    widening this telemetry a visible, reviewable edit in one file rather than
+    an argument someone passes at a call site.
+
+    Keeping the vocabulary closed also keeps it low-cardinality: an alert
+    aggregates into "this is happening a lot" instead of into a cloud of
+    singleton events tagged with one meeting each.
+    """
+
+    API_REQUEST = ("api", "request")
+    KAFKA_HANDLE_MESSAGE = ("kafka-worker", "handle_message")
+    KAFKA_PROCESS_MEETING = ("kafka-worker", "process_meeting")
+    TRANSCODE_CONVERT = ("transcode", "convert")
+
+    @property
+    def component(self) -> str:
+        return self.value[0]
+
+    @property
+    def operation(self) -> str:
+        return self.value[1]
+
 
 _enabled = False
 
@@ -129,23 +174,32 @@ def _capture(event: dict) -> None:
 
 def report_unexpected(
     *,
-    component: str,
-    operation: str,
+    site: FailureSite,
     error: BaseException | None = None,
 ) -> None:
     """Announce a genuine failure, without describing it.
 
-    The signature is the privacy design. There is no parameter for a meeting id,
-    an object key, a file name or a message body, so a call site cannot pass one
-    even by mistake -- which is why the worker call sites can stay one line.
+    The signature is the privacy design. The only thing a caller can say about
+    *where* the failure happened is which :class:`FailureSite` it was, so no
+    request-, meeting-, object-key-, filename-, transcript-, prompt-, provider-
+    or user-derived string can reach a tag. The component and operation are read
+    off the enum member here, not accepted from the caller.
 
-    :param component: which part of the service, e.g. ``"kafka-worker"``
-    :param operation: which step, e.g. ``"process_meeting"``. A fixed string
-        chosen by the call site, never derived from data.
+    :param site: one of the four known reporting sites. Anything else is
+        ignored -- see below.
     :param error: used only for its type name. Its message, arguments and
         traceback are not read.
     """
     if not _enabled:
+        return
+
+    # Fail closed. Python type hints are checked by a linter, not by the
+    # interpreter, so a caller who ignores the annotation -- or a refactor that
+    # passes a string through -- would otherwise sail straight past the enum
+    # and tag the event with whatever it had. Dropping the report is the right
+    # trade: a lost alert costs a little visibility, and the alternative costs
+    # somebody's meeting id.
+    if not isinstance(site, FailureSite):
         return
 
     try:
@@ -153,8 +207,8 @@ def report_unexpected(
             "message": MESSAGE,
             "tags": {
                 "service": SERVICE,
-                "component": component,
-                "operation": operation,
+                "component": site.component,
+                "operation": site.operation,
                 # The class name only. A compile-time symbol, so it cannot
                 # contain user data, and it is most of the triage value.
                 "error_type": type(error).__name__ if error is not None else "unknown",

@@ -14,6 +14,7 @@ and the exception's type name. These tests are the enforcement of that.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pytest
@@ -53,7 +54,8 @@ class TestWithoutADsn:
 
         # Must not raise and must not attempt to reach anything.
         observability.report_unexpected(
-            component="kafka-worker", operation="process_meeting", error=RuntimeError("boom")
+            site=observability.FailureSite.KAFKA_PROCESS_MEETING,
+            error=RuntimeError("boom"),
         )
 
     def test_a_malformed_dsn_does_not_stop_startup(self) -> None:
@@ -123,8 +125,7 @@ class TestWhatIsReported:
 
     def test_the_message_is_generic(self, sent) -> None:
         observability.report_unexpected(
-            component="kafka-worker",
-            operation="process_meeting",
+            site=observability.FailureSite.KAFKA_PROCESS_MEETING,
             error=ValueError("transcript fragment: we agreed to acquire Initech"),
         )
 
@@ -133,7 +134,7 @@ class TestWhatIsReported:
 
     def test_safe_tags_only(self, sent) -> None:
         observability.report_unexpected(
-            component="kafka-worker", operation="process_meeting", error=ValueError("boom")
+            site=observability.FailureSite.KAFKA_PROCESS_MEETING, error=ValueError("boom")
         )
 
         assert sent[0]["tags"] == {
@@ -149,7 +150,7 @@ class TestWhatIsReported:
             raise KeyError(f"missing speaker in transcript: {secret}")
         except KeyError as exc:
             observability.report_unexpected(
-                component="kafka-worker", operation="process_meeting", error=exc
+                site=observability.FailureSite.KAFKA_PROCESS_MEETING, error=exc
             )
 
         everything = repr(sent)
@@ -157,18 +158,56 @@ class TestWhatIsReported:
         assert "Traceback" not in everything
         assert "test_observability" not in everything
 
-    def test_meeting_ids_and_object_keys_are_never_arguments(self, sent) -> None:
-        # There is deliberately no parameter for them. `report_unexpected`
-        # accepts a component, an operation and an exception, so a caller
-        # cannot pass a meeting id even by mistake -- which is why the worker
-        # call sites can stay simple.
+    def test_the_only_way_to_name_a_site_is_the_enum(self, sent) -> None:
+        """The signature is the boundary.
+
+        It used to take `component` and `operation` as free strings, with a
+        comment claiming a meeting id could not be passed by mistake. That was
+        false: `operation=meeting_id` would have tagged the event with it. The
+        parameters are now the whole guarantee, so they are asserted.
+        """
         import inspect
 
         parameters = set(inspect.signature(observability.report_unexpected).parameters)
-        assert parameters == {"component", "operation", "error"}
+        assert parameters == {"site", "error"}
+
+    def test_an_arbitrary_string_is_not_reported(self, sent) -> None:
+        # Fail closed. A type hint is checked by a linter, not by the
+        # interpreter, so the runtime guard is what actually stops a caller who
+        # ignores the annotation -- or a refactor that passes a string through.
+        observability.report_unexpected(
+            site="meeting_123",  # type: ignore[arg-type]
+            error=RuntimeError("boom"),
+        )
+
+        assert sent == []
+
+    def test_a_site_shaped_impostor_is_not_reported(self, sent) -> None:
+        # Duck typing is not membership. Something that merely has `.component`
+        # and `.operation` is exactly how a meeting id would get smuggled in
+        # if the check were `hasattr` rather than `isinstance`.
+        class Impostor:
+            component = "kafka-worker"
+            operation = "mtg_private_789"
+
+        observability.report_unexpected(site=Impostor(), error=RuntimeError("boom"))  # type: ignore[arg-type]
+
+        assert sent == []
+
+    def test_every_site_carries_only_fixed_strings(self, sent) -> None:
+        # The complete vocabulary, enumerated. A new member is a deliberate,
+        # reviewable edit; this makes the current set visible in the test too.
+        assert {(s.component, s.operation) for s in observability.FailureSite} == {
+            ("api", "request"),
+            ("kafka-worker", "handle_message"),
+            ("kafka-worker", "process_meeting"),
+            ("transcode", "convert"),
+        }
 
     def test_an_absent_error_still_reports(self, sent) -> None:
-        observability.report_unexpected(component="api", operation="request", error=None)
+        observability.report_unexpected(
+            site=observability.FailureSite.API_REQUEST, error=None
+        )
 
         assert sent[0]["tags"]["error_type"] == "unknown"
 
@@ -191,7 +230,8 @@ class TestBestEffort:
         monkeypatch.setattr(observability, "_capture", explode)
 
         observability.report_unexpected(
-            component="kafka-worker", operation="process_meeting", error=RuntimeError("boom")
+            site=observability.FailureSite.KAFKA_PROCESS_MEETING,
+            error=RuntimeError("boom"),
         )
 
     def test_an_init_failure_never_reaches_the_caller(self, monkeypatch) -> None:
@@ -234,8 +274,7 @@ class TestApiReporting:
         assert "Initech" not in response.text
 
         assert len(sent) == 1
-        assert sent[0]["component"] == "api"
-        assert sent[0]["operation"] == "request"
+        assert sent[0]["site"] is observability.FailureSite.API_REQUEST
 
     def test_a_refused_request_is_not_reported(self, monkeypatch) -> None:
         """401 from the internal-token guard is a caller's problem, not a fault."""
@@ -256,29 +295,90 @@ class TestApiReporting:
 
 
 class TestWorkerReporting:
-    def test_a_transcode_failure_is_reported_without_the_object_key(self, monkeypatch) -> None:
+    """These drive the real `except` blocks, not the reporter in isolation.
+
+    The first version of these tests monkeypatched the reporter and then called
+    it directly, which proved only that a function can be called with
+    arguments. It would have passed just as happily if the production `except`
+    block had never mentioned the reporter at all.
+    """
+
+    async def test_a_transcode_crash_reports_the_real_failure_path(self, monkeypatch) -> None:
         import app.transcode as transcode_module
+        from app.transcode import FAILED, Mp3Transcoder
 
         sent: list = []
         monkeypatch.setattr(
             transcode_module, "report_unexpected", lambda **kw: sent.append(kw)
         )
 
-        # Exercise the call site's contract directly: the module-level symbol
-        # the except block uses, with the arguments that block passes.
-        transcode_module.report_unexpected(
-            component="transcode", operation="convert", error=RuntimeError("boom")
+        secret_key = "meetings/usr_1/mtg_private_789/standup.m4a"
+        boom = RuntimeError("boto3 exploded while reading the recording")
+
+        def convert(source: str, target: str) -> None:
+            # The dependency that fails, so the real `_run` except block runs.
+            # No ffmpeg, no network, no bucket.
+            raise boom
+
+        service = Mp3Transcoder(
+            transcode_module.Settings(), convert=convert, exists=lambda key: False
         )
 
-        assert sent == [
-            {"component": "transcode", "operation": "convert", "error": sent[0]["error"]}
-        ]
-        assert "meetings/usr_1" not in repr(sent)
+        state = await service.ensure(secret_key, secret_key + ".mp3")
+        assert state.status == transcode_module.RUNNING
+        await asyncio.sleep(0)  # let the conversion task run and fail
+        for _ in range(20):
+            if sent:
+                break
+            await asyncio.sleep(0)
 
-    def test_the_worker_imports_the_reporter(self) -> None:
-        # Cheap, and it is the thing that silently stops being true when
-        # somebody reorganises imports: the call sites are inside `except`
-        # blocks that are hard to reach from a test.
-        import app.kafka_worker as worker
+        # Reported once, from the real failure, naming the site by enum.
+        assert len(sent) == 1
+        assert sent[0]["site"] is observability.FailureSite.TRANSCODE_CONVERT
+        # The exception object reaches the reporter -- which reads only its
+        # type -- and nothing else does.
+        assert sent[0]["error"] is boom
+        assert set(sent[0]) == {"site", "error"}
 
-        assert callable(worker.report_unexpected)
+        # The object key is the name of somebody's recording. It is in the log
+        # and it is not in what was handed to observability.
+        assert "mtg_private_789" not in repr(sent[0]["site"])
+
+        # And the existing behaviour is untouched: the failure is remembered
+        # once, reported to the caller, and the guard is released.
+        reported = await service.ensure(secret_key, secret_key + ".mp3")
+        assert reported.status == FAILED
+
+    def test_a_meeting_processing_failure_reports_the_real_failure_path(
+        self, monkeypatch
+    ) -> None:
+        """Driven through `_handle`, the method the production seam lives in."""
+        import app.kafka_worker as worker_module
+
+        sent: list = []
+        monkeypatch.setattr(
+            worker_module, "report_unexpected", lambda **kw: sent.append(kw)
+        )
+
+        from tests.test_kafka_commit import RecordingCallback, drive, worker
+
+        # Deliberately non-retryable. A retryable failure returns RETRY higher
+        # up and never reaches the reporting seam -- which is correct, and is
+        # why the first draft of this test passed nothing to assert on.
+        from app.providers.assemblyai_adapter import TranscriptionConfigurationError
+
+        boom = TranscriptionConfigurationError(
+            "that parameter is not valid for mtg_private_789"
+        )
+
+        async def explodes(event, progress_hook, transcript_hook):
+            raise boom
+
+        outcome = drive(worker(RecordingCallback()), explodes)
+
+        assert len(sent) == 1
+        assert sent[0]["site"] is observability.FailureSite.KAFKA_PROCESS_MEETING
+        assert sent[0]["error"] is boom
+        # Retry semantics are the worker's, not observability's. A
+        # non-retryable failure is still committed rather than redelivered.
+        assert outcome is worker_module.Outcome.COMMIT

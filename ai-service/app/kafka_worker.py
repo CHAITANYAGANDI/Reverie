@@ -90,7 +90,7 @@ from enum import Enum
 
 import httpx
 
-from app.observability import report_unexpected
+from app.observability import FailureSite, report_unexpected
 from app.callback import RETRYABLE_STATUS, Delivery, SpringCallbackClient
 from app.config import Settings
 from app.pipeline import PROGRESS_DONE, Pipeline
@@ -327,9 +327,7 @@ class KafkaWorker:
                 # The outcome above is unchanged by this and must stay that way:
                 # report_unexpected swallows everything, so monitoring cannot
                 # alter which messages are retried.
-                report_unexpected(
-                    component="kafka-worker", operation="handle_message", error=exc
-                )
+                report_unexpected(site=FailureSite.KAFKA_HANDLE_MESSAGE, error=exc)
                 outcome = Outcome.RETRY
 
             if outcome is Outcome.COMMIT:
@@ -601,10 +599,9 @@ class KafkaWorker:
                 )
             logger.exception("Processing failed for %s: %s", meeting_id, exc)
             # The meeting id stays in this log line and does not travel: the
-            # reporter has no parameter for one.
-            report_unexpected(
-                component="kafka-worker", operation="process_meeting", error=exc
-            )
+            # reporter takes a FailureSite, so there is no string argument it
+            # could ride out on.
+            report_unexpected(site=FailureSite.KAFKA_PROCESS_MEETING, error=exc)
             # The only report of a failure. This is what sets FAILED in
             # Postgres, records the message, raises the bell notification and
             # pushes the status frame -- see CallbackService.applyStatus.
