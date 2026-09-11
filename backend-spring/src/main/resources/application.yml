@@ -284,6 +284,17 @@ reverie:
     enabled: ${REVERIE_RETENTION_ENABLED:true}
     cron: ${REVERIE_RETENTION_CRON:0 0 3 * * *}
 
+# Error monitoring. Optional everywhere: an unset DSN means monitoring is off
+# and nothing else changes -- the service starts, serves and logs exactly as it
+# did. That is the normal state of every local checkout and every CI run.
+#
+# The DSN belongs to the `reverie-backend` Sentry project and is not shared with
+# the frontend or the AI service; three projects keep three services' alerts
+# apart. Never committed, never logged. See com.reverie.observability.
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: ${SENTRY_ENVIRONMENT:development}
+
 app:
   frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
   upload:

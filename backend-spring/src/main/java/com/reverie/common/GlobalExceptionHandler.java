@@ -1,6 +1,7 @@
 package com.reverie.common;
 
 import com.reverie.dto.ErrorResponse;
+import com.reverie.observability.UnexpectedErrorReporter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,21 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * Where a genuine server fault is announced, if anywhere.
+     *
+     * <p>An interface, not Sentry: this class turns faults into HTTP responses
+     * and must not acquire a dependency it can fail on. Only
+     * {@link #handleUnexpected} uses it -- the 4xx handlers above are the
+     * caller's mistakes, and paging somebody for a mistyped query string buries
+     * every real fault under typos, crawlers and stale bookmarks.
+     */
+    private final UnexpectedErrorReporter reporter;
+
+    public GlobalExceptionHandler(UnexpectedErrorReporter reporter) {
+        this.reporter = reporter;
+    }
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApi(ApiException ex, HttpServletRequest request) {
@@ -108,6 +124,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception [correlationId={}]", CorrelationIdFilter.current(), ex);
+        /*
+         * Announced before the response is built, and unable to affect it.
+         *
+         * The reporter contract says implementations never throw, and
+         * SentryErrorReporter honours it -- but this handler is the last thing
+         * standing between a fault and the client, and it must not depend on a
+         * promise a future implementation could break. A monitoring failure
+         * turning a considered 500 into an unconsidered one is the exact
+         * outcome worth spending four lines to prevent.
+         *
+         * The stack stays in the log above. What leaves the server is decided
+         * by the reporter, not by this class.
+         */
+        try {
+            reporter.report(ex);
+        } catch (Throwable ignored) {
+            // Deliberately not logged: the fault itself is already on the line
+            // above, and a second ERROR for the monitoring of it is noise in
+            // exactly the moment somebody is reading for the first one.
+        }
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
                 "An unexpected error occurred", request);
     }
