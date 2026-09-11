@@ -11,6 +11,7 @@ import com.reverie.dto.ExchangeDeleteResponse;
 import com.reverie.dto.WorkspaceAskRequest;
 import com.reverie.security.SecurityUtils;
 import com.reverie.service.ChatService;
+import com.reverie.service.RateLimitService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -39,8 +41,48 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chat;
-    public ChatController(ChatService chat) {
+    private final RateLimitService rateLimit;
+
+    /*
+     * Burst protection for the three endpoints that spend a model call.
+     *
+     * <p>This is not the account allowance, and it is not a duplicate of it.
+     * `UsageLimitService.requireAiOrThrow` refuses chat only once the account's
+     * transcription minutes are gone; it counts nothing per question and
+     * decrements nothing. So an account inside its allowance can ask without
+     * limit today, and the only thing standing between a retry storm and an
+     * unbounded provider bill is this.
+     *
+     * <p>ONE bucket for all three scopes. Meeting, project and workspace chat
+     * reach the same provider through the same RAG path, so a per-endpoint
+     * allowance would let a caller triple their throughput by rotating between
+     * them -- which is the bypass, not a corner case.
+     *
+     * <p>Twenty a minute is far above human pace in a chat interface and far
+     * below what a script achieves, which is the line worth drawing.
+     */
+    private static final String AI_CHAT_BUCKET = "ai-chat";
+    private static final int AI_CHAT_LIMIT = 20;
+    private static final Duration AI_CHAT_WINDOW = Duration.ofMinutes(1);
+
+    public ChatController(ChatService chat, RateLimitService rateLimit) {
         this.chat = chat;
+        this.rateLimit = rateLimit;
+    }
+
+    /**
+     * Charge one ask against the shared bucket and return who asked.
+     *
+     * <p>Resolved once and handed to the service, so the request that was
+     * rate-limited is provably the request that runs. Called only from the
+     * three ask endpoints: conversation CRUD, history and mode reads spend no
+     * provider call and must not consume an allowance meant for the ones that
+     * do.
+     */
+    private String askerOrRefuse() {
+        String userId = SecurityUtils.currentUserId();
+        rateLimit.checkOrThrow(AI_CHAT_BUCKET, userId, AI_CHAT_LIMIT, AI_CHAT_WINDOW);
+        return userId;
     }
 
     // --- one meeting -------------------------------------------------------- //
@@ -54,7 +96,7 @@ public class ChatController {
 
     @PostMapping("/api/v1/meetings/{id}/chat")
     public ChatMessageResponse ask(@PathVariable String id, @Valid @RequestBody ChatAskRequest req) {
-        return chat.ask(SecurityUtils.currentUserId(), id, req.question(), req.conversationId(),
+        return chat.ask(askerOrRefuse(), id, req.question(), req.conversationId(),
                 ChatMode.of(req.mode()));
     }
 
@@ -92,7 +134,7 @@ public class ChatController {
     @PostMapping("/api/v1/projects/{id}/chat")
     public ChatMessageResponse askProject(@PathVariable String id,
                                           @Valid @RequestBody ChatAskRequest req) {
-        return chat.askProject(SecurityUtils.currentUserId(), id, req.question(), req.conversationId());
+        return chat.askProject(askerOrRefuse(), id, req.question(), req.conversationId());
     }
 
     @GetMapping("/api/v1/projects/{id}/chat/conversations")
@@ -122,7 +164,7 @@ public class ChatController {
 
     @PostMapping("/api/v1/chat")
     public ChatMessageResponse askWorkspace(@Valid @RequestBody WorkspaceAskRequest req) {
-        return chat.askWorkspace(SecurityUtils.currentUserId(), req.question(),
+        return chat.askWorkspace(askerOrRefuse(), req.question(),
                 req.meetingIds(), req.conversationId(), ChatMode.of(req.mode()));
     }
 
