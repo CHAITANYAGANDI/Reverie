@@ -108,6 +108,9 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
                 // export; on Render they are container identifiers.
                 options.setAttachServerName(false);
 
+                // Dependency/version inventory is infrastructure detail, not needed for paging.
+                options.setSendModules(false);
+
                 // Nothing writes breadcrumbs, and a zero ceiling means nothing
                 // can start to without this being reconsidered.
                 options.setMaxBreadcrumbs(0);
