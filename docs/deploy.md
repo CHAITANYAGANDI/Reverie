@@ -766,6 +766,93 @@ up a `sk_live_` key.
 
 ---
 
+## 7b. Sentry — three projects, three DSNs
+
+Reverie reports errors from three places that fail for unrelated reasons and are
+fixed by different work. They get **three separate Sentry projects**, because a
+single stream would make "which service is broken?" a question you answer by
+reading payloads — and the payloads are deliberately thin.
+
+| Sentry project | Set where | Variable | Reaches |
+|---|---|---|---|
+| `reverie-frontend` | Vercel | `NEXT_PUBLIC_SENTRY_DSN` | the browser |
+| `reverie-backend` | Render → `reverie-backend` | `SENTRY_DSN` | Spring |
+| `reverie-ai` | Render → `reverie-ai` | `SENTRY_DSN` | FastAPI + the Kafka worker |
+
+The two Render variables share a name and **must not share a value**. Pasting
+the backend's DSN into the AI service is the easy mistake and it is silent: both
+services report, nothing errors, and the alerts merge.
+
+### Creating them
+
+In Sentry, create three projects — platform **Browser/JavaScript**, **Java** and
+**Python** respectively — and copy the DSN from each project's
+*Settings → Client Keys (DSN)*. Then:
+
+1. **Vercel** → project → Settings → Environment Variables →
+   `NEXT_PUBLIC_SENTRY_DSN` for Production (and Preview, if you want preview
+   errors separated by Sentry's `environment` tag).
+   **Then redeploy.** `NEXT_PUBLIC_*` is compiled into the bundle at build time,
+   so changing it does nothing until a new deployment is built — see
+   *Every `NEXT_PUBLIC_*` is a BUILD-time value* above.
+2. **Render → `reverie-backend`** → Environment → `SENTRY_DSN`.
+3. **Render → `reverie-ai`** → Environment → `SENTRY_DSN`.
+
+Render restarts the service on save; no rebuild is needed for either.
+
+### Leaving them unset is supported
+
+Every other `sync: false` value in `render.yaml` is one the backend refuses to
+start without. **These are not.** A missing or malformed DSN disables monitoring
+and changes nothing else:
+
+| Unset | Effect |
+|---|---|
+| `NEXT_PUBLIC_SENTRY_DSN` | browser errors stay in the local console |
+| `SENTRY_DSN` on `reverie-backend` | 500s are logged, not reported; startup unaffected |
+| `SENTRY_DSN` on `reverie-ai` | worker and API failures are logged, not reported |
+
+A malformed DSN is treated the same way: Spring logs one warning and carries on,
+and the AI service does the same. Monitoring is never allowed to be the reason a
+deployment will not boot or a request will not be served.
+
+`SENTRY_ENVIRONMENT` on the backend defaults to `development` and is set to
+`production` in `render.yaml`; the AI service reuses `REVERIE_ENV` for the same
+purpose.
+
+### What Reverie will not send
+
+Sentry is the pager. The service logs are the evidence. Nothing sent to Sentry
+carries transcripts, recordings, questions, prompts, model output, summaries,
+action items, request or response bodies, headers, cookies, tokens, email
+addresses, names, IP addresses, or meeting/folder/user identifiers.
+
+That is not a filter applied to a captured exception — no exception object is
+ever handed to Sentry by any of the three services. Events are constructed from
+a fixed vocabulary:
+
+- **Frontend** — a generic label, the fault boundary, a normalized route shape
+  (`/meetings/[id]`, never the id), and an optional Next digest.
+- **Backend** — a generic label, the exception's class name and its cause's, and
+  a correlation id, forwarded **only** when it matches the UUID this server
+  generates. `X-Correlation-Id` is accepted from the caller, so an arbitrary
+  value there would otherwise be an open channel into the telemetry.
+- **AI service** — a generic label plus `service`, `component`, `operation` and
+  the exception's type name. The reporter has no parameter for a meeting id or
+  an object key, so a call site cannot pass one by mistake.
+
+Session Replay, performance tracing, profiling, automatic breadcrumbs, automatic
+PII and automatic log forwarding are switched off explicitly in all three. The
+last one matters most in the AI service: its worker logs meeting ids and
+exception strings through `logger.exception`, and Sentry's default Python
+logging integration would forward every one of those as an event. It is not
+installed.
+
+Raw exception messages and stacks remain in each service's own logs, on
+infrastructure Reverie controls, joined to the alert by the correlation id.
+
+---
+
 ## 8. Render — two services
 
 `render.yaml` declares exactly two, and no frontend:
