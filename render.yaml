@@ -247,6 +247,16 @@ services:
           name: reverie-backend
           envVarKey: REVERIE_INTERNAL_TOKEN
 
+      # Says out loud that this is a deployment, not a laptop. The AI service's
+      # defaults are chosen so `docker compose up` needs no configuration --
+      # mock provider, localhost broker, the token published in this repository
+      # -- and every one of those fails invisibly rather than loudly: the mock
+      # returns plausible summaries, the worker retries a dead broker forever,
+      # and /health answers 200 throughout. With this set, startup refuses any
+      # of them instead. See ai-service/app/deployment_check.py.
+      - key: REVERIE_ENV
+        value: production
+
       # --- Kafka ------------------------------------------------------------
       - key: KAFKA_BOOTSTRAP_SERVERS
         sync: false

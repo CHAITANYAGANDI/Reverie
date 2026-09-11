@@ -16,6 +16,8 @@ import com.reverie.repository.ChatMessageRepository;
 import com.reverie.repository.MeetingRepository;
 import com.reverie.repository.ProjectRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -48,6 +50,24 @@ public class ChatService {
     private final UsageLimitService usage;
     private final ObjectMapper mapper;
 
+    /**
+     * Two short transactions with a model call between them, rather than one
+     * transaction wrapped around it.
+     *
+     * <p>Asking used to be a single {@code @Transactional} method, so a database
+     * connection was checked out of the pool for the whole of retrieval,
+     * embedding, the provider's own retries and the generation. A handful of
+     * simultaneous slow questions was therefore a connection-pool outage for
+     * every other request in the application, and the slower the AI service got
+     * the more of the database it took with it.
+     *
+     * <p>{@code TransactionTemplate} rather than two {@code @Transactional}
+     * methods on this class: a self-invocation does not pass through the proxy,
+     * so the second boundary would silently not exist and this would still be
+     * one transaction — the failure being fixed, now invisible.
+     */
+    private final TransactionTemplate tx;
+
     public ChatService(ChatMessageRepository messages,
                        ChatConversationRepository conversations,
                        MeetingRepository meetings,
@@ -55,7 +75,8 @@ public class ChatService {
                        AiClient ai,
                        UserService users,
                        UsageLimitService usage,
-                       ObjectMapper mapper) {
+                       ObjectMapper mapper,
+                       PlatformTransactionManager transactions) {
         this.messages = messages;
         this.conversations = conversations;
         this.meetings = meetings;
@@ -64,7 +85,21 @@ public class ChatService {
         this.users = users;
         this.usage = usage;
         this.mapper = mapper;
+        this.tx = new TransactionTemplate(transactions);
     }
+
+    /**
+     * What the first transaction learned, carried across the model call.
+     *
+     * <p>Only immutable values. Anything managed by the persistence context
+     * would be detached the moment that transaction commits, and touching it
+     * later is the class of bug that works until the first lazy field.
+     *
+     * @param conversationId the thread to append to, or null to create one when
+     *     the answer arrives — never before, so a failed question leaves no
+     *     empty conversation behind
+     */
+    private record Prepared(String conversationId, List<String> asked) {}
 
     /**
      * The answer for a project with nothing in it.
@@ -155,20 +190,61 @@ public class ChatService {
     // whose last line is a question nobody answered, which reads as the model
     // having failed rather than as the account being out.
 
-    @Transactional
     public ChatMessageResponse ask(String userId, String meetingId, String question,
                                    String conversationId, ChatMode mode) {
-        usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
-        requireOwnedMeeting(userId, meetingId);
         ChatScope scope = ChatScope.meeting(meetingId);
-        ChatConversation conversation = resolveForAsk(userId, scope, conversationId);
+        Prepared prepared = tx.<Prepared>execute(status -> {
+            usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
+            requireOwnedMeeting(userId, meetingId);
+            return prepare(userId, scope, conversationId);
+        });
 
-        List<String> asked = earlierQuestions(conversation);
+        // Outside any transaction. Retrieval, embedding, the provider's retries
+        // and the generation all happen here, and none of them hold a database
+        // connection while they do.
+        AiClient.ChatResult result = ai.chat(userId, meetingId, question, mode, prepared.asked());
+
+        return tx.<ChatMessageResponse>execute(
+                status -> exchange(userId, meetingId, scope, prepared, question, result));
+    }
+
+    /**
+     * Everything the model call needs, read in one short transaction.
+     *
+     * <p>Deliberately does <b>not</b> create the conversation. The old single
+     * transaction rolled the whole exchange back when the AI call failed, so a
+     * failed question left no trace, and that is worth keeping: creating the
+     * thread here would leave an empty untitled conversation in the sidebar
+     * every time the ai-service was down. Nothing is written until there is an
+     * answer to write with it.
+     */
+    private Prepared prepare(String userId, ChatScope scope, String conversationId) {
+        ChatConversation existing = conversationId != null
+                ? requireScoped(ownedConversation(userId, conversationId), scope)
+                : mostRecent(userId, scope).orElse(null);
+        return new Prepared(existing == null ? null : existing.getId(),
+                existing == null ? List.of() : earlierQuestions(existing));
+    }
+
+    /**
+     * The question and its answer, written together or not at all.
+     *
+     * <p>Ownership is checked again rather than assumed from the first
+     * transaction: minutes of model time can pass between them, and the thread
+     * may have been deleted in another tab. Re-reading is also what makes the
+     * conversation managed again — it was detached when the first transaction
+     * committed, and {@link #touch} works by dirty checking.
+     */
+    private ChatMessageResponse exchange(String userId, String meetingId, ChatScope scope,
+                                         Prepared prepared, String question,
+                                         AiClient.ChatResult result) {
+        ChatConversation conversation = prepared.conversationId() == null
+                ? newConversation(userId, scope)
+                : requireScoped(ownedConversation(userId, prepared.conversationId()), scope);
+
         persistTurn(userId, meetingId, conversation, "user", question, null);
-        AiClient.ChatResult result = ai.chat(userId, meetingId, question, mode, asked);
         ChatMessageResponse answer = persistTurn(userId, meetingId, conversation, "assistant",
                 result.answer() == null ? "" : result.answer(), result.citations());
-
         touch(conversation, question);
         return answer;
     }
@@ -188,37 +264,37 @@ public class ChatService {
      * either: an empty project is a normal state, usually the one right after
      * creating it.
      */
-    @Transactional
     public ChatMessageResponse askProject(String userId, String projectId, String question,
                                           String conversationId) {
-        usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
         ChatScope scope = ChatScope.project(projectId);
-        requireOwnedScope(userId, scope);
-        ChatConversation conversation = resolveForAsk(userId, scope, conversationId);
-        List<String> meetingIds = meetings.findIdsByUserIdAndProjectId(userId, projectId);
+        record Start(Prepared prepared, List<String> meetingIds) {}
 
-        persistTurn(userId, null, conversation, "user", question, null);
-        ChatMessageResponse answer = meetingIds.isEmpty()
-                ? persistTurn(userId, null, conversation, "assistant", EMPTY_PROJECT, null)
-                : answerFromMeetings(userId, conversation, question, meetingIds);
+        Start start = tx.<Start>execute(status -> {
+            usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
+            requireOwnedScope(userId, scope);
+            return new Start(prepare(userId, scope, conversationId),
+                    meetings.findIdsByUserIdAndProjectId(userId, projectId));
+        });
 
-        touch(conversation, question);
-        return answer;
-    }
+        // An empty project is answered from here, with no model call and so no
+        // reason to leave a transaction for -- one is enough.
+        if (start.meetingIds().isEmpty()) {
+            return tx.<ChatMessageResponse>execute(status -> exchange(userId, null, scope,
+                    start.prepared(), question,
+                    new AiClient.ChatResult(EMPTY_PROJECT, List.of())));
+        }
 
-    private ChatMessageResponse answerFromMeetings(String userId, ChatConversation conversation,
-                                                   String question, List<String> meetingIds) {
         // A project chat has no mode picker, so it takes the default. The choice
         // belongs to the composer that offers it.
         // No history window here on purpose: a project chat was pointed at a
         // set of meetings by name, and quietly dropping the older half of a
         // folder somebody explicitly opened would be answering a different
         // question from the one asked.
-        AiClient.ChatResult result = ai.workspaceChat(
-                userId, question, meetingIds, ChatMode.QUICK, null,
-                earlierQuestions(conversation));
-        return persistTurn(userId, null, conversation, "assistant",
-                result.answer() == null ? "" : result.answer(), result.citations());
+        AiClient.ChatResult result = ai.workspaceChat(userId, question, start.meetingIds(),
+                ChatMode.QUICK, null, start.prepared().asked());
+
+        return tx.<ChatMessageResponse>execute(
+                status -> exchange(userId, null, scope, start.prepared(), question, result));
     }
 
     /**
@@ -226,32 +302,31 @@ public class ChatService {
      * check is needed for retrieval: the ai-service filters by userId, so the
      * answer can only ever be grounded in this user's transcripts.
      */
-    @Transactional
     public ChatMessageResponse askWorkspace(String userId, String question,
                                             List<String> meetingIds, String conversationId,
                                             ChatMode mode) {
-        usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
-        // If the caller narrowed the search, verify they own what they named.
-        // This is also the check behind the composer's "Add context": the ids
-        // arrive from a picker, and a picker is a client-side control.
-        if (meetingIds != null) {
-            meetingIds.forEach(id -> requireOwnedMeeting(userId, id));
-        }
-        ChatConversation conversation = resolveForAsk(userId, ChatScope.WORKSPACE, conversationId);
-
-        List<String> asked = earlierQuestions(conversation);
-        persistTurn(userId, null, conversation, "user", question, null);
         // The account's window applies to the whole-workspace question and not
         // to a narrowed one: "Add context" names the meetings, and a named
         // meeting outside the window is still a meeting somebody chose.
-        Integer window = (meetingIds == null || meetingIds.isEmpty()) ? historyDays(userId) : null;
-        AiClient.ChatResult result =
-                ai.workspaceChat(userId, question, meetingIds, mode, window, asked);
-        ChatMessageResponse answer = persistTurn(userId, null, conversation, "assistant",
-                result.answer() == null ? "" : result.answer(), result.citations());
+        record Start(Prepared prepared, Integer window) {}
 
-        touch(conversation, question);
-        return answer;
+        Start start = tx.<Start>execute(status -> {
+            usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.CHAT);
+            // If the caller narrowed the search, verify they own what they named.
+            // This is also the check behind the composer's "Add context": the ids
+            // arrive from a picker, and a picker is a client-side control.
+            if (meetingIds != null) {
+                meetingIds.forEach(id -> requireOwnedMeeting(userId, id));
+            }
+            return new Start(prepare(userId, ChatScope.WORKSPACE, conversationId),
+                    (meetingIds == null || meetingIds.isEmpty()) ? historyDays(userId) : null);
+        });
+
+        AiClient.ChatResult result = ai.workspaceChat(userId, question, meetingIds, mode,
+                start.window(), start.prepared().asked());
+
+        return tx.<ChatMessageResponse>execute(status -> exchange(userId, null,
+                ChatScope.WORKSPACE, start.prepared(), question, result));
     }
 
     /**
@@ -419,13 +494,6 @@ public class ChatService {
      * or a new one. Asking without naming a thread must never fail — the chat
      * box is the primary control and a first-time user has no conversation yet.
      */
-    private ChatConversation resolveForAsk(String userId, ChatScope scope, String conversationId) {
-        if (conversationId != null) {
-            return requireScoped(ownedConversation(userId, conversationId), scope);
-        }
-        return mostRecent(userId, scope).orElseGet(() -> newConversation(userId, scope));
-    }
-
     private ChatConversation newConversation(String userId, ChatScope scope) {
         ChatConversation c = new ChatConversation();
         c.setId(IdGenerator.conversation());

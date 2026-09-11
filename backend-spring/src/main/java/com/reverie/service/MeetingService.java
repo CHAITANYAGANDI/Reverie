@@ -35,6 +35,7 @@ import com.reverie.repository.ProjectRepository;
 import com.reverie.repository.TranscriptSegmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -64,6 +65,21 @@ public class MeetingService {
     private final MeetingSummaryRepository summaries;
     private final MeetingInsightRepository insights;
     private final StorageService storage;
+
+    /**
+     * The largest upload this deployment accepts, in bytes.
+     *
+     * <p>One number, on the server, read by both halves of the check — the
+     * declared size at presign and the real size after upload — so the two
+     * cannot drift into disagreeing about what is too big.
+     *
+     * <p>Not final and not a constructor parameter: it has a working default so
+     * that constructing this service directly, as every unit test does, does not
+     * mean every upload in every test is refused for being zero bytes. Spring
+     * overrides it from configuration.
+     */
+    @Value("${app.upload.max-bytes:524288000}")
+    private long maxUploadBytes = 524_288_000L; // 500 MB
     private final UsageLimitService usage;
     private final OutboxService outbox;
     private final AuditService audit;
@@ -118,6 +134,7 @@ public class MeetingService {
     @Transactional
     public UploadUrlResponse createUploadUrl(String userId, UploadUrlRequest req) {
         validateContentType(req.contentType());
+        validateDeclaredSize(req.sizeBytes());
         String meetingId = IdGenerator.meeting();
         String objectKey = "meetings/" + userId + "/" + meetingId + "/" + sanitize(req.filename());
 
@@ -141,6 +158,15 @@ public class MeetingService {
     public MeetingResponse createMeeting(String userId, MeetingCreateRequest req) {
         Meeting meeting = meetings.findByObjectKeyAndUserId(req.objectKey(), userId)
                 .orElseThrow(() -> ApiException.notFound("No pending upload for that objectKey"));
+
+        // Before anything is spent on it. The size declared at presign was a
+        // claim and a presigned PUT cannot enforce one, so this is where the
+        // claim is checked against the object that actually arrived -- ahead of
+        // the allowance, ahead of Kafka, ahead of transcription. Otherwise
+        // `{"sizeBytes": 1}` followed by a multi-gigabyte PUT buys a full
+        // pipeline run, and the allowance that was supposed to stop it is spent
+        // by the same request.
+        verifyUploadedObject(meeting.getObjectKey());
 
         // Charged at confirmation (not at presign) so abandoned uploads are free.
         // Two allowances, both for the life of the account: transcription
@@ -1275,6 +1301,50 @@ public class MeetingService {
      * not a meeting, and every feature downstream — speakers, timestamps,
      * playback, moments — had to special-case it into meaninglessness.
      */
+    /**
+     * The cheap half: refuse a size the deployment will not accept, before an
+     * upload URL exists to accept it with.
+     *
+     * <p>Advisory on its own — the number comes from the client and a presigned
+     * PUT cannot be made to enforce one — but it is the half that costs nothing
+     * and stops the honest mistake, which is most of them. {@link
+     * #verifyUploadedObject} is the half that is true.
+     */
+    private void validateDeclaredSize(long sizeBytes) {
+        if (sizeBytes <= 0) {
+            throw ApiException.badRequest("That file is empty");
+        }
+        if (sizeBytes > maxUploadBytes) {
+            throw ApiException.badRequest(
+                    "That file is larger than the " + (maxUploadBytes / (1024 * 1024))
+                            + " MB limit");
+        }
+    }
+
+    /**
+     * The authoritative half: ask the bucket what actually landed.
+     *
+     * <p>Called before the allowance is charged and before anything is queued,
+     * so a client that declared one byte and uploaded a gigabyte pays for the
+     * upload with nothing and gets no transcription out of it.
+     *
+     * <p>A store that will not answer is refused rather than waved through. It
+     * is the same decision either way from the user's point of view — try again
+     * — and the alternative is that an object store outage is also the window in
+     * which the size limit does not apply.
+     */
+    private void verifyUploadedObject(String objectKey) {
+        long actual = storage.sizeOf(objectKey).orElseThrow(() -> ApiException.badRequest(
+                "That upload did not arrive; try uploading the file again"));
+        if (actual <= 0) {
+            throw ApiException.badRequest("That upload arrived empty; try uploading the file again");
+        }
+        if (actual > maxUploadBytes) {
+            throw ApiException.badRequest(
+                    "That file is larger than the " + (maxUploadBytes / (1024 * 1024)) + " MB limit");
+        }
+    }
+
     private void validateContentType(String contentType) {
         if (contentType == null || ALLOWED_PREFIXES.stream().noneMatch(contentType::startsWith)) {
             throw ApiException.badRequest("Only audio and video uploads are supported");

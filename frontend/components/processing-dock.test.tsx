@@ -185,3 +185,87 @@ describe("JobWatcher settling", () => {
     expect(untrack).toHaveBeenCalledWith(MEETING);
   });
 });
+
+/**
+ * When the server says this id is not ours to watch.
+ *
+ * <p>The watcher settled only on a terminal *status*, and an error has no
+ * status — so any id the server would not return was polled every five seconds
+ * for the life of the tab. That is reachable two ways: a meeting deleted from
+ * another tab, and an id restored from a previous session's storage.
+ *
+ * <p>The distinction under test is between an answer and a failure to answer.
+ * 404 and 403 settle the question; a 500 or a dropped connection does not, and
+ * abandoning a live job over one would lose the completion toast and the cache
+ * invalidation with it.
+ */
+describe("JobWatcher and a refused meeting", () => {
+  const untrack = vi.fn();
+
+  beforeEach(() => {
+    untrack.mockClear();
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.doUnmock("@/lib/api");
+    vi.doUnmock("@/lib/hooks");
+    vi.doUnmock("@/lib/ws");
+    vi.doUnmock("@/lib/processing-jobs");
+  });
+
+  async function watchWith(query: { data?: unknown; error?: unknown }) {
+    vi.doMock("@/lib/hooks", () => ({ useAppDispatch: () => vi.fn() }));
+    vi.doMock("@/lib/ws", () => ({
+      subscribeMeetingStatus: () => ({ deactivate: () => {} }),
+    }));
+    vi.doMock("@/lib/processing-jobs", () => ({
+      useProcessingJobs: () => [MEETING],
+      untrackProcessing: untrack,
+    }));
+    const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+    vi.doMock("@/lib/api", () => ({ ...actual, useGetMeetingQuery: () => query }));
+
+    const [{ ProcessingDock }, { render }, React] = await Promise.all([
+      import("@/components/processing-dock"),
+      import("@testing-library/react"),
+      import("react"),
+    ]);
+    render(React.createElement(ProcessingDock));
+  }
+
+  it("stops watching a meeting the server says does not exist", async () => {
+    await watchWith({ error: { status: 404, data: { message: "Not found" } } });
+
+    expect(untrack).toHaveBeenCalledWith(MEETING);
+  });
+
+  it("stops watching a meeting that is not this session's to see", async () => {
+    // The cross-account case, from the other end. The store should never have
+    // handed this id over; if anything ever does, the poll still has to end.
+    await watchWith({ error: { status: 403, data: { message: "Forbidden" } } });
+
+    expect(untrack).toHaveBeenCalledWith(MEETING);
+  });
+
+  it("keeps watching through a backend fault", async () => {
+    // A 500 is the server failing to answer, not answering. The job may well
+    // still be running, and untracking here loses the toast and the
+    // invalidation for a blip.
+    await watchWith({ error: { status: 500, data: { message: "Boom" } } });
+
+    expect(untrack).not.toHaveBeenCalled();
+  });
+
+  it("keeps watching through a dropped connection", async () => {
+    await watchWith({ error: { status: "FETCH_ERROR", error: "TypeError: failed" } });
+
+    expect(untrack).not.toHaveBeenCalled();
+  });
+
+  it("keeps watching while the meeting is simply still running", async () => {
+    await watchWith({ data: { id: MEETING, status: "PROCESSING", title: "Standup" } });
+
+    expect(untrack).not.toHaveBeenCalled();
+  });
+});

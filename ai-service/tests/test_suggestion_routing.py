@@ -52,7 +52,13 @@ def wire_client(rag, pipeline):
     """Point the route at fakes. Cleared after every test by `_clean`."""
     app.dependency_overrides[get_rag] = lambda: rag
     app.dependency_overrides[get_pipeline] = lambda: pipeline
-    return TestClient(app)
+    client = TestClient(app)
+    # The /ai router is internal and authenticated. Sent rather than overridden
+    # away, so these tests go through the same door Spring does.
+    from app.config import Settings
+
+    client.headers.update({"X-Internal-Token": Settings().reverie_internal_token})
+    return client
 
 
 @pytest.fixture(autouse=True)

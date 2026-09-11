@@ -217,6 +217,15 @@ class MeetingTitleTest {
     @DisplayName("who is allowed to be renamed")
     class WhenTheMeetingIsCreated {
 
+        @BeforeEach
+        void theUploadArrived() {
+            // Confirming a meeting now asks the bucket what actually landed
+            // before it charges the allowance or queues anything, so the
+            // fixture has to include an object. Without this these two assert
+            // titling on a request that is refused before it gets there.
+            when(storage.sizeOf(anyString())).thenReturn(java.util.Optional.of(1_024L));
+        }
+
         @Test
         @DisplayName("a browser recording is, because its name is a date")
         void aRecordingIsEligible() {

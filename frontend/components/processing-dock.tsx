@@ -115,7 +115,29 @@ function JobWatcher({ meetingId }: { meetingId: string }) {
    * leaves the socket silent, and trusting it alone would leave a meeting that
    * was ready ten minutes ago still marked as running in this tab.
    */
-  const { data } = useGetMeetingQuery(meetingId, { pollingInterval: 5000 });
+  const { data, error } = useGetMeetingQuery(meetingId, { pollingInterval: 5000 });
+
+  /*
+   * Stop following a meeting that provably is not ours to follow.
+   *
+   * <p>Polling every five seconds forever was the old behaviour for any id the
+   * server would not return, because only a terminal *status* ended the watch
+   * and an error has no status. A tab that had been handed somebody else's id,
+   * or one whose meeting was deleted from another tab, kept asking until it was
+   * closed.
+   *
+   * <p>Only on an answer that settles the question. 404 and 403 are the server
+   * stating that this id is not available to this session, and repeating the
+   * request cannot change that. Everything else -- a timeout, a dropped
+   * connection, a 500, a cold start, a 429 -- is the server failing to answer,
+   * and untracking on those would abandon a live job over a blip and lose the
+   * completion toast and the cache invalidation with it.
+   */
+  React.useEffect(() => {
+    if (!error) return;
+    const status = (error as { status?: number | string }).status;
+    if (status === 404 || status === 403) untrackProcessing(meetingId);
+  }, [error, meetingId]);
 
   React.useEffect(() => {
     const sub = subscribeMeetingStatus(meetingId, {

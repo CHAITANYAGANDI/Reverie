@@ -169,7 +169,18 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
     return () => socket.deactivate();
   }, [channel, refetchCount, refetchList]);
 
-  const unread = count.data?.unread ?? 0;
+  /*
+   * Zero unread and "we could not find out" are different facts.
+   *
+   * RTK keeps the last successful body through a failed refetch, so a blip
+   * leaves the badge showing the number it last knew -- right, and the reason
+   * this is only about the case where there is no number at all. Falling back
+   * to 0 there tells the reader, in the interface's own voice, that nothing is
+   * waiting. Nothing is what they will then do about it.
+   */
+  const knownUnread = count.data?.unread;
+  const countUnavailable = knownUnread === undefined && count.isError;
+  const unread = knownUnread ?? 0;
   const items = React.useMemo(() => list.data?.content ?? [], [list.data]);
   const total = list.data?.totalElements ?? items.length;
   // The clock is read once per render of the panel rather than per row, so a
@@ -199,7 +210,13 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+          aria-label={
+            countUnavailable
+              ? "Notifications, unread count unavailable"
+              : unread > 0
+                ? `Notifications, ${unread} unread`
+                : "Notifications"
+          }
           title="Notifications"
           className={cn(
             /*
@@ -288,7 +305,32 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Loading…</p>
           )}
 
-          {!list.isLoading && items.length === 0 && (
+          {/* A failed request is not an empty inbox.
+              `list.data?.content ?? []` reads the same as a successful read of
+              nothing, so a 500 or a dropped connection used to render "Nothing
+              yet" -- a confident statement, in the product's own voice, that
+              there is nothing waiting for you. It is the one wrong answer this
+              panel can give, because it is the answer people act on by
+              closing it. */}
+          {!list.isLoading && list.isError && (
+            <div className="px-3 py-8 text-center">
+              <p className="text-sm font-medium">Couldn&rsquo;t load notifications</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Something went wrong reaching Reverie. Your notifications are still
+                there.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => void list.refetch()}
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+
+          {!list.isLoading && !list.isError && items.length === 0 && (
             <div className="px-3 py-8 text-center">
               {filter === "unread" ? (
                 <>

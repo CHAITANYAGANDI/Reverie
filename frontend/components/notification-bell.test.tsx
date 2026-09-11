@@ -38,6 +38,10 @@ let items: AppNotification[];
 let unread: number;
 let total: number | null;
 let refetchedCount: number;
+/** Whether each query is failing, so "error" can be told from "empty". */
+let listFails: boolean;
+let countFails: boolean;
+let listRefetched: number;
 
 vi.mock("@/lib/ws", () => ({
   subscribeNotifications: (channel: string, onPing: (n: number) => void) => {
@@ -49,7 +53,9 @@ vi.mock("@/lib/ws", () => ({
 
 vi.mock("@/lib/api", () => ({
   useGetUnreadCountQuery: () => ({
-    data: { unread, channel: "usr_1" },
+    // No body at all on failure, which is the case that used to read as zero.
+    data: countFails ? undefined : { unread, channel: "usr_1" },
+    isError: countFails,
     refetch: () => {
       refetchedCount += 1;
     },
@@ -60,12 +66,19 @@ vi.mock("@/lib/api", () => ({
     arg: { size?: number; unread?: boolean } | undefined,
     opts: { skip?: boolean },
   ) => {
-    if (opts?.skip) return { data: undefined, isLoading: false, refetch: vi.fn() };
+    if (opts?.skip) return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+    const refetch = () => {
+      listRefetched += 1;
+    };
+    if (listFails) {
+      return { data: undefined, isLoading: false, isError: true, refetch };
+    }
     const shown = arg?.unread ? items.filter((n) => !n.read) : items;
     return {
       data: { content: shown, page: 0, size: 20, totalElements: total ?? shown.length, totalPages: 1 },
       isLoading: false,
-      refetch: vi.fn(),
+      isError: false,
+      refetch,
     };
   },
   useMarkNotificationReadMutation: () => [
@@ -128,6 +141,9 @@ beforeEach(() => {
   unread = 1;
   total = null;
   refetchedCount = 0;
+  listFails = false;
+  countFails = false;
+  listRefetched = 0;
   socket.onPing = null;
 });
 
@@ -524,5 +540,72 @@ describe("ago", () => {
 
   it("says nothing rather than NaN for a date it cannot read", () => {
     expect(ago("not a date", now)).toBe("");
+  });
+});
+
+/**
+ * A failed request is not an empty inbox.
+ *
+ * <p>`list.data?.content ?? []` reads identically to a successful read of
+ * nothing, so a 500 or a dropped connection rendered "Nothing yet" — a
+ * confident statement, in the product's own voice, that there is nothing
+ * waiting. It is the one wrong answer this panel can give, because it is the
+ * answer people act on by closing it and not coming back.
+ */
+describe("the bell when the request fails", () => {
+  it("says it could not load, instead of saying there is nothing", async () => {
+    listFails = true;
+    await openBell();
+
+    expect(screen.getByText(/Couldn.t load notifications/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+  });
+
+  it("offers a way back rather than only an apology", async () => {
+    listFails = true;
+    await openBell();
+
+    await userEvent.click(screen.getByRole("button", { name: /Try again/i }));
+
+    expect(listRefetched).toBeGreaterThan(0);
+  });
+
+  it("still says the notifications exist", async () => {
+    // The failure is ours, not theirs. "Nothing yet" implies their account is
+    // empty; this says the connection is the problem and their inbox is intact.
+    listFails = true;
+    await openBell();
+
+    expect(screen.getByText(/still there/i)).toBeInTheDocument();
+  });
+
+  it("keeps saying nothing yet when the inbox really is empty", async () => {
+    // The fix must not have turned every empty inbox into an error. This is
+    // the state the copy was written for.
+    items = [];
+    await openBell();
+
+    expect(screen.getByText(/Nothing yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn.t load/i)).not.toBeInTheDocument();
+  });
+
+  it("does not claim zero unread when the count could not be read", async () => {
+    // The badge cannot draw "unknown", so the accessible name carries it. What
+    // it must not do is announce "Notifications" plainly, which is the same
+    // thing it says when it knows there are none.
+    countFails = true;
+    render(<NotificationBell />);
+
+    expect(
+      screen.getByRole("button", { name: /unread count unavailable/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("still reports a real count when the count query works", async () => {
+    unread = 3;
+    render(<NotificationBell />);
+
+    expect(screen.getByRole("button", { name: /3 unread/ })).toBeInTheDocument();
   });
 });

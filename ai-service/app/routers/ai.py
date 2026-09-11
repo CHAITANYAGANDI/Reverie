@@ -46,6 +46,7 @@ from app.schemas import (
     WorkspaceChatRequest,
     WorkspaceSuggestionsRequest,
 )
+from app.service_auth import require_internal_token
 from app.storage import fetch_audio
 from app.streaming import StreamingTokenError, StreamingTokenService
 from app.transcode import Mp3Transcoder
@@ -54,7 +55,14 @@ from app.templates import BUILT_IN, resolve
 
 logger = logging.getLogger("ai-service.router.ai")
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+# Applied to the router rather than to each route, so a new endpoint is
+# authenticated by existing here instead of by somebody remembering to say so.
+# `/health` lives on the app, not this router, and stays open for Render's probe.
+router = APIRouter(
+    prefix="/ai",
+    tags=["ai"],
+    dependencies=[Depends(require_internal_token)],
+)
 
 
 def get_pipeline(request: Request) -> Pipeline:
