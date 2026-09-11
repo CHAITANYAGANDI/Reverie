@@ -725,6 +725,21 @@ wrong" is a five-second fix rather than a hunt.
 | `NEXT_PUBLIC_BUILD_SHA` | footer reads "dev build" rather than inventing a hash |
 | `NEXT_PUBLIC_TERMS_URL` | the link is not rendered |
 | `NEXT_PUBLIC_PRIVACY_URL` | the link is not rendered |
+| `NEXT_PUBLIC_SENTRY_DSN` | browser error reporting stays disabled; errors remain in the local console only |
+
+`NEXT_PUBLIC_SENTRY_DSN` is the public browser DSN for the **reverie-frontend**
+Sentry project. It is configuration rather than an authentication secret, but
+it is still kept in Vercel rather than committed as a concrete value.
+
+Reverie does not use Sentry's default browser instrumentation, Session Replay,
+automatic tracing or automatic PII collection. `instrumentation-client.ts`
+disables those features, and `lib/observability.ts` sends only a generic error
+label, the fault boundary, a normalized route shape and an optional Next digest.
+Raw exception messages, stacks, query strings, meeting/folder ids and user
+content are deliberately excluded.
+
+Leaving the variable unset is valid, including in production. Observability must
+never prevent the product from starting or serving requests.
 
 ### Every `NEXT_PUBLIC_*` is a BUILD-time value
 

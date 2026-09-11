@@ -1,40 +1,33 @@
+import * as Sentry from "@sentry/browser";
+
 /**
- * Where an unexpected exception goes.
+ * Where an unexpected frontend exception goes.
  *
- * <h2>Why this exists as a seam rather than as a provider</h2>
+ * <h2>Privacy boundary</h2>
  *
- * <p>Reverie has no error-reporting provider. Every one of these failures is
- * currently visible only to the person it happened to, which means a production
- * fault is discovered by a user deciding to mention it — and most do not.
+ * <p>Reverie handles meeting transcripts, recordings and the questions people
+ * ask about them. Error reporting therefore cannot forward an exception object
+ * wholesale: messages, stacks, URLs and application state can contain user
+ * content or identifiers.
  *
- * <p>What it does not do is pick the provider. Wiring Sentry (or any of them)
- * into three services is a dependency, an account, a DSN and a privacy review,
- * and none of those are decisions to make on somebody's behalf inside a
- * hardening pass. So this is the shape of the thing: one function the app calls
- * at its fault boundaries, configuration-driven, silent and harmless when no
- * destination is set. Dropping `Sentry.captureException` into {@link
- * reportError} is then a two-line change with the call sites already in place.
+ * <p>All external reporting passes through this function. The payload is
+ * deliberately reduced to a fixed set of safe fields: a generic error label,
+ * Next digest, fault boundary and normalized route shape. No raw exception
+ * message or stack, request or response bodies, query strings, tokens,
+ * resource ids or user content are sent to the observability provider.
  *
- * <h2>What must never leave the browser</h2>
+ * <p>Sentry is the production error reporter. It receives only the sanitized
+ * values constructed here.
  *
- * <p>This app holds meeting transcripts, recordings and the questions people
- * ask about them. A reporter that posts "whatever was in scope" is a
- * transcript-exfiltration feature with a support ticket attached. So the
- * payload is a fixed, named set of fields — a generic error label, digest,
- * boundary and normalized route shape — and nothing derived from application
- * state. No raw exception message or stack, request or response bodies, query
- * strings, tokens, resource ids or user content.
- *
- * <p>The URL is reduced to a normalized route shape for the same reason.
- * Meeting and folder paths carry resource ids, while query strings can carry
- * timestamps, return paths or capability tokens. The route shape is enough to
- * know which screen broke.
+ * <p>The browser console deliberately keeps the original exception. That is a
+ * local diagnostic visible to the person running the browser rather than data
+ * exported to an observability provider.
  */
 
 /**
- * The fixed shape of a report. Widening this is a privacy decision, not a
- * convenience one — every field here was chosen against "could this contain a
- * sentence somebody said in a meeting?".
+ * The fixed shape allowed to leave the browser.
+ *
+ * Widening this interface is a privacy decision, not a convenience one.
  */
 export interface ErrorReport {
   /**
@@ -42,25 +35,30 @@ export interface ErrorReport {
    * titles, API responses or other user-derived content.
    */
   message: string;
+
   /** Next's build-time hash for a server-rendered error, when there is one. */
   digest?: string;
+
   /** Which fault boundary caught it, e.g. "app-shell" or "root-layout". */
   boundary: string;
+
   /** Normalized route shape, never ids or query strings. */
   path?: string;
 }
 
-/** Set to a collector endpoint to turn reporting on. Absent locally, and fine. */
-const ENDPOINT = process.env.NEXT_PUBLIC_ERROR_REPORT_URL;
-
-/** The page, with anything identifying or capability-bearing removed. */
+/**
+ * Return a privacy-safe route shape.
+ *
+ * Concrete resource ids, optional route parameters and query strings must
+ * never leave the browser through observability.
+ */
 function safePath(): string | undefined {
   if (typeof window === "undefined") return undefined;
 
   const pathname = window.location.pathname;
 
   // Dynamic resource ids are useful to Reverie but not to an external
-  // collector. Report the route shape instead of the concrete identifier.
+  // observability provider. Report the route shape instead.
   if (/^\/meetings\/[^/]+\/?$/.test(pathname)) {
     return "/meetings/[id]";
   }
@@ -99,29 +97,30 @@ export function reportError(
     path: safePath(),
   };
 
-  // Always. The console is the only diagnostic a self-hosted deployment with no
-  // collector has, and an error boundary that renders a friendly message and
-  // leaves nothing behind is how a bug survives three reports of "it broke".
+  // Keep the real exception locally for debugging. It must not be copied into
+  // the external telemetry payload below.
   console.error(
     `[reverie:${boundary}]`,
     error?.message ?? "Unknown error",
     error,
   );
 
-  if (!ENDPOINT) return;
-
+  // Sentry receives only the sanitized report constructed above.
+  //
+  // `captureMessage` is intentional. `captureException(error)` would hand
+  // Sentry the original exception message and stack that this privacy boundary
+  // exists specifically to withhold.
   try {
-    // `keepalive` because a fault boundary is often followed by a navigation,
-    // and a normal fetch is cancelled by it -- losing exactly the reports worth
-    // having. Failures here are swallowed: a reporter that throws inside an
-    // error handler replaces a rendered error with a blank page.
-    void fetch(ENDPOINT, {
-      method: "POST",
-      keepalive: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(report),
-    }).catch(() => {});
+    Sentry.captureMessage(report.message, {
+      level: "error",
+      tags: {
+        boundary: report.boundary,
+        ...(report.path ? { route: report.path } : {}),
+        ...(report.digest ? { digest: report.digest } : {}),
+      },
+    });
   } catch {
-    /* reporting is best effort, always */
+    // Observability is best effort. A monitoring failure must never interfere
+    // with Reverie's own error boundary or replace it with another failure.
   }
 }
