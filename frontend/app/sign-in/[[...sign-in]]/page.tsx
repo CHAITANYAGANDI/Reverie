@@ -27,7 +27,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { useSignIn } from "@clerk/nextjs/legacy";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AtSign, Lock, Mail } from "lucide-react";
 import {

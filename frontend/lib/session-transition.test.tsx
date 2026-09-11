@@ -137,6 +137,14 @@ function makeStore() {
   return configureStore({
     reducer: { [api.reducerPath]: api.reducer },
     middleware: (getDefault) => getDefault().concat(api.middleware).concat(recorder),
+
+    // Keep RTK auto-batching semantics in this integration test, but use a
+    // microtask instead of requestAnimationFrame so jsdom cannot tear down
+    // while a queued animation-frame notification is still pending.
+    enhancers: (getDefaultEnhancers) =>
+      getDefaultEnhancers({
+        autoBatch: { type: "tick" },
+      }),
   });
 }
 
