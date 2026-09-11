@@ -21,10 +21,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -33,9 +35,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.when;
 
 /**
@@ -67,6 +74,7 @@ class TranslationServiceTest {
     @Mock private MeetingTranslationRepository translations;
     @Mock private AiClient ai;
     @Mock private UsageLimitService usage;
+    @Mock private RateLimitService rateLimit;
 
     private TranslationService service;
     private final List<MeetingTranslation> stored = new ArrayList<>();
@@ -75,7 +83,8 @@ class TranslationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TranslationService(meetings, summaries, actionItems, segments, translations, ai, usage);
+        service = new TranslationService(meetings, summaries, actionItems, segments, translations,
+                ai, usage, rateLimit);
         stored.clear();
         tasks.clear();
 
@@ -513,5 +522,169 @@ class TranslationServiceTest {
         assertThat(row.getActionItems()).singleElement()
                 .satisfies(t -> assertThat(t.sourceTitle()).isEqualTo("Draft the rollout plan"));
         assertThat(row.getActionItems()).extracting(TranslatedTask::id).containsExactly("ai_1");
+    }
+
+    /**
+     * Burst protection, and exactly where it is allowed to bite.
+     *
+     * <p>The allowance is not a per-call quota — {@code requireAiOrThrow}
+     * refuses only once the account's transcription minutes are gone and counts
+     * no translations at all — so inside the allowance this bucket is the only
+     * thing bounding provider spend.
+     *
+     * <p><b>The placement is the interesting half.</b> Asking again for a
+     * language already translated returns storage without a model call, and
+     * that has to stay free: charging it would ration reading back work already
+     * paid for. So the limiter sits inside the same branch as the allowance
+     * gate, and these tests pin both sides of that branch.
+     */
+    @Nested
+    @DisplayName("burst protection on the requests that reach the model")
+    class RateLimiting {
+
+        @Test
+        @DisplayName("a first translation spends from the account's bucket")
+        void firstTranslationIsLimited() {
+            translateToSpanish();
+
+            verify(rateLimit, times(1)).checkOrThrow(
+                    eq("meeting-translation"), eq(USER), anyInt(), any(Duration.class));
+        }
+
+        @Test
+        @DisplayName("asking again for the same language spends nothing")
+        void cachedTranslationIsNotLimited() {
+            // The central requirement. This request costs no provider call, so
+            // it must cost no burst budget either -- otherwise switching
+            // languages in the UI could lock somebody out of a translation they
+            // have already paid for.
+            translateToSpanish();
+            clearInvocations(rateLimit, usage, ai);
+
+            translateToSpanish();
+
+            verifyNoInteractions(rateLimit);
+            verifyNoInteractions(usage);
+            verify(ai, never()).translateLines(any(), anyString());
+        }
+
+        @Test
+        @DisplayName("a stale translation is real work and is limited")
+        void staleTranslationIsLimited() {
+            translateToSpanish();
+            stored.get(0).setStale(true);
+            clearInvocations(rateLimit);
+
+            translateToSpanish();
+
+            verify(rateLimit, times(1)).checkOrThrow(
+                    eq("meeting-translation"), eq(USER), anyInt(), any(Duration.class));
+        }
+
+        @Test
+        @DisplayName("adding a transcript to a translated brief is limited")
+        void partialTranslationIsLimited() {
+            // Brief done, transcript not: this asks for something that has
+            // genuinely not been produced yet.
+            service.translate(USER, MEETING, "Spanish", false);
+            clearInvocations(rateLimit);
+
+            service.translate(USER, MEETING, "Spanish", true);
+
+            verify(rateLimit, times(1)).checkOrThrow(
+                    eq("meeting-translation"), eq(USER), anyInt(), any(Duration.class));
+        }
+
+        @Test
+        @DisplayName("but re-reading a brief that already exists is not")
+        void briefOnlyRepeatIsNotLimited() {
+            service.translate(USER, MEETING, "Spanish", false);
+            clearInvocations(rateLimit);
+
+            service.translate(USER, MEETING, "Spanish", false);
+
+            verifyNoInteractions(rateLimit);
+        }
+
+        @Test
+        @DisplayName("every shape spends from one bucket, keyed to the account")
+        void oneBucketForEveryShape() {
+            /*
+             * Not by meeting and not by language: either would be bypassed by
+             * rotating it, and a per-shape bucket would be bypassed by
+             * alternating brief-only and transcript requests.
+             */
+            service.translate(USER, MEETING, "Spanish", false);
+            service.translate(USER, MEETING, "French", true);
+            service.translate(USER, MEETING, "German", false);
+
+            ArgumentCaptor<String> buckets = ArgumentCaptor.forClass(String.class);
+            ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+            verify(rateLimit, times(3)).checkOrThrow(buckets.capture(), keys.capture(),
+                    anyInt(), any(Duration.class));
+
+            assertThat(buckets.getAllValues()).containsOnly("meeting-translation");
+            assertThat(keys.getAllValues()).containsOnly(USER);
+            assertThat(keys.getAllValues()).noneMatch(k -> k.contains(MEETING));
+        }
+
+        @Test
+        @DisplayName("a refusal reaches no model, no allowance and no storage")
+        void refusalCostsNothing() {
+            doThrow(ApiException.usageLimitReached("Too many requests; please slow down."))
+                    .when(rateLimit).checkOrThrow(anyString(), anyString(), anyInt(),
+                            any(Duration.class));
+
+            assertThatThrownBy(() -> translateToSpanish())
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("Too many requests");
+
+            verify(ai, never()).translateLines(any(), anyString());
+            // The allowance gate is behind the limiter, so a refused burst does
+            // not also go and read the account's usage.
+            verifyNoInteractions(usage);
+            // And nothing was written: the blank row is saved after the guard,
+            // so a refusal leaves nothing to be found later and mistaken for a
+            // finished translation.
+            verify(translations, never()).save(any());
+            assertThat(stored).isEmpty();
+        }
+
+        @Test
+        @DisplayName("ownership is decided before any budget is spent")
+        void somebodyElsesMeetingDoesNotSpendTheBucket() {
+            // Probing meetings you do not own would otherwise be a cheap way to
+            // spend your own translation budget down to nothing.
+            assertThatThrownBy(() -> service.translate(OTHER, MEETING, "Spanish", false))
+                    .isInstanceOf(ApiException.class);
+
+            verifyNoInteractions(rateLimit);
+        }
+
+        @Test
+        @DisplayName("and an unsupported language does not spend it either")
+        void invalidLanguageDoesNotSpendTheBucket() {
+            assertThatThrownBy(() -> service.translate(USER, MEETING, "Klingon", false))
+                    .isInstanceOf(ApiException.class);
+
+            verifyNoInteractions(rateLimit);
+        }
+
+        @Test
+        @DisplayName("the account allowance still applies after the limiter allows")
+        void allowanceStillApplies() {
+            // Two independent protections, both still running: burst first,
+            // then the account's own limit.
+            doThrow(ApiException.usageLimitReached("You have used all 100 transcription minutes"))
+                    .when(usage).requireAiOrThrow(anyString(), any());
+
+            assertThatThrownBy(() -> translateToSpanish())
+                    .isInstanceOf(ApiException.class);
+
+            verify(rateLimit).checkOrThrow(anyString(), anyString(), anyInt(),
+                    any(Duration.class));
+            verify(ai, never()).translateLines(any(), anyString());
+            verify(translations, never()).save(any());
+        }
     }
 }

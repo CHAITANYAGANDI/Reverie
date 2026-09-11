@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,6 +63,31 @@ public class TranslationService {
     private final AiClient ai;
     /** Only to refuse a translation that has not been paid for. See {@link #translate}. */
     private final UsageLimitService usage;
+    /** Burst protection, and only on the requests that reach the model. */
+    private final RateLimitService rateLimit;
+
+    /*
+     * One account-level bucket for translations that actually cost something.
+     *
+     * <p>The allowance is not a per-call quota: `requireAiOrThrow` refuses only
+     * once the account's transcription minutes are gone and counts no
+     * translations at all, so an account inside its allowance could translate
+     * without limit. This is the boundary that was missing.
+     *
+     * <p>Five in ten minutes, matching `meeting-resummarize`, because the cost
+     * is the same shape: one model call over a whole meeting. A transcript
+     * translation is a single call carrying every utterance, so it is among the
+     * largest payloads the product sends. Translating one meeting into five
+     * languages inside ten minutes is already unusual for a person; a script
+     * retrying is not.
+     *
+     * <p>Keyed by account and shared across every language, meeting and request
+     * shape. Per-language or per-meeting buckets would be bypassed by rotating
+     * either, and separate brief/transcript buckets by alternating the two.
+     */
+    private static final String TRANSLATION_BUCKET = "meeting-translation";
+    private static final int TRANSLATION_LIMIT = 5;
+    private static final Duration TRANSLATION_WINDOW = Duration.ofMinutes(10);
 
     public TranslationService(MeetingRepository meetings,
                               MeetingSummaryRepository summaries,
@@ -69,8 +95,10 @@ public class TranslationService {
                               TranscriptSegmentRepository segments,
                               MeetingTranslationRepository translations,
                               AiClient ai,
-                              UsageLimitService usage) {
+                              UsageLimitService usage,
+                              RateLimitService rateLimit) {
         this.usage = usage;
+        this.rateLimit = rateLimit;
         this.meetings = meetings;
         this.summaries = summaries;
         this.actionItems = actionItems;
@@ -126,6 +154,12 @@ public class TranslationService {
         // than declining to write a new one -- which is the line the whole
         // allowance is drawn along. See UsageLimitService.
         if (wouldAskTheModel(existing, includeTranscript)) {
+            // Inside the same branch as the allowance, and for the same reason:
+            // a translation served from storage costs nothing to produce, so
+            // charging it against a burst budget would ration reading back work
+            // already paid for.
+            rateLimit.checkOrThrow(TRANSLATION_BUCKET, userId, TRANSLATION_LIMIT,
+                    TRANSLATION_WINDOW);
             usage.requireAiOrThrow(userId, UsageLimitService.AiFeature.TRANSLATION);
         }
 

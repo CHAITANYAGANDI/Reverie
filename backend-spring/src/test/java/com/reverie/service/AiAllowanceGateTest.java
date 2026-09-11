@@ -395,8 +395,12 @@ class AiAllowanceGateTest {
 
         @BeforeEach
         void wire() {
+            // A permissive limiter: this class is about the account allowance,
+            // and a mock that refuses nothing keeps it testing that and only
+            // that. Burst behaviour is covered in TranslationServiceTest.
             service = new TranslationService(meetings, summaries, actionItems, segments,
-                    translations, ai, usage);
+                    translations, ai, usage,
+                    org.mockito.Mockito.mock(RateLimitService.class));
 
             Meeting meeting = new Meeting();
             meeting.setId(MEETING);
