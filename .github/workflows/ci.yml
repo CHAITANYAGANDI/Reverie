@@ -107,9 +107,14 @@ jobs:
         with:
           python-version: '3.12'  # matches ai-service/Dockerfile
           cache: pip
-          cache-dependency-path: ai-service/requirements.txt
+          cache-dependency-path: ai-service/requirements-dev.txt
 
-      - run: pip install -r requirements.txt
+      # The lock, with hashes, not the ranges in pyproject. Two builds of the
+      # same commit two months apart used to get different versions of the
+      # OpenAI SDK, Kafka client and psycopg; `--require-hashes` is implied by
+      # a file that carries them, so a tampered or substituted artifact fails
+      # the install rather than shipping.
+      - run: pip install --require-hashes -r requirements-dev.txt
 
       - run: pytest -q
         env:
