@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.callback import SpringCallbackClient
 from app.config import get_settings
 from app.deployment_check import verify_production
 from app.kafka_worker import KafkaWorker
+from app.observability import FailureSite, init_sentry, report_unexpected
 from app.pipeline import Pipeline
 from app.providers.factory import AiProviderFactory
 from app.rag import RagService
@@ -38,6 +40,10 @@ async def lifespan(app: FastAPI):
     # resilient worker retries forever, a published token -- so a refusal to
     # start is the only failure mode that anybody notices.
     verify_production(settings)
+
+    # Right after the configuration is known to be sane and before anything can
+    # fail. Off without a DSN, which is the ordinary local state.
+    init_sentry(settings)
 
     # Build provider adapters + pipeline (Strategy + Factory + Adapter).
     transcription = AiProviderFactory.create_transcription(settings)
@@ -97,6 +103,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Reverie AI Service", version="0.1.0", lifespan=lifespan)
 app.include_router(ai_router.router)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    """The last resort for an HTTP request, and the only one worth paging on.
+
+    Deliberately registered for `Exception` alone. Starlette routes
+    `HTTPException` to its own handler, so the 401s from the internal-token
+    guard and the 4xx a caller earns by sending a bad body never arrive here --
+    and they should not, because reporting them would bury every real fault
+    under callers' mistakes.
+
+    The traceback goes to this service's log. Sentry is told the type and the
+    component; see app/observability.
+    """
+    logger.exception("Unhandled error serving %s", request.url.path)
+    report_unexpected(site=FailureSite.API_REQUEST, error=exc)
+    # The client learns nothing about the failure. Exception text here is built
+    # from transcripts, prompts and provider responses.
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])

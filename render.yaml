@@ -111,6 +111,24 @@ services:
       - key: REVERIE_INTERNAL_TOKEN
         generateValue: true   # must match the ai-service value; see docs/deploy.md
 
+      # --- Error monitoring -------------------------------------------------
+      # The DSN of the `reverie-backend` Sentry project, and NOT the one the AI
+      # service or the browser uses. Three services, three projects, so an alert
+      # says which one broke without anybody opening the payload.
+      #
+      # Optional. Unset means monitoring is off and nothing else changes: the
+      # service starts, serves and logs exactly as it did. Unlike every other
+      # `sync: false` value here, leaving this one blank is a supported state
+      # rather than a deployment that refuses to boot.
+      #
+      # Reverie never sends the exception itself. See
+      # com.reverie.observability.SentryErrorReporter for what a backend event
+      # is allowed to contain.
+      - key: SENTRY_DSN
+        sync: false        # https://<key>@<org>.ingest.sentry.io/<project>
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
       # The key that turns a verified email into the durable identity of one
       # lifetime free allowance (V69).
       #
@@ -256,6 +274,22 @@ services:
       # of them instead. See ai-service/app/deployment_check.py.
       - key: REVERIE_ENV
         value: production
+
+      # --- Error monitoring -------------------------------------------------
+      # A DIFFERENT DSN from the backend's: this one belongs to the `reverie-ai`
+      # Sentry project. Pasting the backend's here would merge two services'
+      # alerts into one stream and make "which service is failing?" a question
+      # nobody can answer from the dashboard.
+      #
+      # Optional, exactly like the backend's. No DSN means no reporting, no
+      # network, and a worker that behaves identically.
+      #
+      # The AI service never sends an exception object, and deliberately does
+      # not install Sentry's logging integration -- this worker logs meeting ids
+      # and exception strings through logger.exception, and the integration
+      # would forward all of it. See ai-service/app/observability.py.
+      - key: SENTRY_DSN
+        sync: false        # https://<key>@<org>.ingest.sentry.io/<project>
 
       # --- Kafka ------------------------------------------------------------
       - key: KAFKA_BOOTSTRAP_SERVERS

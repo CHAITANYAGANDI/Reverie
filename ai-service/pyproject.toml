@@ -15,6 +15,11 @@ dependencies = [
     "boto3>=1.34",
     "python-multipart>=0.0.9",
     "psycopg[binary,pool]>=3.2",
+    # Error monitoring, optional at runtime: no DSN means no reporting and no
+    # network. The bare SDK, with every integration switched off explicitly --
+    # see app/observability.py for why the logging and FastAPI integrations in
+    # particular are not acceptable here.
+    "sentry-sdk>=2.69",
 ]
 
 # No speaker embedding extra. There was one -- `voiceprints`, carrying torch,
