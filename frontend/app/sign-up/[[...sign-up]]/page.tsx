@@ -43,7 +43,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSignUp } from "@clerk/nextjs";
+import { useSignUp } from "@clerk/nextjs/legacy";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AtSign, Lock, Mail } from "lucide-react";
 import {

@@ -33,7 +33,7 @@ const clerk = vi.hoisted(() => ({
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 
-vi.mock("@clerk/nextjs", () => ({
+vi.mock("@clerk/nextjs/legacy", () => ({
   useSignUp: () => ({
     isLoaded: clerk.isLoaded,
     signUp: {

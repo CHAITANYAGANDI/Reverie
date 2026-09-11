@@ -21,7 +21,7 @@ const clerk = vi.hoisted(() => ({
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), search: "" }));
 
-vi.mock("@clerk/nextjs", () => ({
+vi.mock("@clerk/nextjs/legacy", () => ({
   useSignIn: () => ({
     isLoaded: clerk.isLoaded,
     signIn: {
