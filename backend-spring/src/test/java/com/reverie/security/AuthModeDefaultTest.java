@@ -49,7 +49,7 @@ class AuthModeDefaultTest {
      * worth more if it goes through the thing that actually decides.
      */
     private AuthenticationFilter withMode(String mode) {
-        return new AuthenticationFilter(users, new ClerkTokens(mode, ""), mode);
+        return new AuthenticationFilter(users, new ClerkTokens(mode, "", ""), mode);
     }
 
     private void run(AuthenticationFilter filter, MockHttpServletRequest request) throws Exception {
