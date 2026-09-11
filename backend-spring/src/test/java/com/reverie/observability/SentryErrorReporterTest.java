@@ -26,10 +26,15 @@ import static org.assertj.core.api.Assertions.assertThatCode;
  * it is separate from the transmission: a test that had to mock a static SDK
  * call to find out what leaves would be testing Mockito.
  *
- * <p>What does go is the exception's <em>type</em> and a correlation id. The
- * type is a compile-time class name — it cannot contain user data — and it is
- * most of the triage value. The correlation id joins the alert to the server
- * log, which does have the full stack, on a machine Reverie controls.
+ * <p>What does go is deliberately smaller: the service name and exception class
+ * names. Class names are compile-time symbols and cannot contain user data.
+ *
+ * <p><b>No request-derived identifier is accepted by this reporting contract.</b>
+ * A correlation id was sent at first, gated on matching a UUID. That was wrong:
+ * {@code CorrelationIdFilter} takes {@code X-Correlation-Id} from the request
+ * verbatim when the caller supplies one, so a UUID shape proves only that the
+ * caller can format a UUID. It remains in Reverie's own logs and in the HTTP
+ * error envelope, and nowhere else.
  */
 class SentryErrorReporterTest {
 
@@ -40,9 +45,7 @@ class SentryErrorReporterTest {
         @Test
         @DisplayName("the message is generic, never the exception's own")
         void messageIsGeneric() {
-            var event = SentryErrorReporter.describe(
-                    new IllegalStateException("Transcript segment 'we agreed to acquire Initech' is malformed"),
-                    "6f1d9d4e-0b6a-4a1e-9f0f-2f1f6d8a3c22");
+            var event = SentryErrorReporter.describe(new IllegalStateException("Transcript segment 'we agreed to acquire Initech' is malformed"));
 
             assertThat(event.message()).isEqualTo("Unexpected server error");
             assertThat(event.toString()).doesNotContain("Initech");
@@ -51,7 +54,7 @@ class SentryErrorReporterTest {
         @Test
         @DisplayName("the exception type is sent, because a class name is not user data")
         void typeIsSent() {
-            var event = SentryErrorReporter.describe(new IllegalStateException("boom"), null);
+            var event = SentryErrorReporter.describe(new IllegalStateException("boom"));
 
             assertThat(event.tags()).containsEntry("exception_type", "java.lang.IllegalStateException");
         }
@@ -60,7 +63,7 @@ class SentryErrorReporterTest {
         @DisplayName("the cause's type is sent too, since the outer one is often a wrapper")
         void causeTypeIsSent() {
             var cause = new NumberFormatException("For input string: \"Cindy's meeting\"");
-            var event = SentryErrorReporter.describe(new RuntimeException("wrapped", cause), null);
+            var event = SentryErrorReporter.describe(new RuntimeException("wrapped", cause));
 
             assertThat(event.tags()).containsEntry("cause_type", "java.lang.NumberFormatException");
             assertThat(event.toString()).doesNotContain("Cindy");
@@ -69,7 +72,7 @@ class SentryErrorReporterTest {
         @Test
         @DisplayName("no cause tag when there is no cause, rather than a placeholder")
         void noCauseTagWithoutACause() {
-            var event = SentryErrorReporter.describe(new IllegalStateException("boom"), null);
+            var event = SentryErrorReporter.describe(new IllegalStateException("boom"));
 
             assertThat(event.tags()).doesNotContainKey("cause_type");
         }
@@ -77,7 +80,7 @@ class SentryErrorReporterTest {
         @Test
         @DisplayName("the service names itself, so three projects cannot be confused")
         void namesTheService() {
-            var event = SentryErrorReporter.describe(new RuntimeException(), null);
+            var event = SentryErrorReporter.describe(new RuntimeException());
 
             assertThat(event.tags()).containsEntry("service", "reverie-backend");
         }
@@ -88,7 +91,7 @@ class SentryErrorReporterTest {
             var cause = new IllegalArgumentException("token=sk_live_abcdef user@example.com");
             var error = new RuntimeException("POST /api/v1/meetings/mtg_123?share=secret failed", cause);
 
-            var event = SentryErrorReporter.describe(error, "6f1d9d4e-0b6a-4a1e-9f0f-2f1f6d8a3c22");
+            var event = SentryErrorReporter.describe(error);
 
             String everything = event.toString();
             assertThat(everything).doesNotContain("sk_live_abcdef");
@@ -96,66 +99,19 @@ class SentryErrorReporterTest {
             assertThat(everything).doesNotContain("mtg_123");
             assertThat(everything).doesNotContain("secret");
             assertThat(everything).doesNotContain("SentryErrorReporterTest");
-            // The complete permitted vocabulary. A new key here is a privacy
-            // decision and has to be made deliberately, in this list.
+            // THE COMPLETE PERMITTED SENTRY TAG VOCABULARY. There is no
+            // fourth key, and adding one is a privacy decision that has to be
+            // made deliberately, here, in this list.
             assertThat(event.tags()).containsOnlyKeys(
-                    "service", "exception_type", "cause_type", "correlation_id");
+                    "service", "exception_type", "cause_type");
         }
 
         @Test
         @DisplayName("a null throwable does not become a null tag")
         void survivesANullThrowable() {
-            var event = SentryErrorReporter.describe(null, null);
+            var event = SentryErrorReporter.describe(null);
 
             assertThat(event.tags()).containsEntry("exception_type", "unknown");
-        }
-    }
-
-    @Nested
-    @DisplayName("the correlation id is only sent when this server generated it")
-    class TheCorrelationId {
-
-        @Test
-        @DisplayName("a server-generated UUID is sent")
-        void uuidIsSent() {
-            var event = SentryErrorReporter.describe(
-                    new RuntimeException(), "6f1d9d4e-0b6a-4a1e-9f0f-2f1f6d8a3c22");
-
-            assertThat(event.tags())
-                    .containsEntry("correlation_id", "6f1d9d4e-0b6a-4a1e-9f0f-2f1f6d8a3c22");
-        }
-
-        @Test
-        @DisplayName("anything that is not a UUID is dropped, because the caller supplies it")
-        void callerSuppliedValuesAreDropped() {
-            /*
-             * CorrelationIdFilter takes X-Correlation-Id from the request
-             * verbatim and only generates a UUID when the header is absent. So
-             * this value is attacker-controlled on any request that sets it,
-             * and forwarding it would be an open channel into the telemetry
-             * that every other rule here exists to keep closed.
-             */
-            var event = SentryErrorReporter.describe(
-                    new RuntimeException(), "transcript: we agreed to acquire Initech");
-
-            assertThat(event.tags()).doesNotContainKey("correlation_id");
-        }
-
-        @Test
-        @DisplayName("the filter's own 'n/a' placeholder is not sent as an id")
-        void placeholderIsDropped() {
-            var event = SentryErrorReporter.describe(new RuntimeException(), "n/a");
-
-            assertThat(event.tags()).doesNotContainKey("correlation_id");
-        }
-
-        @Test
-        @DisplayName("absent and blank are both simply absent")
-        void absentIsAbsent() {
-            assertThat(SentryErrorReporter.describe(new RuntimeException(), null).tags())
-                    .doesNotContainKey("correlation_id");
-            assertThat(SentryErrorReporter.describe(new RuntimeException(), "   ").tags())
-                    .doesNotContainKey("correlation_id");
         }
     }
 
@@ -219,7 +175,7 @@ class SentryErrorReporterTest {
         @DisplayName("tags are plain values, so nothing can be serialized in by accident")
         void tagsAreStrings() {
             Map<String, String> tags = SentryErrorReporter
-                    .describe(new RuntimeException(), null).tags();
+                    .describe(new RuntimeException()).tags();
 
             assertThat(tags.values()).allSatisfy(v -> assertThat(v).isNotBlank());
         }

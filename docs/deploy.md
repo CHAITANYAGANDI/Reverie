@@ -833,10 +833,11 @@ a fixed vocabulary:
 
 - **Frontend** — a generic label, the fault boundary, a normalized route shape
   (`/meetings/[id]`, never the id), and an optional Next digest.
-- **Backend** — a generic label, the exception's class name and its cause's, and
-  a correlation id, forwarded **only** when it matches the UUID this server
-  generates. `X-Correlation-Id` is accepted from the caller, so an arbitrary
-  value there would otherwise be an open channel into the telemetry.
+- **Backend** — a generic label, the exception's class name and its cause's.
+  Nothing request-derived, including a correlation id: `X-Correlation-Id` is
+  taken from the caller verbatim when they send one, so a UUID *shape* proves
+  only that the caller can format a UUID. Correlation ids stay in Reverie's own
+  logs and in the HTTP error envelope.
 - **AI service** — a generic label plus `service`, `component`, `operation` and
   the exception's type name. The reporter has no parameter for a meeting id or
   an object key, so a call site cannot pass one by mistake.
@@ -849,7 +850,11 @@ logging integration would forward every one of those as an event. It is not
 installed.
 
 Raw exception messages and stacks remain in each service's own logs, on
-infrastructure Reverie controls, joined to the alert by the correlation id.
+infrastructure Reverie controls. There is deliberately no shared identifier
+linking a Sentry alert to a specific request: an alert says which service failed
+and with which exception type, and the log is then read by time and type. That
+costs a little at triage and is what keeps request-scoped, caller-influenced
+values out of a third party entirely.
 
 ---
 

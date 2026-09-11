@@ -1,6 +1,5 @@
 package com.reverie.observability;
 
-import com.reverie.common.CorrelationIdFilter;
 import io.sentry.Sentry;
 import io.sentry.SentryLevel;
 import org.slf4j.Logger;
@@ -10,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Tells Sentry that something broke, and deliberately does not tell it what.
@@ -26,9 +24,10 @@ import java.util.regex.Pattern;
  * anywhere; the event is built by {@link #describe} from a fixed list of fields.
  *
  * <p>The cost is real and worth naming: Sentry cannot tell you what went wrong,
- * only that something did, of which type, and under which correlation id. The
- * full stack is in this server's own log, on infrastructure Reverie controls,
- * joined to the alert by that id. Sentry is the pager; the log is the evidence.
+ * only that something did and of which type. It cannot even tell you which
+ * request, deliberately — see {@link #describe}. The full stack is in this
+ * server's own log, on infrastructure Reverie controls, found by time and by
+ * exception type. Sentry is the pager; the log is the evidence.
  *
  * <h2>Why the core SDK and not the Spring starter</h2>
  *
@@ -55,19 +54,6 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
 
     /** The fixed label. Deliberately says nothing about the failure. */
     private static final String MESSAGE = "Unexpected server error";
-
-    /**
-     * The shape {@link CorrelationIdFilter} generates.
-     *
-     * <p>That filter takes {@code X-Correlation-Id} from the request verbatim
-     * when the caller sends one, and only generates a UUID when they do not — so
-     * the value is attacker-controlled on any request that sets it. Forwarding
-     * it unchecked would be an open channel into the telemetry that every other
-     * rule here exists to keep closed. Only something this server could have
-     * produced is sent.
-     */
-    private static final Pattern SERVER_GENERATED_ID = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final boolean enabled;
 
@@ -145,7 +131,7 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
     @Override
     public void report(Throwable error) {
         try {
-            transmit(describe(error, CorrelationIdFilter.current()));
+            transmit(describe(error));
         } catch (Throwable ignored) {
             // Monitoring is best effort. Whatever happened here, the caller is
             // in the middle of turning a fault into an HTTP response and must
@@ -181,11 +167,23 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
      * <ul>
      *   <li>the exception's class name, and its cause's — compile-time symbols,
      *       which cannot contain user data and carry most of the triage value;</li>
-     *   <li>a correlation id, but only when it matches the shape this server
-     *       generates, because the caller can otherwise choose it.</li>
      * </ul>
+     *
+     * <p><b>Nothing request-derived is accepted at all</b>, including a
+     * correlation id. {@code CorrelationIdFilter} takes {@code X-Correlation-Id}
+     * from the request verbatim when the caller sends one and only generates a
+     * UUID when they do not — so a UUID <em>shape</em> proves nothing about
+     * where the value came from, and a caller can put whatever they like in a
+     * tag simply by sending a well-formed one. Matching the shape looked like a
+     * check and was not one.
+     *
+     * <p>So the contract takes a {@link Throwable} and nothing else. Correlation
+     * ids stay in Reverie's own logs and in the HTTP error envelope, where the
+     * caller seeing their own value is the entire point. Dropping it also keeps
+     * this telemetry low-cardinality, which is what makes an alert aggregate
+     * into "this is happening a lot" rather than into thousands of singletons.
      */
-    static SafeErrorEvent describe(Throwable error, String correlationId) {
+    static SafeErrorEvent describe(Throwable error) {
         Map<String, String> tags = new LinkedHashMap<>();
         tags.put("service", SERVICE);
         tags.put("exception_type", error == null ? "unknown" : error.getClass().getName());
@@ -196,10 +194,6 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
             // UndeclaredThrowableException, a CompletionException -- and on its
             // own says nothing about what actually failed.
             tags.put("cause_type", cause.getClass().getName());
-        }
-
-        if (correlationId != null && SERVER_GENERATED_ID.matcher(correlationId.trim()).matches()) {
-            tags.put("correlation_id", correlationId.trim());
         }
 
         return new SafeErrorEvent(MESSAGE, Map.copyOf(tags));

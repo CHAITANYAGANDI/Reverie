@@ -11,8 +11,9 @@ import java.util.Map;
  * it is a privacy decision; see {@link SentryErrorReporter#describe}.
  *
  * @param message a fixed, generic label — never the exception's own message
- * @param tags short opaque strings only: a service name, class names, and an
- *     identifier this server generated
+ * @param tags short fixed-vocabulary strings only: the service name and
+ *     exception class names. Nothing request-derived is accepted — not a
+ *     correlation id, not a route, not an identifier of any kind
  */
 public record SafeErrorEvent(String message, Map<String, String> tags) {
 }
