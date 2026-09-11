@@ -19,6 +19,7 @@ import com.reverie.dto.UploadUrlResponse;
 import com.reverie.security.SecurityUtils;
 import com.reverie.service.ErasureService;
 import com.reverie.service.MeetingService;
+import com.reverie.service.RateLimitService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 
@@ -43,15 +45,62 @@ public class MeetingController {
 
     private final MeetingService meetings;
     private final ErasureService erasure;
+    private final RateLimitService rateLimit;
 
-    public MeetingController(MeetingService meetings, ErasureService erasure) {
+    /*
+     * Burst protection for the endpoints that cost money, each named for what
+     * it is defending rather than for the endpoint it sits on.
+     *
+     * <p>Rewriting a summary is always a model call, and the account allowance
+     * does not count them -- it only refuses once transcription minutes are
+     * gone. Five in ten minutes is more than anyone rewriting a summary by hand
+     * needs and stops a loop from re-reading a long transcript on repeat.
+     */
+    private static final String RESUMMARIZE_BUCKET = "meeting-resummarize";
+    private static final int RESUMMARIZE_LIMIT = 5;
+    private static final Duration RESUMMARIZE_WINDOW = Duration.ofMinutes(10);
+
+    /*
+     * <p>ONE bucket for reprocess and language, because they are one action.
+     * `setSpokenLanguage` sets the language and then calls `reprocess`, so both
+     * launch the same billable re-transcription of the same audio; separate
+     * allowances would let a caller alternate them and double what the pipeline
+     * will run. Checked here rather than in the service for the same reason --
+     * inside `reprocess` a language change would be charged twice for the one
+     * request the user made.
+     *
+     * <p>Three in half an hour: reprocessing is the most expensive thing an
+     * authenticated user can ask for, and wanting it four times in thirty
+     * minutes is a retry loop rather than a person.
+     */
+    private static final String REPROCESS_BUCKET = "meeting-reprocess";
+    private static final int REPROCESS_LIMIT = 3;
+    private static final Duration REPROCESS_WINDOW = Duration.ofMinutes(30);
+
+    /*
+     * <p>Not an AI limit. Presigning spends no allowance at all -- meetings are
+     * charged at confirmation so abandoned uploads stay free -- which leaves
+     * this the one authenticated endpoint that will mint pending rows and
+     * storage capability URLs indefinitely. Deliberately generous, because
+     * uploads fail, get retried and arrive several at a time; it bounds a
+     * script, not a person with a folder of recordings.
+     */
+    private static final String UPLOAD_URL_BUCKET = "meeting-upload-url";
+    private static final int UPLOAD_URL_LIMIT = 20;
+    private static final Duration UPLOAD_URL_WINDOW = Duration.ofMinutes(10);
+
+    public MeetingController(MeetingService meetings, ErasureService erasure,
+                             RateLimitService rateLimit) {
+        this.rateLimit = rateLimit;
         this.meetings = meetings;
         this.erasure = erasure;
     }
 
     @PostMapping("/upload-url")
     public UploadUrlResponse uploadUrl(@Valid @RequestBody UploadUrlRequest req) {
-        return meetings.createUploadUrl(SecurityUtils.currentUserId(), req);
+        String userId = SecurityUtils.currentUserId();
+        rateLimit.checkOrThrow(UPLOAD_URL_BUCKET, userId, UPLOAD_URL_LIMIT, UPLOAD_URL_WINDOW);
+        return meetings.createUploadUrl(userId, req);
     }
 
     @PostMapping
@@ -122,7 +171,9 @@ public class MeetingController {
     @PostMapping("/{id}/summary")
     public SummaryResponse resummarize(@PathVariable String id,
                                        @Valid @RequestBody ResummarizeRequest req) {
-        return meetings.resummarize(SecurityUtils.currentUserId(), id, req.template());
+        String userId = SecurityUtils.currentUserId();
+        rateLimit.checkOrThrow(RESUMMARIZE_BUCKET, userId, RESUMMARIZE_LIMIT, RESUMMARIZE_WINDOW);
+        return meetings.resummarize(userId, id, req.template());
     }
 
     @PatchMapping("/{id}/speakers")
@@ -192,10 +243,20 @@ public class MeetingController {
         return meetings.mergeSpeakers(SecurityUtils.currentUserId(), id, req);
     }
 
+    /**
+     * Charge one re-transcription against the shared bucket and return who
+     * asked. Used by both endpoints that start one, exactly once per request.
+     */
+    private String reprocessorOrRefuse() {
+        String userId = SecurityUtils.currentUserId();
+        rateLimit.checkOrThrow(REPROCESS_BUCKET, userId, REPROCESS_LIMIT, REPROCESS_WINDOW);
+        return userId;
+    }
+
     @PostMapping("/{id}/reprocess")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ReprocessResponse reprocess(@PathVariable String id) {
-        return meetings.reprocess(SecurityUtils.currentUserId(), id);
+        return meetings.reprocess(reprocessorOrRefuse(), id);
     }
 
     /**
@@ -209,7 +270,7 @@ public class MeetingController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ReprocessResponse setLanguage(@PathVariable String id,
                                          @Valid @RequestBody MeetingLanguageRequest req) {
-        return meetings.setSpokenLanguage(SecurityUtils.currentUserId(), id, req.language());
+        return meetings.setSpokenLanguage(reprocessorOrRefuse(), id, req.language());
     }
 
     /**
