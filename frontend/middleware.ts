@@ -88,11 +88,11 @@ export const isPublicPath = createRouteMatcher([
  */
 const guard = DEV_MODE
   ? null
-  : clerkMiddleware((auth, request) => {
+  : clerkMiddleware(async (auth, request) => {
       if (isPublicPath(request)) return;
       // `auth()` first: in Clerk 5 the handler is handed a getter, and the
       // object it returns is what carries the session.
-      const { userId, redirectToSignIn } = auth();
+      const { userId, redirectToSignIn } = await auth();
       if (userId) return;
       /*
        * An explicit redirect, not `protect()`.
