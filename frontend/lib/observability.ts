@@ -20,13 +20,15 @@
  * <p>This app holds meeting transcripts, recordings and the questions people
  * ask about them. A reporter that posts "whatever was in scope" is a
  * transcript-exfiltration feature with a support ticket attached. So the
- * payload is a fixed, named set of fields — message, stack, digest, a
- * coarse location — and nothing derived from application state. No request or
- * response bodies, no query strings, no tokens, no user content.
+ * payload is a fixed, named set of fields — a generic error label, digest,
+ * boundary and normalized route shape — and nothing derived from application
+ * state. No raw exception message or stack, request or response bodies, query
+ * strings, tokens, resource ids or user content.
  *
- * <p>The URL is stripped to its path for the same reason. Meeting URLs carry
- * ids, and share links carry capability tokens in the query string; the path
- * is enough to know which screen broke.
+ * <p>The URL is reduced to a normalized route shape for the same reason.
+ * Meeting and folder paths carry resource ids, while query strings can carry
+ * timestamps, return paths or capability tokens. The route shape is enough to
+ * know which screen broke.
  */
 
 /**
@@ -35,13 +37,16 @@
  * sentence somebody said in a meeting?".
  */
 export interface ErrorReport {
+  /**
+   * Deliberately generic. Exception messages can contain transcript text,
+   * titles, API responses or other user-derived content.
+   */
   message: string;
-  stack?: string;
   /** Next's build-time hash for a server-rendered error, when there is one. */
   digest?: string;
   /** Which fault boundary caught it, e.g. "app-shell" or "root-layout". */
   boundary: string;
-  /** Path only, never the query string. */
+  /** Normalized route shape, never ids or query strings. */
   path?: string;
 }
 
@@ -51,9 +56,36 @@ const ENDPOINT = process.env.NEXT_PUBLIC_ERROR_REPORT_URL;
 /** The page, with anything identifying or capability-bearing removed. */
 function safePath(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  // `pathname` only. `href` would carry `?t=` on a meeting and the share token
-  // on a public link, and a collector is a third party by definition.
-  return window.location.pathname;
+
+  const pathname = window.location.pathname;
+
+  // Dynamic resource ids are useful to Reverie but not to an external
+  // collector. Report the route shape instead of the concrete identifier.
+  if (/^\/meetings\/[^/]+\/?$/.test(pathname)) {
+    return "/meetings/[id]";
+  }
+
+  if (/^\/folder\/[^/]+\/?$/.test(pathname)) {
+    return "/folder/[id]";
+  }
+
+  // Optional catch-all routes can contain arbitrary path segments. Collapse
+  // them to their Next route shape so none of those values leave the browser.
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return "/settings/[[...tab]]";
+  }
+
+  if (pathname === "/sign-in" || pathname.startsWith("/sign-in/")) {
+    return "/sign-in/[[...sign-in]]";
+  }
+
+  if (pathname === "/sign-up" || pathname.startsWith("/sign-up/")) {
+    return "/sign-up/[[...sign-up]]";
+  }
+
+  // `pathname` only. Never `href`: query strings can contain timestamps,
+  // return paths or capability-bearing share tokens.
+  return pathname;
 }
 
 export function reportError(
@@ -61,8 +93,7 @@ export function reportError(
   boundary: string,
 ): void {
   const report: ErrorReport = {
-    message: error?.message ?? "Unknown error",
-    stack: error?.stack,
+    message: "Unexpected error",
     digest: error?.digest,
     boundary,
     path: safePath(),
@@ -71,7 +102,11 @@ export function reportError(
   // Always. The console is the only diagnostic a self-hosted deployment with no
   // collector has, and an error boundary that renders a friendly message and
   // leaves nothing behind is how a bug survives three reports of "it broke".
-  console.error(`[reverie:${boundary}]`, report.message, report);
+  console.error(
+    `[reverie:${boundary}]`,
+    error?.message ?? "Unknown error",
+    error,
+  );
 
   if (!ENDPOINT) return;
 
