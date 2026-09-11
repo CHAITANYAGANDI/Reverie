@@ -81,7 +81,9 @@ class ChatConversationTest {
     @BeforeEach
     void setUp() {
         service = new ChatService(messages, conversations, meetings, projects, ai, users, usage,
-                new ObjectMapper());
+                new ObjectMapper(),
+                org.mockito.Mockito.mock(
+                        org.springframework.transaction.PlatformTransactionManager.class));
         when(users.require(anyString())).thenReturn(new com.reverie.entity.UserEntity());
         stored.clear();
         turns.clear();

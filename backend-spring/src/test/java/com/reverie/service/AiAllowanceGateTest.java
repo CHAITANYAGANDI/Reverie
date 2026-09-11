@@ -251,7 +251,9 @@ class AiAllowanceGateTest {
         @BeforeEach
         void wire() {
             chat = new ChatService(messages, conversations, meetings, projects, ai, userService,
-                    usage, new ObjectMapper());
+                    usage, new ObjectMapper(),
+                    org.mockito.Mockito.mock(
+                            org.springframework.transaction.PlatformTransactionManager.class));
             spendEverything();
         }
 
