@@ -49,6 +49,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import Callable
 
+from app.observability import report_unexpected
 from app.config import Settings
 
 logger = logging.getLogger("ai-service.transcode")
@@ -192,9 +193,11 @@ class Mp3Transcoder:
         except TranscodeError as exc:
             logger.warning("Conversion failed: %s", exc)
             self._failures[target_key] = str(exc)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - one failed export must not kill the task
             # The traceback belongs in this log and nowhere near a user.
             logger.exception("Conversion of %s raised.", object_key)
+            # The object key names a user's recording, so it stays here too.
+            report_unexpected(component="transcode", operation="convert", error=exc)
             self._failures[target_key] = GENERIC_FAILURE
         finally:
             self._running.discard(target_key)

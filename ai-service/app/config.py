@@ -106,6 +106,17 @@ class Settings(BaseSettings):
     # checked. See app/deployment_check.py.
     reverie_env: str = "development"
 
+    # --- Error monitoring ----------------------------------------------------
+    # Optional everywhere. Unset means monitoring is off and nothing else
+    # changes: the service starts, serves and logs exactly as it did.
+    #
+    # This DSN belongs to the `reverie-ai` Sentry project and is deliberately
+    # NOT the one the backend uses -- three services, three projects, so an
+    # alert says which one broke without anybody reading the payload.
+    #
+    # Never logged. See app/observability.py for what is and is not sent.
+    sentry_dsn: str | None = None
+
     # --- Spring internal callback ---
     spring_callback_url: str = "http://localhost:8080"
     reverie_internal_token: str = "dev-internal-token"
