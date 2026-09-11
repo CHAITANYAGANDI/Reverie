@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     # three heartbeats have to be missed before eviction rather than one.
     kafka_heartbeat_interval_ms: int = 10_000
 
+    # --- Which deployment this is -------------------------------------------
+    # "development" everywhere except a real deployment, which must say so.
+    # The defaults in this file are chosen so `docker compose up` works with no
+    # configuration at all; that is right locally and is a silent
+    # misconfiguration in production, so production declares itself and is
+    # checked. See app/deployment_check.py.
+    reverie_env: str = "development"
+
     # --- Spring internal callback ---
     spring_callback_url: str = "http://localhost:8080"
     reverie_internal_token: str = "dev-internal-token"

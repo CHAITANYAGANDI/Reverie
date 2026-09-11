@@ -149,6 +149,35 @@ public class StorageService {
     }
 
     /**
+     * How big the object actually is, according to the bucket.
+     *
+     * <p>The size the client declared at presign is a claim, and a presigned PUT
+     * cannot be made to enforce one: the signature covers the key, the method
+     * and the expiry, and S3 will accept whatever bytes arrive under it. So the
+     * declared size rejects the obviously-too-large before an upload starts, and
+     * this is what makes it true afterwards — read from the store, before the
+     * meeting is charged for and queued for transcription.
+     *
+     * <p>Empty rather than zero when the object is missing or the store will not
+     * answer. Zero is a real length a real object can have, and returning it for
+     * "I do not know" would turn a storage outage into a silent pass.
+     */
+    public Optional<Long> sizeOf(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            var head = s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(objectKey).build());
+            return Optional.ofNullable(head.contentLength());
+        } catch (NoSuchKeyException e) {
+            return Optional.empty();
+        } catch (Exception e) {
+            log.debug("HEAD {} failed ({}); size unknown.", objectKey, e.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
+    /**
      * What the bucket actually does about encryption at rest, read from the
      * bucket rather than from our own configuration.
      *

@@ -286,6 +286,28 @@ reverie:
 
 app:
   frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
+  upload:
+    # The largest file this deployment accepts, in bytes. 500 MB by default,
+    # which is a long meeting as video and well past one as audio.
+    #
+    # Read twice: once against the size the client declares before a presigned
+    # URL is issued, and once against the object that actually arrived, before
+    # the allowance is charged and the meeting is queued. The first is advisory
+    # -- a presigned PUT signs the key, the method and the expiry, not a length,
+    # so S3 accepts whatever bytes turn up under it -- and the second is what
+    # makes it true. One value so the two cannot disagree.
+    max-bytes: ${APP_UPLOAD_MAX_BYTES:524288000}
+  ai:
+    timeout:
+      # How long Spring waits on the AI service, by what the call is doing. The
+      # JDK's HttpClient waits forever unless told otherwise, and a cold or
+      # wedged ai-service then hangs the request a user is sitting in front of.
+      # Split because one number cannot serve a token fetch and a model call
+      # over an hour of transcript. See AiClient.
+      fast-seconds: ${APP_AI_TIMEOUT_FAST_SECONDS:15}
+      retrieval-seconds: ${APP_AI_TIMEOUT_RETRIEVAL_SECONDS:30}
+      generative-seconds: ${APP_AI_TIMEOUT_GENERATIVE_SECONDS:180}
+      transcode-seconds: ${APP_AI_TIMEOUT_TRANSCODE_SECONDS:600}
   # Where this API is reachable from the public internet. Distinct from the
   # frontend URL, and with no runtime consumer since V48 removed the calendar
   # feed it was added for. DeploymentCheck still requires it in production, so

@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from app.callback import SpringCallbackClient
 from app.config import get_settings
+from app.deployment_check import verify_production
 from app.kafka_worker import KafkaWorker
 from app.pipeline import Pipeline
 from app.providers.factory import AiProviderFactory
@@ -31,6 +32,12 @@ logger = logging.getLogger("ai-service")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    # Before anything is built. Every check in here is for a value that fails
+    # invisibly -- a mock provider that invents summaries, a localhost broker a
+    # resilient worker retries forever, a published token -- so a refusal to
+    # start is the only failure mode that anybody notices.
+    verify_production(settings)
 
     # Build provider adapters + pipeline (Strategy + Factory + Adapter).
     transcription = AiProviderFactory.create_transcription(settings)
