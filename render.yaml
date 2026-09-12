@@ -30,7 +30,7 @@ services:
   - type: web
     name: reverie-backend
     runtime: docker
-    plan: starter          # 512 MB is not enough; the JVM heap below assumes 2 GB
+    plan: starter           # 512 MB; JVM sizing below preserves native/non-heap headroom
     dockerfilePath: ./backend-spring/Dockerfile
     dockerContext: ./backend-spring
     healthCheckPath: /actuator/health
@@ -47,7 +47,7 @@ services:
       # Container-aware sizing. Without this the JVM sees the host's memory,
       # sizes a heap it cannot have, and is OOM-killed under load.
       - key: JAVA_TOOL_OPTIONS
-        value: -XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=40
+        value: -XX:MaxRAMPercentage=55 -XX:InitialRAMPercentage=20
 
       # --- Postgres (Neon) --------------------------------------------------
       # Runtime traffic goes through the POOLED endpoint; migrations do not.
