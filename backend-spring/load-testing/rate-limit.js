@@ -5,9 +5,27 @@
  * limit exists at all, and a limit is easiest to observe from a single caller
  * going faster than it allows.
  *
- * <p>Expected: 200s, then 429s, and no 5xx in between -- a limiter that falls
- * over instead of refusing is worse than no limiter, because the failure is
- * indistinguishable from the service being down.
+ * <p>Expected: exactly 30 successes, then 429s, and no 5xx in between -- a
+ * limiter that falls over instead of refusing is worse than no limiter, because
+ * the failure is indistinguishable from the service being down.
+ *
+ * <p><b>Both halves are asserted.</b> Counting only the refusals would pass
+ * against a limiter that refused everything, which is the failure mode most
+ * likely to go unnoticed.
+ *
+ * <h2>This needs the AI stub</h2>
+ *
+ * <p>`/api/v1/streaming/token` mints a credential by calling the AI service, so
+ * with no downstream the allowed requests answer 503 and the run cannot tell
+ * "allowed" from "allowed and then broken". Start the stub first -- it serves
+ * one fixed fake token and calls no provider:
+ *
+ * <pre>
+ *   docker run --rm -p 18000:18000 -v "$PWD/backend-spring/load-testing:/s"  *     python:3.12-alpine python /s/stub-ai-service.py
+ * </pre>
+ *
+ * <p>and point the backend under test at it with
+ * `AI_SERVICE_URL=http://host.docker.internal:18000`.
  *
  * <h2>What is behind the limiter now</h2>
  *
@@ -38,15 +56,37 @@ import { check } from "k6";
 import { Counter } from "k6/metrics";
 import { BASE, authHeaders } from "./config.js";
 
+/** Exactly the policy, so the assertions below can be exact. */
+const BUDGET = 30;
+
+const allowed = new Counter("streaming_token_allowed_200");
 const refused = new Counter("rate_limited_429");
+const broken = new Counter("streaming_token_unexpected_status");
+
+// Both are correct answers from a working limiter; neither is an HTTP failure.
+http.setResponseCallback(http.expectedStatuses(200, 429));
 
 export const options = {
-  vus: 1,
-  duration: "30s",
+  scenarios: {
+    one_caller_going_too_fast: {
+      executor: "per-vu-iterations",
+      // One account, well past its budget. A limit is easiest to observe from a
+      // single caller exceeding it.
+      vus: 1,
+      iterations: BUDGET * 4,
+      maxDuration: "2m",
+    },
+  },
   thresholds: {
-    // The assertion. If this never fires, the endpoint is not limited and the
-    // run should fail rather than report a cheerful zero-error summary.
+    // Half one: the budget is honoured. Fails against a limiter that refuses
+    // everything, which counting refusals alone would not catch.
+    streaming_token_allowed_200: [`count==${BUDGET}`],
+    // Half two: the budget is enforced.
     rate_limited_429: ["count>0"],
+    // And enforcement is refusal, not failure.
+    streaming_token_unexpected_status: ["count==0"],
+    http_req_failed: ["rate<0.01"],
+    checks: ["rate>0.99"],
   },
 };
 
@@ -56,7 +96,9 @@ export default function () {
     tags: { name: "POST /api/v1/streaming/token" },
   });
 
-  if (res.status === 429) refused.add(1);
+  if (res.status === 200) allowed.add(1);
+  else if (res.status === 429) refused.add(1);
+  else broken.add(1);
 
   check(res, {
     "allowed or refused, never broken": (r) => r.status === 200 || r.status === 429,

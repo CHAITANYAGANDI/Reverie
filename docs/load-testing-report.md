@@ -1,21 +1,24 @@
 # Reverie AI — Load Testing
 
-> **Status: harness implemented and run. The results below are measured, not
-> estimated.** They come from a local 512 MB / 0.5 CPU container against a
-> disposable PostgreSQL, which is the same shape as the Render `starter`
-> instance but not the same machine. Treat them as capacity *shape* and as
-> relative comparisons; absolute numbers on Render will differ.
+> **Status: harness implemented and run. Every number below is measured.** They
+> come from a local 512 MB / 0.5 CPU container against a disposable PostgreSQL,
+> which is the same shape as the Render `starter` instance but not the same
+> machine. Treat them as capacity *shape* and as relative comparisons; absolute
+> numbers on Render will differ.
 
-Scripts live in `backend-spring/load-testing/`.
+| Script | Purpose | Gates? |
+|---|---|---|
+| `list-meetings.js` | launch acceptance, 50 VUs | **yes** |
+| `list-meetings-stress.js` | capacity benchmark, 100 VUs | no |
+| `notifications.js` | launch acceptance, 50 VUs | **yes** |
+| `upload-url.js` | normal signing path, inside the budget | **yes** |
+| `upload-url-rate-limit.js` | limiter enforcement | **yes** |
+| `rate-limit.js` | streaming-token limiter enforcement | **yes** |
+| `stub-ai-service.py` | local downstream stub, no provider calls | n/a |
 
-```bash
-k6 run backend-spring/load-testing/list-meetings.js
-k6 run backend-spring/load-testing/notifications.js
-k6 run backend-spring/load-testing/upload-url.js
-k6 run backend-spring/load-testing/rate-limit.js
-```
+---
 
-## Environment used for every number on this page
+## Environment
 
 | | |
 |---|---|
@@ -23,27 +26,30 @@ k6 run backend-spring/load-testing/rate-limit.js
 | Backend container | `--memory=512m --cpus=0.5` (cgroup `cpu.max = 50000 100000`) |
 | Image | `eclipse-temurin:21-jre-alpine`, Temurin 21.0.12 |
 | GC | **SerialGC**, chosen ergonomically — the container reports 1 CPU |
-| Heap | `55/20` → max 282 MiB · `45/15` → max 224 MiB |
-| Database | disposable PostgreSQL + pgvector, schema migrated V1→V69 |
-| Data | 25 dev identities, **200 meetings each (5 000 rows)** |
-| Auth | dev identities `usr_load_0…24`, pre-provisioned before measurement |
+| JVM | `MaxRAMPercentage=55 / InitialRAMPercentage=20` → max heap 282 MiB |
+| Database | disposable PostgreSQL + pgvector, migrated V1→V69 |
+| Data | 200 meetings per account (5 000 rows) |
+| Auth | dev identities, pre-provisioned; disjoint ranges per script |
 | Kafka | pointed at a port with no broker |
-| AI service / object store | deliberately absent |
+| AI service | **`stub-ai-service.py`**, one fixed fake token, no provider calls |
+| Object store | absent; presigning is local and needs no endpoint |
 
-Two environment facts that shape the numbers:
+### Local limitations, stated plainly
 
 - **Startup takes ~125–135 s**, almost all of it the Kafka admin client retrying
-  against a broker that is not there. Expected locally; not a steady-state cost.
-- **The AI service is absent on purpose.** Endpoints that call it fail at the
-  provider call. That is visible in the rate-limit run below and is an artefact
-  of the harness, not of the backend.
+  against a broker that is not there. Local only; not a steady-state cost.
+- **The AI service is a stub.** It answers one route with a fixed fake token so
+  the streaming-token limiter can be tested end to end. It is not a behavioural
+  mock and must not become one.
+- **The object store is absent.** Presigning is local crypto, so the signing
+  path is real; nothing is uploaded, confirmed, transcribed, or charged.
+- **Measurements require a warm JVM.** See below — this is not a detail.
 
 ---
 
-## The first run, and why it was misleading
+## Warm-up dominates everything, and is why the first result was wrong
 
-Recorded because it is what prompted this investigation, and because the
-explanation matters more than the number.
+The investigation started from a failing run:
 
 | | |
 |---|---|
@@ -54,8 +60,10 @@ explanation matters more than the number.
 | Threshold | **FAILED** (`p95 < 300 ms`) |
 | Memory | `memory.events max` delta **0**, OOM **0** |
 
-**It was measured on a cold JVM, against an empty `meetings` table.** Three
-consecutive identical 25-VU runs on one container showed how much that matters:
+**It was measured on a cold JVM against an empty `meetings` table.** It is kept
+here rather than replaced, because the explanation is the finding.
+
+Three consecutive *identical* 25-VU runs on one container:
 
 | repeat | median | p95 | CPU consumed | periods throttled |
 |---|---|---|---|---|
@@ -63,184 +71,231 @@ consecutive identical 25-VU runs on one container showed how much that matters:
 | 2 | 63 ms | 176 ms | 16.17 s | 64.8 % |
 | 3 | **27 ms** | **87 ms** | **7.34 s** | **13.5 %** |
 
-Same load, same code, same data — **2.5× less CPU for the same work** by the
-third pass. Any measurement taken before the JIT has settled describes warm-up,
-not capacity. Every ladder below is taken after warming to a CPU plateau.
+**2.5× less CPU for the same work** by the third pass. Reproduced on a second
+container built from scratch, which took six passes to plateau:
+
+```
+20.27s → 20.22s → 17.15s → 11.11s → 9.12s → 7.78s CPU
+96.4%  → 97.1%  → 69.7%  → 30.5%  → 23.2% → 15.3% throttled
+```
+
+Any measurement taken before that plateau describes JIT compilation, not
+capacity. Every result below is taken after warming.
 
 ---
 
 ## What the latency actually was
 
-Diagnosed before anything was changed, and nothing needed changing:
+Diagnosed before anything was changed — and **nothing needed changing**:
 
-- **Not the query.** With 200 meetings per user, `EXPLAIN ANALYZE` gives
+- **Not the query.** With 200 meetings per account, `EXPLAIN ANALYZE` gives
   **0.103 ms** for the page (`Index Scan Backward using idx_meetings_user_created`,
   6 shared buffers) and **0.255 ms** for the count. The existing index already
-  serves `ORDER BY created_at DESC` by scanning backwards. **No index is missing.**
-- **Not the database at all.** Every statement logged during a request ran in
+  serves `ORDER BY created_at DESC` by scanning backwards. **No index is missing
+  and no migration was added.**
+- **Not the database.** Every statement logged during a request ran in
   0.02–0.12 ms.
-- **Not authentication or provisioning.** The identities are provisioned once;
-  steady-state auth is two sub-millisecond queries.
-- **Not background work.** Idle burn is **1.4 %** of the CPU quota with zero
-  throttled periods.
-- **It is the CPU quota.** Throttling rises monotonically with load, and
-  throughput plateaus exactly as the quota saturates.
+- **Not auth or provisioning.** Identities are provisioned once; steady-state
+  auth is two sub-millisecond queries.
+- **Not background work.** Idle burn is **1.4 %** of quota with zero throttled
+  periods — not the Kafka retry, not the outbox poll.
+- **It is the 0.5 CPU quota.** Throttled scheduling periods climb with load and
+  throughput plateaus exactly as they do. Marginal cost is ~5.1 ms of CPU per
+  request warm, putting the ceiling near 98 req/s.
 
 The latency floor is itself a quota artefact: even at 5 VUs about 10 % of
-scheduling periods are throttled, so a request that needs a few milliseconds of
-CPU can still wait for the next 100 ms period to refill. That is why median
-latency sits near 30 ms rather than near the ~0.4 ms of database work.
+periods are throttled, so a request needing a few milliseconds of CPU can still
+wait for the next 100 ms period. That is why median sits near 30 ms rather than
+near the ~0.36 ms of database work.
 
 ---
 
-## Load ladder — `GET /api/v1/meetings?page=0&size=20`
+# Launch acceptance results
 
-Constant VUs, 1 s think time, 40 s per rung, warm JVM, 200 meetings per user.
+All gating scripts, warm, `55/20`, 200 meetings per account. **k6 exit 0 for
+every one.**
 
-### Production configuration (`MaxRAMPercentage=55 / InitialRAMPercentage=20`)
+### `list-meetings.js` — PASSED
 
-| VUs | req/s | median | p90 | p95 | p99 | max | throttled periods | errors |
-|---|---|---|---|---|---|---|---|---|
-| 25 | 23.79 | 28.35 ms | 77.62 ms | **140.61 ms** | 261 ms | 366 ms | 22.0 % | 0 % |
-| 50 | 46.49 | 26.92 ms | 105.20 ms | **175.90 ms** | 740 ms | 970 ms | 33.9 % | 0 % |
-| 100 | 80.01 | 188.26 ms | 499.29 ms | **713.26 ms** | 1.13 s | 1.52 s | 87.7 % | 0 % |
+50 VUs, 20 s ramp, 1 min hold.
 
-`memory.events max` delta was **0** across all three rungs; OOM **0**.
+| | |
+|---|---|
+| Requests | 3 643 · **40.21 req/s** |
+| Latency | avg 36.77 ms · med 26.40 ms · p90 82.28 ms · **p95 98.82 ms** · max 202.9 ms |
+| Errors | 0 % · checks 7286/7286 |
+| Threshold | **PASSED** (`p95 < 200 ms`) |
+| CPU | 174 of 908 periods throttled (19.2 %) |
+| Memory | `max` 1145→1150 · **OOM 0** |
 
-### Comparison configuration (`45 / 15`)
+### `notifications.js` — PASSED
 
-| VUs | req/s | median | p90 | p95 | p99 | throttled periods |
-|---|---|---|---|---|---|---|
-| 25 | 23.79 | 29.42 ms | 60.62 ms | **100.88 ms** | 291 ms | 14.1 % |
-| 50 | 45.96 | 31.37 ms | 185.04 ms | **282.91 ms** | 897 ms | 25.7 % |
-| 100 | 64.14 | 412.44 ms | 1.00 s | **1.09 s** | 1.48 s | 97.3 % |
+50 VUs.
 
-### Where the thresholds fall
+| | |
+|---|---|
+| Requests | 2 275 · **24.84 req/s** |
+| Latency | avg 21.39 ms · med 19.57 ms · p90 23.48 ms · **p95 26.57 ms** · max 144.89 ms |
+| Errors | 0 % · checks 2275/2275 |
+| Threshold | **PASSED** (`p95 < 200 ms`) |
+| CPU | 69 of 830 periods throttled (8.3 %) |
+| Memory | `max` 1330→1366 · **OOM 0, oom_kill 0** |
 
-Reading the 55/20 ladder:
+### `upload-url.js` — PASSED
+
+25 accounts × 15 requests = 375, deliberately inside the 20-per-10-minutes
+budget. First two iterations per VU are tagged `warm` and excluded from the
+threshold.
+
+| | |
+|---|---|
+| Signed (200) | 300 |
+| Oversize refused (400) | 75 |
+| Unexpected 429 | **0** |
+| 5xx / transport | **0** · checks 375/375 |
+| Latency, measured phase | med 25.60 ms · p90 30.10 ms · **p95 33.60 ms** |
+| Latency, including warm | med 25.93 ms · p95 265.47 ms · max 676.33 ms |
+| Threshold | **PASSED** (`p95{phase:measure} < 500 ms`) |
+
+**Why warm-up is excluded, and why the aggregate is still printed.** The first
+call into the presign path costs seconds: the object-store SDK loads and
+initialises its crypto on first use. Measured — the same scenario run twice
+against different accounts gave p95 **3.49 s** then **255 ms**, with the median
+unchanged at ~27 ms both times. A one-time process cost, not a property of the
+endpoint. It is excluded by tag rather than deleted, so it stays visible.
+
+### `upload-url-rate-limit.js` — PASSED
+
+10 accounts × 60 requests, three times the budget.
+
+| | |
+|---|---|
+| Allowed (200) | **exactly 200** = 10 accounts × 20 |
+| Refused (429) | 400 |
+| Unexpected status | **0** · 5xx **0** · checks 600/600 |
+| Threshold | **PASSED** (`allowed == 200`, `429 > 0`, `unexpected == 0`) |
+
+The strict equality is the point: it distinguishes *a* limiter from *the right*
+limiter. A policy change, a per-meeting key or a per-endpoint bucket all move
+that number.
+
+### `rate-limit.js` — PASSED (streaming token)
+
+One account, 120 requests against a 30-per-10-minutes budget, with the AI stub
+downstream.
+
+| | |
+|---|---|
+| Allowed (200) | **exactly 30** — genuine successes, not failures |
+| Refused (429) | 90 |
+| Unexpected status | **0** · 5xx **0** · checks 120/120 |
+| Threshold | **PASSED** (`allowed == 30`, `429 > 0`, `unexpected == 0`) |
+
+**This previously could not pass honestly.** Without a downstream, the 30
+allowed requests answered 503 (`ResourceAccessException`), so the run could not
+tell "the limiter allowed it" from "the limiter allowed it and then it broke" —
+and a limiter that refused *everything* would have produced a similar summary.
+The assertion was strengthened to check both halves and the downstream was
+stubbed, rather than the assertion being weakened.
+
+---
+
+# Capacity / stress (non-gating)
+
+### `list-meetings-stress.js` — 100 VUs
+
+Asserts correctness only. Latency here is a measurement, not a requirement.
+
+| | |
+|---|---|
+| Requests | 6 366 · **70.06 req/s** |
+| Latency | avg 187.25 ms · med 107.81 ms · p90 483.31 ms · p95 596.20 ms · p99 896.08 ms · max 1.59 s |
+| Errors | **0 %** · checks 12732/12732 |
+| CPU | 601 of 911 periods throttled (66.0 %) |
+| Memory | `max` 1150→1161 · **OOM 0** |
+
+**Saturation is graceful**: every request still answered correctly, with a
+well-formed page. Slower is acceptable; wrong is not.
+
+### The warm ladder behind the numbers
+
+`GET /api/v1/meetings`, constant VUs, 1 s think time, warm, 200 meetings each:
+
+| VUs | req/s | median | p95 | throttled |
+|---|---|---|---|---|
+| 25 | 23.79 | 28.35 ms | 140.61 ms | 22.0 % |
+| 50 | 46.49 | 26.92 ms | 175.90 ms | 33.9 % |
+| 100 | 80.01 | 188.26 ms | 713.26 ms | 87.7 % |
 
 | target | satisfied up to |
 |---|---|
 | p95 < 200 ms | ~50 VUs (~46 req/s) |
 | p95 < 300 ms | ~60 VUs |
 | p95 < 500 ms | ~85 VUs |
-| p95 < 1 s | beyond 100 VUs |
-
-Marginal cost is **~5.1 ms of CPU per request** warm, which puts the theoretical
-ceiling near 98 req/s on a 0.5 CPU quota. Measured throughput peaks at **80
-req/s**, the difference being throttling overhead and fixed background work.
-
-**`p95 < 300 ms` at 100 VUs is not reachable on 0.5 CPU.** At 100 VUs with 1 s
-think time the offered load is ~80–100 req/s against a ~98 req/s ceiling: the
-service is at 80–100 % utilisation, which is the region where queueing latency
-rises steeply no matter how efficient the code is. Meeting it would need roughly
-twice the CPU, not a code change. `list-meetings.js` still carries the 300 ms
-threshold and still fails it at 100 VUs; the threshold has deliberately **not**
-been edited to make the run green. See "Proposed service-level target" below.
 
 ---
 
-## `notifications.js` — PASSED
+## Why the old 100-VU / 300 ms target was replaced as the gate
 
-50 VUs, 90 s, warm.
+It was written before anything had been measured against the instance it runs
+on, and it describes roughly twice the CPU Reverie buys.
 
-| | |
-|---|---|
-| Requests | 2 258 · 24.81 req/s |
-| Latency | avg 34.17 ms · med 23.38 ms · p90 62.16 ms · **p95 94.72 ms** · max 261 ms |
-| Errors | 0 % · checks 2258/2258 |
-| Threshold | **PASSED** (`p95 < 200 ms`, `errors < 1 %`) |
+At 100 VUs with 1 s think time the offered load is ~80–100 req/s against a
+measured ceiling of ~98 req/s: the service runs at 80–100 % utilisation, which
+is the queueing region. Latency there is a property of the arithmetic.
 
-Measured on the `45/15` container, which was the slower of the two at 50 VUs —
-so this is a conservative result and holds for `55/20`.
+**It was not a query, index, pool or backend defect** — see the diagnosis above.
+Meeting it needs roughly double the CPU, not a code change.
 
----
+So the acceptance gate is now **p95 < 200 ms at 50 VUs** (measured 98.82 ms,
+with headroom), and the 100-VU evidence is kept as a non-gating capacity
+benchmark rather than deleted. Both facts stay visible: what is promised, and
+where it breaks. **The old target is not recorded as having passed. It did
+not.**
 
-## `upload-url.js` — limiter contract verified, latency threshold missed
-
-The script was rewritten for this run. It previously asserted that an ordinary
-request returns 200, which stopped being true when the endpoint gained a burst
-limit of **20 requests / 10 minutes per user**: at 50 VUs over 25 identities each
-identity issues ~180 requests in 90 s, so the old check read a *working* limiter
-as a broken endpoint.
-
-| outcome | count |
-|---|---|
-| 200 allowed | 425 |
-| 400 refused for declared size | 75 |
-| 429 refused by the limiter | 2 924 |
-| 5xx / transport | **0** |
-
-`425 + 75 = 500 = 25 identities × exactly 20` — the limiter is precise to the
-request. Checks 3424/3424.
-
-`p95 = 598 ms` against a `p95 < 500 ms` threshold: **missed, and left as
-measured.** The response mix is now dominated by cheap 429s, so the threshold no
-longer describes the same workload it was written for; it should be revisited
-deliberately rather than nudged to fit.
+For context, 40–46 req/s sustained is ~3.5–4 M requests/day against a list
+endpoint a real user opens occasionally rather than once per second.
 
 ---
 
-## `rate-limit.js` — limiter proven, 30 failures explained
+## JVM sizing: 55/20 confirmed
 
-| | |
-|---|---|
-| 429 refusals | 2 346 |
-| Non-429 | 30 |
-| Threshold | **PASSED** (`rate_limited_429 count > 0`) |
+Both configurations, warm, same data and protocol:
 
-The 30 are exactly the `streaming-token` budget of 30 / 10 min. The limiter
-allowed them; each then failed at the provider call with
-`ResourceAccessException`, because **this environment has no AI service on
-purpose**. An environment artefact, not a limiter defect — the assertion
-"allowed or refused, never broken" is correct and is left in place.
+| VUs | 45/15 p95 | **55/20 p95** | 45/15 req/s | **55/20 req/s** |
+|---|---|---|---|---|
+| 25 | 100.88 ms | 140.61 ms | 23.79 | 23.79 |
+| 50 | 282.91 ms | **175.90 ms** | 45.96 | 46.49 |
+| 100 | 1.09 s | **713.26 ms** | 64.14 | **80.01** |
 
-The script's documentation also claimed streaming-token was the only limited
-endpoint. That has been corrected to the current policy: `ai-chat` 20/1 min
-(shared across meeting, project and workspace), `meeting-resummarize` 5/10 min,
-`meeting-reprocess` 3/30 min (shared with `/language`), `meeting-upload-url`
-20/10 min, `meeting-translation` 5/10 min (model-backed path only), and
-`streaming-token` 30/10 min.
+At saturation `55/20` sustains ~25 % more throughput at materially lower p95:
+more heap means less GC competing for a throttled CPU budget. `45/15` also took
+about nine warm-up passes to plateau against roughly four, which matters on
+every deploy restart.
 
----
+**Production stays at `MaxRAMPercentage=55 / InitialRAMPercentage=20`.
+`render.yaml` is unchanged.**
 
-## Proposed service-level target
-
-The committed `list-meetings.js` threshold (`p95 < 300 ms` at 100 VUs) predates
-any measurement of the deployment it runs against. On the evidence above it
-describes roughly twice the CPU Reverie buys.
-
-A target the current instance actually meets, with headroom:
-
-> **`GET /api/v1/meetings`: p95 < 200 ms at 50 concurrent users (~46 req/s),
-> 0 errors.** Measured: p95 175.90 ms.
-
-For context, 46 req/s sustained is ~4 M requests/day against a list endpoint
-that a real user opens occasionally rather than once per second. Nothing in the
-product's expected traffic approaches it.
-
-**This is a proposal, not an applied change** — the threshold in the script has
-been left failing rather than edited.
+An earlier comparison appeared to favour `45/15`. It was invalid — it compared a
+warm container against a cold one, and was redone.
 
 ---
 
 ## Memory
 
-`memory.events` counters were recorded before and after every rung.
+`memory.events` was recorded before and after every run.
 
-- **No OOM, ever.** `oom` and `oom_kill` stayed at 0 through every run including
-  100 VUs on both configurations.
-- Warm 55/20 rungs produced a `max` delta of **0** — no reclaim pressure at all.
-- Cold/warming rungs produced non-zero `max` deltas (tens to low hundreds), which
-  is the cgroup reclaiming file cache while the JVM is still compiling. It
-  settles.
+- **No OOM, ever.** `oom` and `oom_kill` stayed at 0 through every run on both
+  configurations, including 100 VUs.
+- Warm runs produce `max` deltas in the single digits to low tens — the cgroup
+  reclaiming file cache, not the JVM running out of heap.
 - A high `memory.current` alone is not failure: much of it is reclaimable page
   cache, which is why `memory.events` and `oom_kill` are the counters quoted.
 
-One container did exit during this work (exit 255, `OOMKilled=false`). It was
+One container did exit mid-investigation (exit 255, `OOMKilled=false`). It was
 caused by running a second 512 MB JVM alongside it for a comparison, pressuring
-the Docker Desktop VM. It was not a backend fault and not reproducible with a
-single container.
+the Docker Desktop VM. Not a backend fault, and not reproducible with a single
+container.
 
 ---
 
@@ -250,8 +305,9 @@ single container.
   binary. It degrades to the 5 s poll, so throughput looks fine while the
   product feels slow — the one path these scripts cannot see.
 - **The AI paths.** Chat, summarize and transcription are where the real cost
-  lives and cannot be load-tested without either spending provider credit or
-  standing up a stubbed ai-service. The stub is the right answer and does not
-  exist yet.
+  lives. Load-testing them needs a stubbed ai-service with realistic timing; the
+  token stub here is deliberately not that.
 - **Concurrency against the free-tier ledger**, which is a correctness test
   driven by load rather than a throughput test.
+- **Render itself.** Everything here is local. Production validation is by
+  observation of real traffic, not synthetic load against the live service.

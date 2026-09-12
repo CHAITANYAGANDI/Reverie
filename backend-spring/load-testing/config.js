@@ -29,6 +29,21 @@ export const BASE = __ENV.BASE_URL || "http://localhost:8080";
 const USERS = Number(__ENV.VUS_USERS || 25);
 
 /**
+ * Where this script's identity range starts.
+ *
+ * The burst limiters are per-account and hold state for a whole window, so a
+ * script that deliberately exhausts a budget leaves those accounts spent for up
+ * to ten minutes. Running an enforcement test and then a latency test against
+ * the same accounts would measure the leftovers of the first rather than the
+ * second.
+ *
+ * A disjoint range keeps them independent without restarting the backend to
+ * clear an in-memory limiter: the enforcement scripts pass an offset, the
+ * normal-path scripts keep the default.
+ */
+const USER_OFFSET = Number(__ENV.USER_OFFSET || 0);
+
+/**
  * A stable per-VU identity.
  *
  * Distinct users rather than one, because one user means one row in every
@@ -37,7 +52,7 @@ const USERS = Number(__ENV.VUS_USERS || 25);
  * a second run reuses the same rows instead of growing the database each time.
  */
 export function devUser() {
-  return `usr_load_${__VU % USERS}`;
+  return `usr_load_${USER_OFFSET + (__VU % USERS)}`;
 }
 
 export function authHeaders() {
