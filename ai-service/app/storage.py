@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import Settings
+from app.log_safety import safe_key
 
 logger = logging.getLogger("ai-service.storage")
 
@@ -111,7 +112,10 @@ def presigned_get_url(
             ExpiresIn=max(60, int(expires_seconds)),
         )
     except Exception as exc:  # noqa: BLE001 — boto3 raises a wide range.
-        logger.info("No presigned URL for %s (%s); falling back to bytes.", object_key, type(exc).__name__)
+        logger.info(
+            "No presigned URL for %s (%s); falling back to bytes.",
+            safe_key(object_key), type(exc).__name__,
+        )
         return None
 
 

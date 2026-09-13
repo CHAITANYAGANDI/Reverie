@@ -317,7 +317,12 @@ public class NotificationService {
 
             pingAfterCommit(userId);
         } catch (Exception e) {
-            log.warn("Could not record a {} notification for {}: {}", kind, userId, e.toString());
+            // The class, not the message. This insert carries the notification
+            // title and body -- a meeting title, an action item -- and
+            // PostgreSQL answers a not-null or check violation with
+            // "DETAIL: Failing row contains (...)", which is that row.
+            log.warn("Could not record a {} notification for {} ({}).",
+                    kind, userId, e.getClass().getSimpleName());
         }
     }
 

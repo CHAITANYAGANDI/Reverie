@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.repository.OutboxEventRepository;
 import com.reverie.security.TenantContext;
 import org.slf4j.Logger;
@@ -95,7 +96,8 @@ public class OutboxPurge {
         } catch (Exception e) {
             // This job deletes rows on a schedule. It failing is a tidiness
             // problem; it killing the scheduler thread would stop the relay.
-            log.error("Outbox purge failed: {}", e.getMessage(), e);
+            log.error("Outbox purge failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 

@@ -104,6 +104,7 @@ from app.providers.assemblyai_adapter import (
     TranscriptionRequest,
 )
 from app.storage import fetch_audio, presigned_get_url
+from app.log_safety import frames
 
 logger = logging.getLogger("ai-service.kafka")
 
@@ -313,7 +314,14 @@ class KafkaWorker:
                 # against. Committed rather than retried: it cannot ever
                 # succeed, and leaving it uncommitted on a single-partition
                 # topic would stop every meeting behind it.
-                logger.exception("Discarding unreadable meeting_uploaded message: %s", exc)
+                # Frames, not the message. This is a pydantic
+                # ValidationError and its message quotes the input it
+                # rejected -- for this event that is the object key, which
+                # ends in the uploader's filename.
+                logger.error(
+                    "Discarding unreadable meeting_uploaded message (%s).\n%s",
+                    type(exc).__name__, frames(exc),
+                )
                 await self._commit(msg)
                 continue
 
@@ -323,7 +331,10 @@ class KafkaWorker:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — one bad message must not kill the loop.
-                logger.exception("Failed handling meeting_uploaded message: %s", exc)
+                logger.error(
+                    "Failed handling meeting_uploaded message (%s).\n%s",
+                    type(exc).__name__, frames(exc),
+                )
                 # The outcome above is unchanged by this and must stay that way:
                 # report_unexpected swallows everything, so monitoring cannot
                 # alter which messages are retried.
@@ -586,9 +597,13 @@ class KafkaWorker:
 
             retryable = is_retryable(exc)
             if retryable and failures + 1 < self._max_attempts:
+                # The class name was already here; the message is dropped.
+                # Everything this line can catch came out of transcription,
+                # summarization or the callback, and all three render a
+                # provider response body into their message.
                 logger.warning(
-                    "Processing %s failed retryably (%s: %s); leaving it for redelivery.",
-                    meeting_id, type(exc).__name__, exc,
+                    "Processing %s failed retryably (%s); leaving it for redelivery.",
+                    meeting_id, type(exc).__name__,
                 )
                 return Outcome.RETRY
 
@@ -597,7 +612,10 @@ class KafkaWorker:
                     "Processing %s failed %d times; recording it as failed rather than "
                     "holding the partition.", meeting_id, failures + 1,
                 )
-            logger.exception("Processing failed for %s: %s", meeting_id, exc)
+            logger.error(
+                "Processing failed for %s (%s).\n%s",
+                meeting_id, type(exc).__name__, frames(exc),
+            )
             # The meeting id stays in this log line and does not travel: the
             # reporter takes a FailureSite, so there is no string argument it
             # could ride out on.

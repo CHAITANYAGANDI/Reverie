@@ -123,7 +123,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
-        log.error("Unhandled exception [correlationId={}]", CorrelationIdFilter.current(), ex);
+        // The frames, not the messages. This handler sees whatever escaped a
+        // controller, and two of those carry content in their message: a
+        // RestClientResponseException holds the ai-service response body, and
+        // HttpMessageNotReadableException quotes the request body Jackson
+        // could not read. Passing `ex` to SLF4J prints both.
+        log.error("Unhandled exception [correlationId={}] {}\n{}",
+                CorrelationIdFilter.current(), ex.getClass().getName(), LogSafe.stackTrace(ex));
         /*
          * Announced before the response is built, and unable to affect it.
          *

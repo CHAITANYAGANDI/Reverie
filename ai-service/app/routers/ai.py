@@ -161,7 +161,12 @@ async def summarize(
         if material.strip():
             summary.suggestions = await pipeline.suggest_questions(material)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not suggest questions while summarizing: %s", exc)
+        # As in Pipeline.suggest_questions: the message carries the model
+        # response or the summary text it was parsing.
+        logger.warning(
+            "Could not suggest questions while summarizing (%s).",
+            type(exc).__name__,
+        )
     return summary
 
 

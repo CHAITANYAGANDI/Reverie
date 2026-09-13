@@ -1,6 +1,7 @@
 package com.reverie.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.reverie.common.LogSafe;
 import com.reverie.domain.SummarySection;
 import com.reverie.dto.SegmentDto;
 import com.reverie.dto.callback.AiInsight;
@@ -674,7 +675,8 @@ public class AiClient {
             String message = body.hasNonNull("message") ? body.get("message").asText() : null;
             return new TranscodeState(status, message);
         } catch (RuntimeException e) {
-            log.warn("Transcoding {} to mp3 failed: {}", objectKey, e.getClass().getSimpleName());
+            log.warn("Transcoding {} to mp3 failed: {}",
+                    LogSafe.objectKey(objectKey), e.getClass().getSimpleName());
             return new TranscodeState(TranscodeState.FAILED,
                     "The audio could not be converted just now. Try again in a moment.");
         }
