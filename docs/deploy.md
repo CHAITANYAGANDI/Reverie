@@ -930,6 +930,12 @@ images were then run under emulation: Spring reached `UP` and served a real API
 call on `aarch64`/Temurin 21.0.12, and the worker started FastAPI and joined its
 Kafka consumer group.
 
+The operator keeps one `.env`, but **no service receives all of it**: each lists
+the variables it actually reads, so the worker never holds Flyway's password,
+Clerk's secret key or the free-tier HMAC, and Spring never holds a provider key.
+Validate a populated file with `docker compose config --quiet` — plain
+`config` renders every resolved secret to stdout.
+
 Two variables move at cutover, both on **Vercel**, and both are
 `NEXT_PUBLIC_*` — which Next.js inlines at **build** time, so changing them
 needs a redeploy rather than an environment edit:

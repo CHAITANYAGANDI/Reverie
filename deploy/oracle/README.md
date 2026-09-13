@@ -217,13 +217,25 @@ cp .env.example .env
 chmod 600 .env
 $EDITOR .env                      # fill it in here, never in Git
 
-docker compose config             # validate; prints the resolved config
+docker compose config --quiet     # validate; prints NOTHING on success
 docker compose build              # ~10-20 min on 2 OCPU, first time only
 docker compose up -d
 
 docker compose ps
 docker compose logs -f reverie-backend
 ```
+
+> **`--quiet`, and never without it against a real `.env`.** Plain
+> `docker compose config` renders the *resolved* file to stdout, which means
+> every value in `.env` — Neon's passwords, the Confluent API secret, the R2
+> keys, Clerk's secret key, the free-tier HMAC — printed in full. That lands in
+> terminal scrollback, in anything piped to a file, in a pasted snippet and in a
+> screenshot. `--quiet` performs exactly the same validation and prints nothing
+> on success, exiting non-zero with the error if the file is wrong.
+>
+> Rendering the full config is a reasonable thing to do while working on the
+> Compose file itself — but do it with `.env.example` values, not production
+> ones.
 
 Let the backend come up first and reach `UP` — it runs the Flyway migrations.
 Then check the worker. Its service status is not enough: it degrades rather
@@ -365,6 +377,51 @@ done properly this time.
 
 Deliberately not the whole VM. If `reverie-backend` ever sits above ~1.5 GB
 steady, that is a regression to investigate — not a limit to raise.
+
+---
+
+## Secrets, and who gets which
+
+There is **one** `.env` for the operator to manage, and **no service receives all
+of it**. `docker-compose.yml` deliberately has no `env_file:` on any service;
+each one lists the variables it reads and is handed nothing else.
+
+| | Gets |
+|---|---|
+| `caddy` | `BACKEND_HOSTNAME`, `ACME_EMAIL` — the two names its Caddyfile reads |
+| `reverie-backend` | Neon (runtime + system + Flyway), Confluent via `KAFKA_SASL_JAAS_CONFIG`, Clerk, the free-tier HMAC, R2, Resend, its own Sentry DSN, the internal token |
+| `reverie-ai` | Confluent via `KAFKA_SASL_USERNAME`/`PASSWORD`, R2, `PG_*` as the **unprivileged** role, provider keys, its own Sentry DSN, the internal token |
+
+What that buys is a blast radius. The worker takes an arbitrary media file from
+an untrusted uploader and feeds it to `ffmpeg`, a large C codebase with a long
+history of parser CVEs — it is the most likely thing here to be compromised, and
+it is the container that should hold the least. It no longer has Flyway's
+password (the schema owner, which can drop the RLS policies), Clerk's secret
+key, the free-tier HMAC, or either Spring datasource credential. In the other
+direction Spring has no OpenAI or AssemblyAI key, because it never calls a
+provider.
+
+Only two things are genuinely shared, and both have to be:
+
+- `REVERIE_INTERNAL_TOKEN` — the shared secret on `/internal/**`. Both sides
+  need it or every worker callback is a 401.
+- R2 — both read and write objects.
+
+The lists were derived from code, not assumed: the worker's from the fields on
+its pydantic `Settings` (`ai-service/app/config.py`), Spring's from the `${...}`
+placeholders in `application.yml` and its `@Value` bindings. Anything not on
+those lists would be ignored by the process anyway, so passing it would widen
+exposure and buy nothing.
+
+### A note on the syntax
+
+Entries are bare names (`- FLYWAY_URL`) rather than `FLYWAY_URL: ${FLYWAY_URL}`.
+Both read from `.env`, but they differ when a variable is **absent**: a bare
+name leaves it unset, while interpolation sets it to `""`. An empty string is
+not the same as absent — it overrides the default in `application.yml`, so an
+unset `S3_REGION` would arrive as `""` rather than falling back. The two
+exceptions interpolate because the name changes (`SENTRY_DSN_BACKEND` →
+`SENTRY_DSN`), where blank is the documented "monitoring off" state anyway.
 
 ---
 

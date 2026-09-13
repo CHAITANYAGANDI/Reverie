@@ -36,10 +36,21 @@ services:
       # QUIC/HTTP3. Harmless if the security list does not open UDP; Caddy
       # falls back to TCP.
       - "443:443/udp"
+    # The two names the Caddyfile reads, and nothing else -- no database, no
+    # broker, no provider key. A reverse proxy that is compromised should yield
+    # the certificate it already serves, not the estate behind it.
     environment:
       # The hostname Caddy obtains a certificate for. It must already resolve
       # to this VM's public IP or the ACME challenge fails. See README "DNS".
-      BACKEND_HOSTNAME: ${BACKEND_HOSTNAME:?set BACKEND_HOSTNAME in .env}
+      # `:?` rather than a bare name: without it Caddy starts and serves a site
+      # called "" , which looks like a TLS failure and is not one.
+      - BACKEND_HOSTNAME=${BACKEND_HOSTNAME:?set BACKEND_HOSTNAME in .env}
+      # Where Let's Encrypt sends expiry warnings. The Caddyfile has always read
+      # {$ACME_EMAIL} but this service had no env_file and no mapping, so the
+      # value the operator set in .env never actually reached Caddy. Passed now.
+      # Optional to Let's Encrypt, so a bare name is right: unset means unset
+      # rather than an empty address.
+      - ACME_EMAIL
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificates and the ACME account key. Losing these is not fatal, but
@@ -64,17 +75,68 @@ services:
     # Docker writes its own iptables rules.
     expose:
       - "8080"
-    env_file:
-      - .env
+    # NO `env_file:`. The operator keeps one .env, but handing all of it to both
+    # containers would give the worker Flyway's password, Clerk's secret key and
+    # the free-tier HMAC, none of which it has any use for. Each service lists
+    # what it reads and gets nothing else.
+    #
+    # Bare names rather than `KEY: ${KEY}`, and the difference matters: Compose
+    # resolves a bare name from .env, and when it is absent it leaves the
+    # variable UNSET rather than setting it to "". An empty string is not the
+    # same as absent -- it would override the default in application.yml, so
+    # an unset S3_REGION would become "" instead of falling back.
     environment:
-      # Docker DNS on the private network. Spring never leaves the host to
-      # reach the worker, so plain HTTP here is deliberate, not an oversight.
-      AI_SERVICE_URL: http://reverie-ai:8000
+      # --- Spring runtime -------------------------------------------------
+      - SPRING_PROFILES_ACTIVE
+      - APP_FRONTEND_URL              # CORS + STOMP allowed origin
+      - APP_PUBLIC_URL
+      # --- Neon: runtime role, system role, and Flyway's owner ------------
+      - SPRING_DATASOURCE_URL
+      - SPRING_DATASOURCE_USERNAME
+      - SPRING_DATASOURCE_PASSWORD
+      - REVERIE_DATASOURCE_SYSTEM_USERNAME
+      - REVERIE_DATASOURCE_SYSTEM_PASSWORD
+      - FLYWAY_URL
+      - FLYWAY_USER
+      - FLYWAY_PASSWORD
+      # --- Confluent: Spring's own names, JAAS rather than user/password ---
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS
+      - KAFKA_SECURITY_PROTOCOL
+      - KAFKA_SASL_MECHANISM
+      - KAFKA_SASL_JAAS_CONFIG
+      # --- Clerk + identity ------------------------------------------------
+      - REVERIE_AUTH_MODE
+      - CLERK_ISSUER
+      - CLERK_JWKS_URL
+      - CLERK_SECRET_KEY
+      - FREE_TIER_IDENTITY_HMAC_SECRET
+      # --- The shared secret on /internal/**, read by both services ---------
+      - REVERIE_INTERNAL_TOKEN
+      # --- R2 ---------------------------------------------------------------
+      - S3_ENDPOINT
+      - S3_PUBLIC_ENDPOINT
+      - S3_ACCESS_KEY
+      - S3_SECRET_KEY
+      - S3_BUCKET
+      - S3_REGION
+      # --- Resend ------------------------------------------------------------
+      - RESEND_API_KEY
+      - REVERIE_MAIL_FROM
+      - REVERIE_MAIL_SELF_ONLY
+      - REVERIE_MAIL_SELF_USER_ID
+      # --- Sentry ------------------------------------------------------------
+      - SENTRY_ENVIRONMENT
       # Both services read a variable called SENTRY_DSN and they are different
       # Sentry projects -- three projects keep three services' alerts apart
       # (see com.reverie.observability). One shared .env cannot hold two values
       # under one name, so the file names them apart and this maps them back.
-      SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+      # Interpolation is unavoidable here because the name changes; blank is
+      # the documented "monitoring off" state, so "" is harmless.
+      - SENTRY_DSN=${SENTRY_DSN_BACKEND:-}
+      # --- Set here, not by the operator --------------------------------------
+      # Docker DNS on the private network. Spring never leaves the host to
+      # reach the worker, so plain HTTP here is deliberate, not an oversight.
+      - AI_SERVICE_URL=http://reverie-ai:8000
       # Oracle's own JVM sizing, deliberately NOT Render's percentages. A
       # percentage tuned for a 512 MB box is the wrong shape on a 2 GB one --
       # see README "JVM sizing" for the measurements behind these numbers.
@@ -83,7 +145,7 @@ services:
       # load suite and, in the earlier Render work, across a 35-minute soak; a
       # cap with no measured need only converts a container that has 2.4 GB
       # spare into a java.lang.OutOfMemoryError.
-      JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS:--Xms512m -Xmx1024m}
+      - JAVA_TOOL_OPTIONS=${BACKEND_JAVA_OPTS:--Xms512m -Xmx1024m}
     # 2 GB. Measured settled 581 MB and peak 589 MB under the full load suite,
     # so this is ~3.5x the observed peak. The number that actually has to fit is
     # the worst case rather than the average: -Xmx1024m plus the JVM floor this
@@ -122,15 +184,59 @@ services:
     restart: unless-stopped
     expose:
       - "8000"
-    env_file:
-      - .env
+    # NO `env_file:` -- see the note on the backend. Every name below is a field
+    # on the worker's own pydantic Settings (ai-service/app/config.py); nothing
+    # else it is handed would even be read, so handing it more would only widen
+    # what a compromise of this container exposes.
+    #
+    # Nothing about Flyway, Clerk, Resend, the free-tier HMAC or either Spring
+    # datasource appears here. The worker reaches Neon as the unprivileged role
+    # through its own PG_* settings, and posts back to Spring with the internal
+    # token -- it has no use for the schema owner's password.
     environment:
-      # Where the worker posts transcripts and status back to. Docker DNS
-      # again; REVERIE_INTERNAL_TOKEN is what authorises it, not the network.
-      SPRING_CALLBACK_URL: http://reverie-backend:8080
+      # --- Confluent: the worker's own names, user/password rather than JAAS ---
+      - KAFKA_BOOTSTRAP_SERVERS
+      - KAFKA_SECURITY_PROTOCOL
+      - KAFKA_SASL_MECHANISM
+      - KAFKA_SASL_USERNAME
+      - KAFKA_SASL_PASSWORD
+      # --- The shared secret on /internal/**, read by both services ---------
+      - REVERIE_INTERNAL_TOKEN
+      # --- R2 ---------------------------------------------------------------
+      - S3_ENDPOINT
+      - S3_PUBLIC_ENDPOINT
+      - S3_ACCESS_KEY
+      - S3_SECRET_KEY
+      - S3_BUCKET
+      - S3_REGION
+      # --- Neon, for RAG. The unprivileged role, so the policies bind ---------
+      - PG_HOST
+      - PG_PORT
+      - PG_DATABASE
+      - PG_USER
+      - PG_PASSWORD
+      - PG_SSLMODE
+      # --- Providers ----------------------------------------------------------
+      - AI_PROVIDER
+      - OPENAI_API_KEY
+      - OPENAI_TRANSCRIBE_MODEL
+      - OPENAI_CHAT_MODEL
+      - OPENAI_EXTRACTION_MODEL
+      - OPENAI_EMBED_MODEL
+      - TRANSCRIPTION_PROVIDER
+      - ASSEMBLYAI_API_KEY
+      - ASSEMBLYAI_MODEL
+      - ASSEMBLYAI_FALLBACK_MODEL
+      - ASSEMBLYAI_LANGUAGE
+      # --- Sentry -------------------------------------------------------------
+      - REVERIE_ENV
       # The ai-service's own Sentry project, not the backend's. See the note
       # on the backend service above.
-      SENTRY_DSN: ${SENTRY_DSN_AI:-}
+      - SENTRY_DSN=${SENTRY_DSN_AI:-}
+      # --- Set here, not by the operator ---------------------------------------
+      # Where the worker posts transcripts and status back to. Docker DNS
+      # again; REVERIE_INTERNAL_TOKEN is what authorises it, not the network.
+      - SPRING_CALLBACK_URL=http://reverie-backend:8080
     # 1 GB. Measured 98 MB idle and 143 MB peak while encoding a 30-minute
     # recording to MP3, so this is ~7x the observed peak. The headroom is for
     # `ffmpeg`, which is the only thing here that allocates unpredictably, and
