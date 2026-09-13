@@ -1,0 +1,100 @@
+# Reverie's edge on Oracle. Terminates TLS and proxies to Spring; that is all
+# it is for.
+#
+# The hostname comes from the environment so this file has no deployment baked
+# into it. Caddy obtains and renews a Let's Encrypt certificate for it
+# automatically, which is the whole reason for choosing Caddy here.
+
+{
+	# Where Let's Encrypt sends expiry warnings. Not a login and not secret,
+	# but it is an address, so it lives in .env rather than in Git.
+	email {$ACME_EMAIL}
+
+	# Caddy's own startup/error log. INFO on the process, not on requests --
+	# request logging is configured per-site below and is off by default.
+	log {
+		output stderr
+		format console
+		level INFO
+	}
+}
+
+{$BACKEND_HOSTNAME} {
+	# ---------------------------------------------------------------------
+	# Access logging is OFF.
+	#
+	# Reverie's logging and privacy hardening is closed (PR #11), and a
+	# default access log would reopen it at the edge: Caddy's `log` writes
+	# the full URI including the query string, and Reverie's URIs carry
+	# meeting ids, share tokens and search terms. `common_log` additionally
+	# records the User-Agent and referrer.
+	#
+	# Docker already records what an operator actually needs -- Spring's own
+	# structured logs, which were audited line by line for exactly this.
+	#
+	# If a request log is ever genuinely needed, turn it on deliberately and
+	# strip first; do not simply uncomment. The minimum is:
+	#
+	#   log {
+	#       output stderr
+	#       format filter {
+	#           request>uri            query {}            # drop query strings
+	#           request>headers>Authorization delete
+	#           request>headers>Cookie        delete
+	#           request>headers>X-Internal-Token delete
+	#       }
+	#   }
+	#
+	# and even then it still records paths containing meeting ids.
+	# ---------------------------------------------------------------------
+
+	# Security headers. HSTS is Caddy's default once a certificate is issued;
+	# the rest are cheap and this is an API origin with a browser client.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# Caddy advertises itself otherwise. Not a control, just less noise
+		# for someone fingerprinting the host.
+		-Server
+	}
+
+	# Spring, and only Spring. reverie-ai has no route here at all -- it is on
+	# a network this container is not attached to.
+	#
+	# WebSockets need no special directive: reverse_proxy passes Upgrade and
+	# Connection through and Caddy streams the connection, which is what the
+	# STOMP endpoint at /ws (WebSocketConfig, SockJS) needs. SockJS's
+	# xhr-streaming fallback works for the same reason.
+	reverse_proxy reverie-backend:8080 {
+		# Long-lived sockets. The STOMP connection is meant to stay open for
+		# the length of a meeting; the default read timeout would cut it.
+		# Zero means "do not time out", and the backend's own heartbeats are
+		# what actually detect a dead peer.
+		transport http {
+			read_timeout 0
+			write_timeout 0
+			# An hour is longer than any AI call Spring makes -- the
+			# generative timeout is 180 s and transcode is 600 s -- so this
+			# bounds a wedged upstream without cutting a working request.
+			dial_timeout 10s
+		}
+
+		# The client's real address and scheme, so Spring's
+		# ForwardedHeaderFilter (enabled by the production profile) writes
+		# https:// in absolute URLs and sees the caller rather than the proxy.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	# Uploads do not come through here. The browser PUTs recordings straight
+	# to R2 with a presigned URL, so the largest body Caddy sees is a JSON
+	# payload -- a transcript edit or a chat question. 32 MB is far more than
+	# any of those and still refuses an accidental media POST at the edge
+	# rather than in the JVM's heap.
+	request_body {
+		max_size 32MB
+	}
+}
