@@ -1138,8 +1138,15 @@ public class MeetingService {
             ai.reindex(userId, meetingId, attempt, joinSegments(segs),
                     segs.stream().map(SegmentDto::from).toList());
         } catch (Exception e) {
-            log.warn("Re-indexing meeting {} failed; chat may answer from stale text: {}",
-                    meetingId, e.toString());
+            // The class name, not the message. This call posts the whole
+            // transcript to the ai-service, and a RestClient error carries the
+            // response body in its message -- so an ai-service that quotes what
+            // it could not parse would put transcript text in this log. The
+            // class name separates a 503 from a connection refused, which is
+            // what this line is read for. See AiClient, which holds the same
+            // line one layer down.
+            log.warn("Re-indexing meeting {} failed; chat may answer from stale text ({}).",
+                    meetingId, e.getClass().getSimpleName());
         }
     }
 

@@ -341,9 +341,14 @@ public class CallbackService {
         if (title.length() > 200) {
             title = title.substring(0, 200).trim();
         }
-        log.info("Naming meeting {} from its transcript: {}", meeting.getId(), title);
         meeting.setTitle(title);
         meeting.setAutoTitle(false);
+        // The id and the fact, never the title. A generated title is written
+        // from the transcript -- "Q4 pricing decision" is a sentence somebody
+        // said in a private meeting -- and application logs are shipped,
+        // searched and retained far more casually than the database that holds
+        // the meeting itself. The event is worth recording; its content is not.
+        log.info("Applied auto-generated title to meeting {}.", meeting.getId());
     }
 
     /**

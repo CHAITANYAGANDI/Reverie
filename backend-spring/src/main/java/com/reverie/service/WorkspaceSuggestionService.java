@@ -112,7 +112,12 @@ public class WorkspaceSuggestionService {
         } catch (Exception e) {
             // Serve what we have. A stale suggestion is a worse question, not a
             // broken page, and regenerating will be retried on the next visit.
-            log.warn("Could not generate workspace suggestions for {}: {}", userId, e.getMessage());
+            // The class name, not the message. Suggestions are generated from
+            // the account's own meetings, so the ai-service's response body is
+            // user-derived content by construction -- and a RestClient error
+            // carries that body in its message.
+            log.warn("Could not generate workspace suggestions for {} ({}).",
+                    userId, e.getClass().getSimpleName());
             return existing.map(WorkspaceSuggestion::getPrompts).orElseGet(List::of);
         }
 
