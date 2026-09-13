@@ -258,7 +258,13 @@ endpoint a real user opens occasionally rather than once per second.
 
 ---
 
-## JVM sizing: 55/20 confirmed
+## JVM sizing: 55/20 was wrong, and production proved it
+
+> **Superseded on 13 Sep 2026.** Production was OOM-killed under `55/20`. The
+> latency comparison below still stands and was not the mistake; the mistake was
+> reading a heap benchmark as a total-memory answer. See
+> *[The OOM that settled it](#the-oom-that-settled-it)* directly below for what
+> replaced it and why.
 
 Both configurations, warm, same data and protocol:
 
@@ -273,11 +279,129 @@ more heap means less GC competing for a throttled CPU budget. `45/15` also took
 about nine warm-up passes to plateau against roughly four, which matters on
 every deploy restart.
 
-**Production stays at `MaxRAMPercentage=55 / InitialRAMPercentage=20`.
-`render.yaml` is unchanged.**
+~~**Production stays at `MaxRAMPercentage=55 / InitialRAMPercentage=20`.**~~
+Held until 13 Sep 2026. Production is now `31/25`.
 
 An earlier comparison appeared to favour `45/15`. It was invalid — it compared a
 warm container against a cold one, and was redone.
+
+---
+
+## The OOM that settled it
+
+**12 Sep 2026, ~20:04 UTC. Render instance `k9wwr`: "Ran out of memory (used
+over 512MB) while running your code."** One instance, recovered by restart a
+minute later. Not Kafka (it had logged `Successfully logged in`), not Neon, not
+the health check, not a deploy.
+
+Render had shown ~476–477 MB immediately before, with CPU near idle.
+
+### Why the benchmark above did not predict it
+
+`MaxRAMPercentage` sizes the **heap**. Render kills on the **total**, and at
+Render Starter's shape the rest of the total is most of it:
+
+| | committed |
+|---|---|
+| heap | 164 MiB — **maximum 272 MiB** |
+| metaspace + compressed class space | 146 MiB |
+| code cache | 34 MiB cold → 46 MiB after 35 min |
+| native: thread stacks, GC, JIT arenas, musl malloc | 96–117 MiB |
+| **floor before one application object** | **~280–320 MiB** |
+
+The heap sat at 164 MiB with **109 MiB of expansion still permitted and nowhere
+to put it**: 272 + 320 is 592 MiB on a 512 MiB box. The service was never stable
+— it was one heap expansion away from the ceiling, permanently, and short
+benchmarks never triggered the expansion.
+
+Three things in the old harness hid it, all of them named in *Environment*
+above as conveniences:
+
+- **Kafka pointed at a port with no broker**, so `KafkaProducer` was never
+  constructed. It is lazy: it appears on the *first outbox publish*, not at
+  boot. Measured cost when it does: **+7.6 MiB**, 891 classes, 2 threads.
+- **The object store was absent**, so the AWS SDK's Apache HTTP client and its
+  connection pool never initialised.
+- **Runs were ~90 seconds.** The production process had been alive for hours.
+  Code cache grows the whole time: +6.4 MiB in the first ten minutes of a soak.
+
+Reproduced with all three corrected — Redpanda, MinIO, and a 35-minute soak —
+the container reached **511.4 MiB under the 100-VU stress, 99.9 % of the
+limit**, on the same `55/20` that "passed".
+
+### What changed
+
+`render.yaml`: `MaxRAMPercentage=31 / InitialRAMPercentage=25` (159/128 MiB
+here). Not a squeeze — **the live set after a full collection is 68 MiB**, and a
+160 MiB heap ran the 50-VU load with **zero major collections** and the whole
+35-minute soak with **one**. Percentages rather than `-Xmx` so the sizing stays
+sane if `plan` changes; the floor above does not scale with the plan, so
+re-measure if it does.
+
+`application.yml`: `server.tomcat.threads.max=32`. This one is a **ceiling, not
+a saving**, and the distinction is worth keeping: at 50 VUs the pool never
+reaches even 32 — the CPU saturates first, and about ten workers were live at
+the end of a run. Steady state is unchanged. The worst case is not: the
+unaccounted native region tracks thread count at roughly 260 KiB each (measured
+as a difference across a load run, so it carries some code-cache growth too),
+which puts Tomcat's default 200-thread ceiling at ~50 MiB of stacks this
+container cannot spare.
+
+`pom.xml`: excluded `commons-logging`, which the AWS SDK's Apache client drags
+in and which `spring-jcl` already implements — the duplicate that printed
+"please remove commons-logging.jar from classpath" on every boot.
+
+### The result, and why it is not enough
+
+35-minute soak, light continuous traffic, 50-VU bursts at minutes 10/20/30,
+outbox relay publishing throughout:
+
+| | |
+|---|---|
+| start → end | 453.3 → **482.2 MiB** |
+| peak | **485.8 MiB (94.9 %)** |
+| heap committed | **154.7 MiB, flat for 35 minutes** |
+| major collections | **1** |
+| `oom` / `oom_kill` | **0 / 0** |
+| CPU periods throttled | 27 % |
+
+Startup is not made riskier by the smaller heap: peak-during-startup fell from
+432–440 MiB to **411–422 MiB**. Startup *time* wandered between 85 s and 128 s
+across every configuration including unchanged `55/20`, which is this host under
+varying load rather than anything the flags did.
+
+Then the committed configuration end to end, warmed to plateau — five
+consecutive `list-meetings.js` passes, which is the protocol this document
+already insists on:
+
+| pass | p95 | requests | failed |
+|---|---|---|---|
+| 1 | 11.53 s | 592 | 0 % |
+| 3 | 6.99 s | 910 | 0 % |
+| **5** | **2.29 s** | **2 237** | **0 %** |
+
+3.8× the throughput by the fifth pass, 0 errors throughout, 2 major collections
+across 9.8 GB allocated, settled 474.5 MiB, peak 485.4 MiB.
+
+**Those p95 figures are not comparable to the gate.** This run was taken on a
+host whose half-CPU was 97–98 % throttled throughout, against the 50-VU numbers
+at the top of this document which were measured on a materially faster one. The
+warming *trend* is the transferable result; the absolute latency is not, and the
+`p95 < 200 ms` gate has to be re-confirmed against the real instance after
+deploy. Memory is a different matter — cgroup accounting is exact, and the lab
+settled within ~5 MiB of what Render reported for the live process, which is why
+the memory conclusions here are quoted with confidence and the latency ones are
+not.
+
+The fix removes the failure mode: the ceiling drops from ~592 MiB to ~486 MiB,
+and the heap can no longer expand into memory that does not exist. It does not
+create headroom. The process **plateaus at 94–95 % of the limit**, which is a
+service that survives rather than one with room to breathe — and the floor is
+not configuration, it is what Spring Boot with JPA, Security, WebSocket, Kafka,
+the AWS SDK, Flyway, Sentry and OpenPDF costs to hold in memory.
+
+**512 MB is not a safe size for this application.** Recorded here rather than
+acted on: the plan change is a decision for whoever owns the bill.
 
 ---
 
@@ -289,8 +413,17 @@ warm container against a cold one, and was redone.
   configurations, including 100 VUs.
 - Warm runs produce `max` deltas in the single digits to low tens — the cgroup
   reclaiming file cache, not the JVM running out of heap.
-- A high `memory.current` alone is not failure: much of it is reclaimable page
-  cache, which is why `memory.events` and `oom_kill` are the counters quoted.
+- ~~A high `memory.current` alone is not failure: much of it is reclaimable page
+  cache, which is why `memory.events` and `oom_kill` are the counters quoted.~~
+
+  **This was the reasoning that let the OOM through, and it is wrong here.**
+  `memory.stat` on this container reports `file` in the *tens of kilobytes*
+  against ~445 MB of `anon`. There is no page cache to reclaim: `memory.current`
+  is almost entirely anonymous JVM memory, so it is a real number and not a
+  soft one. `oom_kill` staying at 0 means *this run* did not cross the line, not
+  that there was room — it read 0 at 511.4 MiB, which is 0.6 MiB of room. Quote
+  `memory.current` and `memory.peak` against the limit as well, and treat
+  anything above ~90 % as the finding it is.
 
 One container did exit mid-investigation (exit 255, `OOMKilled=false`). It was
 caused by running a second 512 MB JVM alongside it for a comparison, pressuring
