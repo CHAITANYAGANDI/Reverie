@@ -16,6 +16,7 @@ from app.callback import SpringCallbackClient
 from app.config import get_settings
 from app.deployment_check import verify_production
 from app.kafka_worker import KafkaWorker
+from app.log_safety import frames
 from app.observability import FailureSite, init_sentry, report_unexpected
 from app.pipeline import Pipeline
 from app.providers.factory import AiProviderFactory
@@ -118,7 +119,14 @@ async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     The traceback goes to this service's log. Sentry is told the type and the
     component; see app/observability.
     """
-    logger.exception("Unhandled error serving %s", request.url.path)
+    # Frames, not the message -- for the reason the comment below gives
+    # about the response. `logger.exception` ends its traceback with
+    # "ExceptionType: message", so the text this handler refuses to send
+    # to the client was going to the log on the line above it.
+    logger.error(
+        "Unhandled error serving %s (%s).\n%s",
+        request.url.path, type(exc).__name__, frames(exc),
+    )
     report_unexpected(site=FailureSite.API_REQUEST, error=exc)
     # The client learns nothing about the failure. Exception text here is built
     # from transcripts, prompts and provider responses.

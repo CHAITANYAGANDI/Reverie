@@ -155,8 +155,14 @@ public class MailDispatcher {
         boolean giveUp = outcome.permanent() || message.getAttemptCount() >= maxAttempts;
         if (giveUp) {
             message.setAbandonedAt(Instant.now());
-            log.warn("Giving up on \"{}\" after {} attempt(s): {}",
-                    message.getSubject(), message.getAttemptCount(), message.getLastError());
+            // The row id, never the subject. A "your notes for X are ready"
+            // subject carries the meeting title, which for a recording is
+            // written from the transcript -- the same value CallbackService
+            // stopped logging, arriving through a different door. The id is
+            // what you need to find the row anyway. `lastError` is already
+            // reduced to a status and a short phrase by MailError.
+            log.warn("Giving up on message {} after {} attempt(s): {}",
+                    message.getId(), message.getAttemptCount(), message.getLastError());
         } else {
             message.setNextAttemptAt(Instant.now().plus(backoff(message.getAttemptCount())));
         }

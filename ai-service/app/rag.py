@@ -220,7 +220,15 @@ class RagService:
             await self._pool.open(wait=True, timeout=15)
             logger.info("RAG connected to Postgres at %s.", self._settings.pg_host)
         except Exception as exc:  # noqa: BLE001 — degrade rather than crash.
-            logger.warning("RAG could not open Postgres pool: %s", exc)
+            # The class, not the message. psycopg renders the whole libpq
+            # error into str(exc), and PostgreSQL puts "DETAIL: Failing
+            # row contains (...)" -- the row itself -- into the message of
+            # a not-null or check violation. Every site in this file logs
+            # the class for that reason; psycopg3 has one exception class
+            # per SQLSTATE, so nothing diagnostic is lost.
+            logger.warning(
+                "RAG could not open Postgres pool (%s).", type(exc).__name__
+            )
             self._pool = None
 
     async def stop(self) -> None:
@@ -384,7 +392,10 @@ class RagService:
                 len(chunks), meeting_id, processing_attempt,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("RAG indexing failed for %s: %s", meeting_id, exc)
+            # The statement this guards inserts transcript chunks.
+            logger.warning(
+                "RAG indexing failed for %s (%s).", meeting_id, type(exc).__name__
+            )
 
     # --- retrieval + answer ------------------------------------------------- #
     async def answer(
@@ -440,7 +451,9 @@ class RagService:
                     )
                     rows = await cur.fetchall()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("RAG retrieval failed for %s: %s", meeting_id, exc)
+            logger.warning(
+                "RAG retrieval failed for %s (%s).", meeting_id, type(exc).__name__
+            )
             return ("I couldn't search this meeting's transcript right now.", [])
 
         if not rows:
@@ -569,7 +582,10 @@ class RagService:
                     await cur.execute(sql, tuple(params))
                     rows = await cur.fetchall()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read action items for user %s: %s", user_id, exc)
+            logger.warning(
+                "Could not read action items for user %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return []
 
         if not rows:
@@ -639,7 +655,10 @@ class RagService:
                     await cur.execute(sql, tuple(params))
                     rows = await cur.fetchall()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read decisions for user %s: %s", user_id, exc)
+            logger.warning(
+                "Could not read decisions for user %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return []
 
         if not rows:
@@ -705,7 +724,10 @@ class RagService:
                     await cur.execute(recurring_sql, (user_id,))
                     top = await cur.fetchone()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read workspace signals for %s: %s", user_id, exc)
+            logger.warning(
+                "Could not read workspace signals for %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return {}
 
         return {
@@ -774,7 +796,10 @@ class RagService:
                     await cur.execute(items_sql, tuple(i_params))
                     items = await cur.fetchall()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read workspace material for %s: %s", user_id, exc)
+            logger.warning(
+                "Could not read workspace material for %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return ""
 
         return workspace_material(
@@ -987,7 +1012,10 @@ class RagService:
                     else []
                 )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Workspace retrieval failed for user %s: %s", user_id, exc)
+            logger.warning(
+                "Workspace retrieval failed for user %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return ("I couldn't search your meetings right now.", [])
 
         kept = recent + earlier
@@ -1149,7 +1177,10 @@ class RagService:
             # both cost a wider search rather than an error.
             by_title = {title: mid for mid, title in rows}
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not read meeting titles for %s: %s", user_id, exc)
+            logger.warning(
+                "Could not read meeting titles for %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return []
 
         hits = names_meeting(question, list(by_title))
@@ -1212,7 +1243,12 @@ class RagService:
                     )
                     rows = await cur.fetchall()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Semantic search failed for user %s: %s", user_id, exc)
+            # The question is a bound parameter of the statement above, and
+            # a type error on a parameter is reported with the value.
+            logger.warning(
+                "Semantic search failed for user %s (%s).",
+                user_id, type(exc).__name__,
+            )
             return []
 
         return [

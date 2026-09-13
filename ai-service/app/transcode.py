@@ -51,6 +51,7 @@ from typing import Callable
 
 from app.observability import FailureSite, report_unexpected
 from app.config import Settings
+from app.log_safety import frames, safe_key
 
 logger = logging.getLogger("ai-service.transcode")
 
@@ -59,8 +60,8 @@ RUNNING = "running"
 FAILED = "failed"
 
 #: What a caller is told when something went wrong that is not worth naming.
-#: ffmpeg's stderr can contain the object key and the container's internals; it
-#: goes to this service's log, and the user gets a sentence they can act on.
+#: ffmpeg's stderr describes a codec failure; it goes to this service's log,
+#: and the user gets a sentence they can act on instead.
 GENERIC_FAILURE = "The audio could not be converted. Try again in a moment."
 
 
@@ -175,9 +176,15 @@ class Mp3Transcoder:
                 # conversion whose caller went away.
                 self._running.discard(target_key)
                 return TranscodeState(READY)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - botocore raises a wide range
             self._running.discard(target_key)
-            logger.exception("Could not check for the converted copy of %s.", object_key)
+            # Frames without the message, and the key without the filename.
+            # botocore puts the endpoint, the bucket and the key into the
+            # message of the error it raises here.
+            logger.error(
+                "Could not check for the converted copy of %s (%s).\n%s",
+                safe_key(object_key), type(exc).__name__, frames(exc),
+            )
             return TranscodeState(FAILED, GENERIC_FAILURE)
 
         task = asyncio.create_task(self._run(object_key, target_key))
@@ -194,10 +201,16 @@ class Mp3Transcoder:
             logger.warning("Conversion failed: %s", exc)
             self._failures[target_key] = str(exc)
         except Exception as exc:  # noqa: BLE001 - one failed export must not kill the task
-            # The traceback belongs in this log and nowhere near a user.
-            logger.exception("Conversion of %s raised.", object_key)
-            # The object key names a user's recording, so it stays here too:
-            # the reporter takes a FailureSite and no free strings.
+            # The traceback belongs in this log and nowhere near a user --
+            # and `logger.exception` ends it with "ExceptionType: message",
+            # which for botocore is the endpoint, the bucket and the key.
+            # The frames are the diagnostic; the last line was the leak.
+            logger.error(
+                "Conversion of %s raised (%s).\n%s",
+                safe_key(object_key), type(exc).__name__, frames(exc),
+            )
+            # Nor does the key travel: the reporter takes a FailureSite and
+            # no free strings.
             report_unexpected(site=FailureSite.TRANSCODE_CONVERT, error=exc)
             self._failures[target_key] = GENERIC_FAILURE
         finally:
@@ -315,8 +328,13 @@ def run_ffmpeg(source: str, target: str, *, timeout: float) -> None:
         ) from exc
 
     if completed.returncode != 0:
-        # stderr names the file and its internals; it is logged here and does
-        # not travel.
+        # Safe to log only because of two things in `ffmpeg_command`, and it
+        # stops being safe if either is relaxed. `-loglevel error` suppresses
+        # the input banner, which is where ffmpeg prints the container's
+        # metadata tags -- title, artist, comment, written by whoever made the
+        # recording. And the path it names is the temporary `source.<ext>`,
+        # not the object key, so the uploader's filename is not in scope here
+        # either. What is left is a decode error.
         logger.warning(
             "ffmpeg exited %s: %s",
             completed.returncode,

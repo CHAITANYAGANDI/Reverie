@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.entity.UserEntity;
 import com.reverie.repository.UserRepository;
 import com.reverie.security.TenantContext;
@@ -91,7 +92,8 @@ public class RetentionWarningJob {
         } catch (Exception e) {
             // Never kill the scheduler thread: the outbox relays, the retention
             // pass and the deadline digest run on it too.
-            log.error("Retention warning pass failed: {}", e.getMessage(), e);
+            log.error("Retention warning pass failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 
@@ -116,7 +118,10 @@ public class RetentionWarningJob {
                 // One account's failure is not the rest of them. Nothing is
                 // half-written: each enqueue is its own statement, and a batch
                 // that was queued stays queued.
-                log.warn("Could not warn {} about retention: {}", user.getId(), e.toString());
+                // The class, not the message: the failure is most likely the
+                // mail enqueue, whose row holds a subject and a body.
+                log.warn("Could not warn {} about retention ({}).",
+                        user.getId(), e.getClass().getSimpleName());
             }
         }
     }

@@ -315,8 +315,13 @@ class AssemblyAiTranscriptionAdapter(TranscriptionPort):
                 # go up to a caller that can do something about it.
                 raise
             except Exception as exc:  # noqa: BLE001 — httpx raises a wide range.
+                # The class name. `_run` uploads the audio, polls, and
+                # parses the transcript out of the response, so the
+                # message can be the provider's error body or a parse
+                # failure quoting the transcript itself.
                 logger.warning(
-                    "AssemblyAI transcribe attempt %d/%d failed: %s", attempt, attempts, exc
+                    "AssemblyAI transcribe attempt %d/%d failed (%s).",
+                    attempt, attempts, type(exc).__name__,
                 )
                 if attempt == attempts:
                     # Degrade rather than fail the meeting: a meeting with no

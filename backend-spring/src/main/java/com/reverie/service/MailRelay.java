@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.repository.MailOutboxRepository;
 import com.reverie.security.TenantContext;
 import org.slf4j.Logger;
@@ -85,7 +86,8 @@ public class MailRelay {
         } catch (Exception e) {
             // Never kill the scheduler thread: the Kafka relay, the retention
             // pass and both digests run on it too.
-            log.error("Mail relay tick failed: {}", e.getMessage(), e);
+            log.error("Mail relay tick failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 
@@ -129,7 +131,8 @@ public class MailRelay {
                 }
             });
         } catch (Exception e) {
-            log.error("Mail purge failed: {}", e.getMessage(), e);
+            log.error("Mail purge failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 

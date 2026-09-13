@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.export.Downloads;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -143,7 +144,8 @@ public class StorageService {
         } catch (NoSuchKeyException e) {
             return false;
         } catch (Exception e) {
-            log.debug("HEAD {} failed ({}); treating it as absent.", objectKey, e.getClass().getSimpleName());
+            log.debug("HEAD {} failed ({}); treating it as absent.",
+                    LogSafe.objectKey(objectKey), e.getClass().getSimpleName());
             return false;
         }
     }
@@ -172,7 +174,8 @@ public class StorageService {
         } catch (NoSuchKeyException e) {
             return Optional.empty();
         } catch (Exception e) {
-            log.debug("HEAD {} failed ({}); size unknown.", objectKey, e.getClass().getSimpleName());
+            log.debug("HEAD {} failed ({}); size unknown.",
+                    LogSafe.objectKey(objectKey), e.getClass().getSimpleName());
             return Optional.empty();
         }
     }
@@ -273,7 +276,11 @@ public class StorageService {
         try {
             s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectKey).build());
         } catch (Exception e) {
-            log.warn("Failed to delete S3 object {}: {}", objectKey, e.getMessage());
+            // The key without its filename, and the exception class rather than its
+            // message: an SDK message can carry the endpoint, the key and
+            // request material. The two lines above already log this way.
+            log.warn("Failed to delete object {} ({}).",
+                    LogSafe.objectKey(objectKey), e.getClass().getSimpleName());
         }
     }
 

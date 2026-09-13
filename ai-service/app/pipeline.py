@@ -523,5 +523,12 @@ class Pipeline:
                 return []
             return await self._llm.suggest_questions(material)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not suggest questions for %s: %s", meeting_id, exc)
+            # The class, not the message. This call sends the meeting's
+            # summary to the model and parses what comes back, so the
+            # message is either the provider's response body or a parse
+            # error quoting the model's own words.
+            logger.warning(
+                "Could not suggest questions for %s (%s).",
+                meeting_id, type(exc).__name__,
+            )
             return []

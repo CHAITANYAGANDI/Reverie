@@ -326,11 +326,13 @@ class TestWorkerReporting:
 
         state = await service.ensure(secret_key, secret_key + ".mp3")
         assert state.status == transcode_module.RUNNING
-        await asyncio.sleep(0)  # let the conversion task run and fail
-        for _ in range(20):
-            if sent:
-                break
-            await asyncio.sleep(0)
+        # Await the conversion task itself. This used to spin on twenty
+        # `sleep(0)` ticks, which is not a synchronisation primitive: the
+        # failure arrives through `to_thread`, so it is a worker thread and a
+        # `call_soon_threadsafe` that have to finish, and no fixed number of
+        # event-loop ticks is guaranteed to outlast them. It failed about half
+        # the time on this machine.
+        await asyncio.gather(*tuple(service._tasks))
 
         # Reported once, from the real failure, naming the site by enum.
         assert len(sent) == 1

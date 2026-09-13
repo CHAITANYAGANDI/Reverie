@@ -103,11 +103,16 @@ async def _with_retries(
             return await op()
         except Exception as exc:  # noqa: BLE001 — deliberately broad; we degrade.
             wait = _rate_limit_wait(exc)
+            # The class name, never the message: an APIStatusError renders
+            # the provider's response body, and a validation error raised
+            # while parsing the completion renders the completion. The
+            # retry decision is already expressed by `wait`, so nothing
+            # operational is lost.
             logger.warning(
                 "OpenAI %s failed (attempt %d/%d)%s: %s",
                 label, attempt, attempts,
                 f"; rate limited, waiting {wait:.1f}s" if wait else "",
-                exc,
+                type(exc).__name__,
             )
             if attempt >= attempts:
                 logger.error("OpenAI %s exhausted retries; returning fallback.", label)

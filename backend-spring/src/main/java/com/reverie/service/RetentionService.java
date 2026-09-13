@@ -1,6 +1,7 @@
 package com.reverie.service;
 
 import com.reverie.common.ApiException;
+import com.reverie.common.LogSafe;
 import com.reverie.entity.Meeting;
 import com.reverie.entity.UserEntity;
 import com.reverie.repository.MeetingRepository;
@@ -253,7 +254,8 @@ public class RetentionService {
                             done.recordings(), done.meetings(), user.getId());
                 }
             } catch (RuntimeException e) {
-                log.error("Retention failed for {}: {}", user.getId(), e.toString(), e);
+                log.error("Retention failed for {} ({}).\n{}",
+                        user.getId(), e.getClass().getSimpleName(), LogSafe.stackTrace(e));
             }
         }
         return touched;

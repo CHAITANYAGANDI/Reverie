@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,7 +57,8 @@ public class RetentionJob {
         } catch (Exception e) {
             // Never let this kill the scheduler thread — the outbox relay and the
             // reminder digest run on it too.
-            log.error("Retention pass failed: {}", e.getMessage(), e);
+            log.error("Retention pass failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 }

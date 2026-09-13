@@ -1,5 +1,6 @@
 package com.reverie.service;
 
+import com.reverie.common.LogSafe;
 import com.reverie.entity.MeetingActionItem;
 import com.reverie.repository.MeetingActionItemRepository;
 import com.reverie.security.TenantContext;
@@ -81,7 +82,8 @@ public class TaskReminderJob {
         } catch (Exception e) {
             // The scheduler thread also carries the outbox relay and the
             // retention pass. Nothing here is worth taking those down.
-            log.error("Deadline digest failed: {}", e.getMessage(), e);
+            log.error("Deadline digest failed ({}).\n{}",
+                    e.getClass().getSimpleName(), LogSafe.stackTrace(e));
         }
     }
 
@@ -99,7 +101,11 @@ public class TaskReminderJob {
                     mail.taskReminder(userId, due, today);
                 }
             } catch (RuntimeException e) {
-                log.warn("Could not build the digest for {}: {}", userId, e.toString());
+                // The digest is built from action items and enqueued as a
+                // subject and a body; the class name says what broke without
+                // quoting any of it.
+                log.warn("Could not build the digest for {} ({}).",
+                        userId, e.getClass().getSimpleName());
             }
         }
     }
