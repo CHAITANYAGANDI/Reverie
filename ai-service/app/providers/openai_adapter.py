@@ -190,7 +190,11 @@ class OpenAiTranscriptionAdapter(TranscriptionPort):
             # that never added a term.
             resp: Any = await self._client.audio.transcriptions.create(**request)
             text = getattr(resp, "text", "") or ""
-            language = getattr(resp, "language", "en") or "en"
+            # `detected_language`, not `language`. Assigning to `language` here
+            # made it local to `_op` for the whole function, so the read fifteen
+            # lines above -- before this ever runs -- raised UnboundLocalError
+            # and every attempt failed identically before a request was sent.
+            detected_language = getattr(resp, "language", "en") or "en"
             segments: list[Segment] = []
             for seg in getattr(resp, "segments", None) or []:
                 # verbose_json segments are objects or dicts depending on SDK version.
@@ -203,7 +207,9 @@ class OpenAiTranscriptionAdapter(TranscriptionPort):
                         text=str(get("text", "") or "").strip(),
                     )
                 )
-            return TranscriptResponse(transcript=text.strip(), language=language, segments=segments)
+            return TranscriptResponse(
+                transcript=text.strip(), language=detected_language, segments=segments
+            )
 
         return await _with_retries(
             _op,
