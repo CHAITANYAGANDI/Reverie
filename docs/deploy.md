@@ -902,6 +902,50 @@ the service status.
 
 ---
 
+## 8b. Oracle Cloud — where the two services are going
+
+Render's Starter plan has a 512 MB hard limit, and on **12 Sep 2026 at ~20:04
+UTC** it OOM-killed `reverie-backend`. The investigation that followed
+established that 512 MB was never enough for this application — the JVM's floor
+alone is ~280–320 MB before any application object — and `b7c1734` bounded the
+heap to make the plan survivable rather than safe.
+`docs/load-testing-report.md` has the analysis.
+
+Both compute services therefore move to **one Oracle Cloud Always Free Ampere
+A1 VM** (ARM64, 2 OCPU / 12 GB), behind Caddy, with Docker Compose.
+**`deploy/oracle/README.md` is the deployment guide**; this section only says
+what changes and what does not.
+
+| | |
+|---|---|
+| Moves | `reverie-backend`, `reverie-ai` — Render compute only |
+| Stays | Neon, Confluent Cloud, Cloudflare R2, Vercel, Clerk, Resend, Sentry |
+| Rollback | **Render stays live.** `render.yaml` is not deleted and the services are not disabled until Oracle is proven |
+
+ARM64 was verified before anything else: both images build for `linux/arm64`
+from the repository's real Dockerfiles, with **no Dockerfile changes required**.
+Every native Python wheel resolved to a prebuilt `aarch64` build — nothing
+compiled from source — and `ffmpeg` installs and encodes MP3 on ARM. Both
+images were then run under emulation: Spring reached `UP` and served a real API
+call on `aarch64`/Temurin 21.0.12, and the worker started FastAPI and joined its
+Kafka consumer group.
+
+Two variables move at cutover, both on **Vercel**, and both are
+`NEXT_PUBLIC_*` — which Next.js inlines at **build** time, so changing them
+needs a redeploy rather than an environment edit:
+
+| Variable | To |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://<oracle hostname>` |
+| `NEXT_PUBLIC_WS_URL` | `https://<oracle hostname>/ws` |
+
+`APP_FRONTEND_URL` does **not** change — the frontend is still on Vercel, and
+that variable is the CORS and STOMP allowed origin. `APP_PUBLIC_URL` **does**:
+it becomes the Oracle hostname, and `DeploymentCheck` refuses to start without
+a public one.
+
+---
+
 ## 9. Deployment order
 
 ### The one circular dependency

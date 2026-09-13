@@ -1,0 +1,158 @@
+# Reverie on one Oracle Cloud Ampere A1 (ARM64) host.
+#
+# Both compute services move here from Render. Everything stateful stays where
+# it is: Neon holds the database, Confluent Cloud the broker, Cloudflare R2 the
+# recordings, Vercel the frontend. These containers own no user data, which is
+# what makes the VM disposable -- a replacement is this repository, this file,
+# a populated .env, and a DNS record.
+#
+#   Internet -> Caddy (80/443, TLS) -> reverie-backend:8080
+#                                             |
+#                                             +-> reverie-ai:8000  (private)
+#
+# Run from this directory:  docker compose up -d
+# See README.md for the full first-boot sequence.
+
+name: reverie
+
+x-logging: &logging
+  driver: json-file
+  options:
+    # The boot volume is finite and nothing here ships logs off-host. 10 MB x 3
+    # per service is hours of INFO at this traffic level and cannot fill 50 GB.
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # --------------------------------------------------------------- caddy ---
+  # The only service with a published port. Terminates TLS, obtains and renews
+  # the certificate automatically, and proxies to Spring.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # QUIC/HTTP3. Harmless if the security list does not open UDP; Caddy
+      # falls back to TCP.
+      - "443:443/udp"
+    environment:
+      # The hostname Caddy obtains a certificate for. It must already resolve
+      # to this VM's public IP or the ACME challenge fails. See README "DNS".
+      BACKEND_HOSTNAME: ${BACKEND_HOSTNAME:?set BACKEND_HOSTNAME in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key. Losing these is not fatal, but
+      # it re-issues on every restart and Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      - reverie-backend
+    logging: *logging
+
+  # ------------------------------------------------------ reverie-backend ---
+  reverie-backend:
+    build:
+      context: ../../backend-spring
+    container_name: reverie-backend
+    restart: unless-stopped
+    # NO `ports:`. Reachable only from `edge` (Caddy) and `internal` (the
+    # worker). Publishing 8080 would put Spring on the internet beside Caddy
+    # rather than behind it, and the Oracle security list would not stop it --
+    # Docker writes its own iptables rules.
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      # Docker DNS on the private network. Spring never leaves the host to
+      # reach the worker, so plain HTTP here is deliberate, not an oversight.
+      AI_SERVICE_URL: http://reverie-ai:8000
+      # Both services read a variable called SENTRY_DSN and they are different
+      # Sentry projects -- three projects keep three services' alerts apart
+      # (see com.reverie.observability). One shared .env cannot hold two values
+      # under one name, so the file names them apart and this maps them back.
+      SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+      # Oracle's own JVM sizing, deliberately NOT Render's percentages. A
+      # percentage tuned for a 512 MB box is the wrong shape on a 3 GB one --
+      # see README "JVM sizing" for the measurements behind these numbers.
+      #
+      # No MaxMetaspaceSize. Metaspace measured flat at ~133 MiB across a full
+      # load suite and, in the earlier Render work, across a 35-minute soak; a
+      # cap with no measured need only converts a container that has 2.4 GB
+      # spare into a java.lang.OutOfMemoryError.
+      JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS:--Xms512m -Xmx1024m}
+    mem_limit: 3g
+    # Swap disabled. A container that needs swap has a problem worth failing on
+    # rather than hiding behind disk latency.
+    memswap_limit: 3g
+    cpus: 1.0
+    healthcheck:
+      # busybox wget, already present in the Alpine JRE image. Nothing is
+      # installed to make this work.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      # Spring takes ~70 s to start on Render. The grace period is generous so
+      # a slow boot is not read as a failure and restarted into a loop.
+      start_period: 180s
+      retries: 3
+    networks:
+      - edge
+      - internal
+    logging: *logging
+
+  # ----------------------------------------------------------- reverie-ai ---
+  # Never reachable from the internet. It sits on `internal` only, and Caddy is
+  # not attached to that network, so there is no route to it even by mistake.
+  # Outbound still works -- a bridge network NATs egress -- which is what lets
+  # it reach Confluent, R2, Neon and the providers.
+  reverie-ai:
+    build:
+      context: ../../ai-service
+    container_name: reverie-ai
+    restart: unless-stopped
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    environment:
+      # Where the worker posts transcripts and status back to. Docker DNS
+      # again; REVERIE_INTERNAL_TOKEN is what authorises it, not the network.
+      SPRING_CALLBACK_URL: http://reverie-backend:8080
+      # The ai-service's own Sentry project, not the backend's. See the note
+      # on the backend service above.
+      SENTRY_DSN: ${SENTRY_DSN_AI:-}
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 1.0
+    healthcheck:
+      # python, not curl: the slim image has no curl, and adding one to satisfy
+      # a healthcheck would be the wrong trade. /health is the app's own route
+      # (app/main.py), not something invented for this file.
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    networks:
+      - internal
+    logging: *logging
+
+networks:
+  # Caddy <-> Spring.
+  edge:
+    driver: bridge
+  # Spring <-> worker. Deliberately NOT `internal: true`: the worker needs
+  # egress to Confluent, R2, Neon and the transcription providers, and this is
+  # the only network it is on. Isolation here comes from Caddy being absent and
+  # from nothing publishing a port, not from blocking outbound traffic.
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
