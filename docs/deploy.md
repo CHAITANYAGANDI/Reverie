@@ -912,7 +912,7 @@ heap to make the plan survivable rather than safe.
 `docs/load-testing-report.md` has the analysis.
 
 Both compute services therefore move to **one Oracle Cloud Always Free Ampere
-A1 VM** (ARM64, 2 OCPU / 12 GB), behind Caddy, with Docker Compose.
+A1 VM** (ARM64, 2 OCPU / 6 GB), behind Caddy, with Docker Compose.
 **`deploy/oracle/README.md` is the deployment guide**; this section only says
 what changes and what does not.
 

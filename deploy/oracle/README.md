@@ -83,14 +83,29 @@ guaranteed**, and this repository cannot check them for you:
 |---|---|
 | Shape | `VM.Standard.A1.Flex` |
 | OCPU | 2 |
-| Memory | 12 GB |
+| Memory | 6 GB |
 | Boot volume | 50 GB |
 | Image | Canonical Ubuntu 24.04 LTS (**aarch64** build) |
 
-2 OCPU / 12 GB is half the free A1 allowance, which leaves room to grow this VM
-or add a second later. It is deliberately generous relative to what the two
-containers are limited to (3 GB + 2 GB): the rest is for the kernel, Docker,
-filesystem cache, Caddy, TLS and transient `ffmpeg` work.
+**Sized from what Reverie measured, not from what the free tier allows.** The
+Always Free A1 allowance is up to 4 OCPU and 24 GB, but the two services
+together settle around 720 MB and peak near 730 MB; asking for 12 GB would be
+claiming shared capacity to leave it idle, on a tier where capacity is the thing
+in short supply.
+
+6 GB with containers limited to 2 GB + 1 GB leaves **~3 GB unallocated** for the
+kernel, Docker itself, Caddy, page cache, TLS and network buffers, and transient
+`ffmpeg` work — comfortably more than that list needs, which is the point: the
+headroom is deliberate, not leftover.
+
+Taking 2 OCPU rather than 1 is a separate judgement. Each container is capped at
+1 CPU, and a host with exactly 2 would have nothing left for the kernel, Caddy
+or an `ffmpeg` burst when both containers are busy. It also keeps the JVM's
+ergonomic choices stable — the backend sees one CPU and picks SerialGC, which is
+what every measurement here was taken under.
+
+Half the memory allowance and half the OCPU allowance remain free for a second
+instance or for growing this one.
 
 ---
 
@@ -236,8 +251,9 @@ restricts the actuator to `health` alone.
 ## JVM sizing
 
 **Do not copy Render's `MaxRAMPercentage` values here.** `b7c1734` set 31/25 for
-a 512 MB container, where 31 % is a 159 MB heap. Against a 3 GB limit the same
-percentage is ~950 MB, which is a different decision that nobody made.
+a 512 MB container, where 31 % is a 159 MB heap. Against this 2 GB limit the
+same percentage is ~635 MB, which is a different decision that nobody made —
+and it would move again the next time the container is resized.
 
 Oracle gets explicit `-Xms`/`-Xmx` instead, because the container size is known
 and fixed and a deterministic heap is easier to reason about than a percentage
@@ -247,7 +263,7 @@ of a number that might change:
 -Xms512m -Xmx1024m
 ```
 
-Chosen by comparison, on a 3 GB / 1 CPU container against disposable
+Chosen by comparison, on a **3 GB** / 1 CPU container against disposable
 dependencies, each candidate warmed to plateau and given the same ~23.5 GB of
 allocation:
 
@@ -265,6 +281,13 @@ The resident cost is the same either way — the JVM resides what it touches, no
 what `-Xms` reserved — so the larger heap is free, and it halves the collection
 count and cuts the worst pause by 9×. Latency at plateau is identical because
 this workstation is CPU-bound, not heap-bound.
+
+**These numbers were taken in a 3 GB container and the limit is now 2 GB.** They
+still stand, and deliberately were not re-run to make the document tidy: the
+process peaked at 589 MB, so it never came within 2.4 GB of the old ceiling and
+the limit was never a variable in the result. What the smaller limit changes is
+the margin above the worst case, and that is arithmetic rather than
+measurement — see [Resource limits](#resource-limits).
 
 **The collector is SerialGC**, chosen ergonomically because a 1-CPU container
 reports one processor. That was worth checking rather than assuming: SerialGC's
@@ -292,7 +315,9 @@ absolute latency does not. See [Performance](#performance).
 **The launch target is unchanged: `list-meetings`, 50 VUs, p95 < 200 ms, errors
 < 1 %, checks > 99 %.** Nothing here weakens it, and nothing here has met it.
 
-What was measured locally, on a 3 GB / 1 CPU container, warmed to plateau:
+What was measured locally, on a **3 GB** / 1 CPU container (the limit has since
+been cut to 2 GB — see the note under [JVM sizing](#jvm-sizing)), warmed to
+plateau:
 
 | Script | p50 | p95 | throughput | errors | checks |
 |---|---|---|---|---|---|
@@ -312,7 +337,8 @@ iterations, so it is pinned by think-time rather than by the server.
 What *is* evidence, and what this validation was for:
 
 - **zero correctness failures** across every script, including the 100-VU stress
-- **no OOM**, no cgroup `max` events, memory flat at 581 MB of a 3072 MB limit
+- **no OOM**, no cgroup `max` events, memory flat at 581 MB (of the 3072 MB
+  limit in force at the time; 28 % of the 2048 MB limit now configured)
 - **sane GC**: 233 minor and 1 major collection across 31.9 GB allocated
 - no behavioural regression against the previous baseline
 
@@ -324,11 +350,18 @@ treated as one.
 
 ## Resource limits
 
-| Service | Memory | CPU | Why |
-|---|---|---|---|
-| `reverie-backend` | 3 GB | 1.0 | heap + the ~300 MB JVM floor, with room that Render never had |
-| `reverie-ai` | 2 GB | 1.0 | Python is light at idle; the headroom is for `ffmpeg` |
-| host remainder | ~7 GB | — | kernel, Docker, page cache, Caddy, TLS, `ffmpeg` spikes |
+| Service | Memory | CPU | Measured | Why that limit |
+|---|---|---|---|---|
+| `reverie-backend` | 2 GB | 1.0 | 581 MB settled, 589 MB peak | ~3.5× the peak, and still ~700 MB spare in the worst case below |
+| `reverie-ai` | 1 GB | 1.0 | 98 MB idle, 143 MB peak | ~7× the peak; the headroom is for `ffmpeg` and concurrent exports |
+| host remainder | ~3 GB | — | — | kernel, Docker, page cache, Caddy, TLS, `ffmpeg` spikes |
+
+The number the backend limit has to satisfy is the **worst case**, not the
+average: `-Xmx1024m` fully committed, plus the JVM floor this application
+carries — ~132 MB metaspace, ~17 MB compressed class space, ~71 MB code cache,
+and ~110 MB of thread stacks, GC structures and JIT arenas — is about **1.35 GB**
+against a 2 GB limit. That is the arithmetic 512 MB could not satisfy on Render,
+done properly this time.
 
 Deliberately not the whole VM. If `reverie-backend` ever sits above ~1.5 GB
 steady, that is a regression to investigate — not a limit to raise.
