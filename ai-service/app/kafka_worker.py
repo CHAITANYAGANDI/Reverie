@@ -103,6 +103,7 @@ from app.providers.assemblyai_adapter import (
     TranscriptionConfigurationError,
     TranscriptionRequest,
 )
+from app.providers.factory import AiProviderFactory
 from app.storage import fetch_audio, presigned_get_url
 from app.log_safety import frames
 
@@ -414,11 +415,23 @@ class KafkaWorker:
         # Ask the provider to fetch the file itself where that is possible.
         # Two whole-file transfers of an hour of audio -- storage to here, here
         # to the provider -- for bytes this process never looks at.
-        direct = event.audio_url or presigned_get_url(event.object_key or "", self._settings)
+        #
+        # "Where that is possible" is the load-bearing part, and it was missing.
+        # The URL was built for whichever provider was configured, but only
+        # AssemblyAI can act on one: the OpenAI adapter uploads `audio` and
+        # ignores `request`, so under TRANSCRIPTION_PROVIDER=auto with
+        # AI_PROVIDER=openai it was handed a URL it could not read and the empty
+        # bytes that stood in for the download, and submitted an empty file.
+        direct = None
+        if not AiProviderFactory.transcription_needs_audio_bytes(self._settings):
+            direct = event.audio_url or presigned_get_url(
+                event.object_key or "", self._settings
+            )
 
-        # Still downloaded when there is no URL to hand over. `fetch_audio`
-        # returns empty bytes rather than raising when it has nothing, which is
-        # what keeps the mock provider working with no storage at all.
+        # Still downloaded when there is no URL to hand over -- which now
+        # includes every provider that cannot use one. `fetch_audio` returns
+        # empty bytes rather than raising when it has nothing, which is what
+        # keeps the mock provider working with no storage at all.
         audio, filename = (b"", event.object_key or "audio")
         if not direct:
             audio, filename = await fetch_audio(
