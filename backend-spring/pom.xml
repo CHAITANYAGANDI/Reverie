@@ -132,6 +132,28 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
+            <exclusions>
+                <!--
+                  The SDK's HTTP client is Apache HttpClient, which still
+                  depends on commons-logging. Spring Boot puts spring-jcl on
+                  the classpath, which supplies the same
+                  `org.apache.commons.logging` API and routes it to SLF4J, so
+                  having both means two implementations of one API and a
+                  warning on every boot:
+
+                    Standard Commons Logging discovery in action with
+                    spring-jcl: please remove commons-logging.jar from
+                    classpath in order to avoid potential conflicts
+
+                  Removing it is what that message asks for, and spring-jcl
+                  keeps Apache's log calls working. The SDK's own logging is
+                  unaffected: it uses SLF4J directly.
+                -->
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!--

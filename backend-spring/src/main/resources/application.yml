@@ -1,5 +1,28 @@
 server:
   port: 8080
+  tomcat:
+    threads:
+      # Tomcat's default is 200. This service runs on half a CPU, where 200
+      # runnable request threads cannot be a throughput setting -- they are a
+      # queue with a per-entry cost, and on the instance that was OOM-killed in
+      # September there was no room for that cost.
+      #
+      # A ceiling rather than a saving, and worth stating precisely: at 50 VUs
+      # the pool never reached even this cap -- the CPU saturates first, and
+      # about ten worker threads were live at the end of a run. So this changes
+      # nothing in steady state. What it changes is the worst case. The memory
+      # the JVM does not report as heap or metaspace tracks thread count at
+      # very roughly 260 KiB each (measured as a difference across a load run,
+      # so it also carries some code-cache growth), which puts a 200-thread
+      # ceiling at something like 50 MiB of stacks this container cannot spare.
+      #
+      # Not a rate limit and not a connection limit: requests beyond 32 queue
+      # on `accept-count`/`max-connections`, which are left at their defaults.
+      max: ${REVERIE_TOMCAT_THREADS:32}
+      # Four idle threads rather than ten. A burst is served by growing the
+      # pool, which is fast; keeping ten warm costs their stacks all day on a
+      # service whose normal state is idle.
+      min-spare: 4
   # Finish what is already in flight before the process exits.
   #
   # Every deploy and every autoscale event sends SIGTERM. Without this Tomcat

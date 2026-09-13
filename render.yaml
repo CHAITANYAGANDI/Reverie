@@ -46,8 +46,35 @@ services:
       # --- JVM -------------------------------------------------------------
       # Container-aware sizing. Without this the JVM sees the host's memory,
       # sizes a heap it cannot have, and is OOM-killed under load.
+      #
+      # 31/25 rather than 55/20, after this instance was killed on 12 Sep 2026
+      # for exceeding 512 MB. MaxRAMPercentage sizes the HEAP; Render kills on
+      # the TOTAL, and the rest of the total is not small:
+      #
+      #   metaspace + compressed class space   ~146 MiB
+      #   code cache (grows with uptime)        ~34-60 MiB
+      #   native: thread stacks, GC, JIT arenas ~96-117 MiB
+      #   ---------------------------------------------------
+      #   floor before a single object is       ~280-320 MiB
+      #
+      # 55% of 512 is a 272 MiB heap, so the ceiling was ~590 MiB on a 512 MiB
+      # box. It survived only while the heap stayed well under its maximum, and
+      # died when it stopped doing so. Measured locally at Render Starter's
+      # shape: 428 MiB at idle with the heap committed at 164 MiB and 109 MiB
+      # of expansion still permitted, and a 100-VU peak of 511.4 MiB.
+      #
+      # 31% is 159 MiB here. It is not a squeeze: the live set after a full
+      # collection is 68 MiB, and a 160 MiB heap ran the 50-VU acceptance load
+      # with ZERO major collections. A generous InitialRAMPercentage matters as
+      # much as the maximum -- the rejected 45/15 experiment lost on latency
+      # because 15% starts the heap at 76 MiB and pays for the difference in
+      # collections while it warms, not because 45% was too low a ceiling.
+      #
+      # Percentages, not -Xmx, so the sizing stays sane if `plan` changes: on a
+      # 2 GB instance these give 640/512 MiB, which is also right. Re-measure
+      # if the plan moves -- the floor above does not scale with it.
       - key: JAVA_TOOL_OPTIONS
-        value: -XX:MaxRAMPercentage=55 -XX:InitialRAMPercentage=20
+        value: -XX:MaxRAMPercentage=31 -XX:InitialRAMPercentage=25
 
       # --- Postgres (Neon) --------------------------------------------------
       # Runtime traffic goes through the POOLED endpoint; migrations do not.
