@@ -90,7 +90,11 @@ spring:
   # policy to escape its own tenant.
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    # Fail closed if this service is ever pointed at a non-empty database
+    # without Flyway history. Production already has flyway_schema_history,
+    # and a genuinely empty database can migrate normally from V1. Automatic
+    # baselining would instead let an unknown schema be silently adopted.
+    baseline-on-migrate: false
     locations: classpath:db/migration
     # Defaults to the runtime URL, which is right locally where both point at
     # the same server, and right against a managed Postgres too: both want the

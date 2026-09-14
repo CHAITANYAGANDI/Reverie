@@ -87,6 +87,15 @@ class ApplicationDefaultsTest {
     }
 
     @Test
+    @DisplayName("Flyway refuses to baseline an unknown non-empty schema")
+    void flywayDoesNotAdoptUnknownSchemas() {
+        assertThat(environment.getProperty(
+                "spring.flyway.baseline-on-migrate",
+                Boolean.class
+        )).isFalse();
+    }
+
+    @Test
     @DisplayName("the URLs still default to localhost, which is why DeploymentCheck exists")
     void theUrlsAreStillLocal() {
         // Asserted rather than left implicit, because it looks like an
