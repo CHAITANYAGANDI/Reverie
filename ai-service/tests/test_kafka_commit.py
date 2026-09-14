@@ -23,7 +23,12 @@ import httpx
 import pytest
 
 from app.callback import Delivery, JobState
-from app.kafka_worker import KafkaWorker, Outcome, is_retryable
+from app.kafka_worker import (
+    SAFE_PROCESSING_FAILURE_MESSAGE,
+    KafkaWorker,
+    Outcome,
+    is_retryable,
+)
 from app.providers.assemblyai_adapter import (
     AudioUnreachableError,
     TranscriptionConfigurationError,
@@ -51,6 +56,7 @@ class RecordingCallback:
         self.result_delivery = result
         self.status_delivery = status
         self.statuses: list[str] = []
+        self.messages: list[str | None] = []
         self.attempts: list[int | None] = []
         self.results = 0
         # What Spring says when asked whether the job is still worth running.
@@ -70,6 +76,7 @@ class RecordingCallback:
 
     async def post_status(self, meeting_id, event, *, attempt=None) -> Delivery:
         self.statuses.append(event.status)
+        self.messages.append(event.message)
         self.attempts.append(attempt)
         return self.status_delivery
 
@@ -167,6 +174,22 @@ def test_a_terminal_failure_commits_once_failed_is_accepted():
     cb = RecordingCallback()
     assert drive(worker(cb), refused) is Outcome.COMMIT
     assert cb.statuses[-1] == "FAILED"
+
+
+def test_terminal_failure_does_not_expose_provider_error_text():
+    sensitive_provider_text = (
+        "provider response contained transcript-secret-93847 and api details"
+    )
+
+    async def refused(event, progress_hook, transcript_hook):
+        raise TranscriptionConfigurationError(sensitive_provider_text)
+
+    cb = RecordingCallback()
+
+    assert drive(worker(cb), refused) is Outcome.COMMIT
+    assert cb.statuses[-1] == "FAILED"
+    assert cb.messages[-1] == SAFE_PROCESSING_FAILURE_MESSAGE
+    assert sensitive_provider_text not in cb.messages[-1]
 
 
 def test_a_terminal_failure_nobody_heard_is_not_committed():

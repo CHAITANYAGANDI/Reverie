@@ -109,6 +109,10 @@ from app.log_safety import frames
 
 logger = logging.getLogger("ai-service.kafka")
 
+SAFE_PROCESSING_FAILURE_MESSAGE = (
+    "We couldn't process this recording. Please try again."
+)
+
 
 class Outcome(Enum):
     """What the loop should do with the message it just handed over."""
@@ -665,8 +669,10 @@ class KafkaWorker:
                 # looking like a job that had not started — next to a card
                 # saying it had failed.
                 StatusEvent(
-                    meeting_id=meeting_id, status="FAILED", progress=PROGRESS_DONE,
-                    message=str(exc),
+                    meeting_id=meeting_id,
+                    status="FAILED",
+                    progress=PROGRESS_DONE,
+                    message=SAFE_PROCESSING_FAILURE_MESSAGE,
                 ),
                 attempt=run,
             )
