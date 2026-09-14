@@ -188,3 +188,81 @@ async def test_a_blank_language_is_detection_rather_than_a_code_of_spaces():
     assert len(recorder.requests) == 1
     assert "language" not in recorder.requests[0]
     assert result.language == "es"
+
+
+class _DeterministicClientError(Exception):
+    """Stands in for an OpenAI SDK 4xx such as BadRequestError."""
+
+    status_code = 400
+
+
+class _FailingTranscriptionRecorder:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.audio = self
+        self.transcriptions = self
+
+    async def create(self, **kwargs):
+        self.calls += 1
+        raise _DeterministicClientError("bad transcription request")
+
+
+@pytest.mark.asyncio
+async def test_openai_transcription_deterministic_4xx_raises_without_retrying():
+    recorder = _FailingTranscriptionRecorder()
+
+    adapter = OpenAiTranscriptionAdapter(
+        Settings(
+            openai_transcribe_model="whisper-1",
+            openai_max_retries=2,
+        ),
+        client=recorder,
+    )
+
+    with pytest.raises(_DeterministicClientError):
+        await adapter.transcribe(b"audio", "call.wav")
+
+    # A deterministic 400 must not be submitted three times.
+    assert recorder.calls == 1
+
+
+class _TransientServerError(Exception):
+    """Stands in for an OpenAI SDK 5xx such as InternalServerError."""
+
+    status_code = 503
+
+
+class _AlwaysFailingRecorder:
+    def __init__(self, exc_factory) -> None:
+        self.calls = 0
+        self._exc_factory = exc_factory
+        self.audio = self
+        self.transcriptions = self
+
+    async def create(self, **kwargs):
+        self.calls += 1
+        raise self._exc_factory()
+
+
+@pytest.mark.asyncio
+async def test_a_transient_failure_is_retried_and_then_raised_not_swallowed(monkeypatch):
+    # The other half of the rule. A 503 is worth retrying, but when the retries
+    # run out the caller must be told -- the fallback here is an empty
+    # transcript, and a meeting that "succeeded" with no words in it is
+    # indistinguishable from a silent recording to everything downstream.
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr("app.providers.openai_adapter.asyncio.sleep", _no_sleep)
+    recorder = _AlwaysFailingRecorder(_TransientServerError)
+
+    adapter = OpenAiTranscriptionAdapter(
+        Settings(openai_transcribe_model="whisper-1", openai_max_retries=2),
+        client=recorder,
+    )
+
+    with pytest.raises(_TransientServerError):
+        await adapter.transcribe(b"audio", "call.wav")
+
+    # Retried, unlike the deterministic 400 above: three attempts, then raised.
+    assert recorder.calls == 3
