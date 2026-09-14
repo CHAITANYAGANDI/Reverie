@@ -141,6 +141,28 @@ def is_retryable(exc: BaseException) -> bool:
         return code >= 500 or code in RETRYABLE_STATUS
     if isinstance(exc, (httpx.TransportError, asyncio.TimeoutError, ConnectionError, OSError)):
         return True
+
+    # Anything else that carries a real HTTP status, which the OpenAI SDK's
+    # errors do without being httpx ones. Read from the attribute rather than
+    # from a vendor's exception class: the status is the fact being classified,
+    # and importing `openai` here would make this module depend on a provider it
+    # otherwise knows nothing about.
+    #
+    # Without this a deterministic 400 from Whisper fell through to the default
+    # below and was redelivered until the attempt bound gave up -- holding the
+    # single partition each time -- for a request the provider had already
+    # refused and would refuse identically.
+    #
+    # Same rule as `_is_retryable_provider_error` in the OpenAI adapter, so the
+    # in-process retry and the redelivery decision cannot disagree about what a
+    # status means.
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        if status >= 500 or status in RETRYABLE_STATUS:
+            return True
+        if 400 <= status < 500:
+            return False
+
     return True
 
 

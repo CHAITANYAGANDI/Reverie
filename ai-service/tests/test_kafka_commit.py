@@ -372,3 +372,108 @@ def test_the_state_is_read_once_per_delivery():
     drive(worker(cb), _succeeds)
 
     assert cb.state_reads == 1
+
+
+# --- provider errors that are not httpx ------------------------------------- #
+#
+# The OpenAI SDK does not raise `httpx.HTTPStatusError`. Its errors carry the
+# same information under `status_code` on an exception class of its own, so a
+# classifier that only understands httpx read a deterministic 400 as "unknown"
+# and fell through to the retryable default.
+#
+# That is how a meeting whose request Whisper had already refused was redelivered
+# until the attempt bound gave up, instead of being reported FAILED the first
+# time. Modelled rather than imported: the contract being relied on is the
+# attribute, not the vendor's class, and depending on the class would make this
+# test a test of the SDK.
+class _OpenAiStyleError(Exception):
+    """An SDK error that exposes a real HTTP status without being an httpx one."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"provider returned {status_code}")
+        self.status_code = status_code
+
+
+@pytest.mark.parametrize("code", [400, 401, 403, 404, 422])
+def test_a_provider_request_that_was_wrong_is_not_retryable(code):
+    # Whisper will refuse the identical bytes identically. Redelivering costs
+    # the queue head and changes nothing.
+    assert is_retryable(_OpenAiStyleError(code)) is False
+
+
+@pytest.mark.parametrize("code", [408, 425, 429, 500, 502, 503, 504])
+def test_transient_provider_statuses_are_retryable(code):
+    assert is_retryable(_OpenAiStyleError(code)) is True
+
+
+def test_a_provider_error_without_a_status_keeps_the_retryable_default():
+    # Connection resets and SDK wrappers that never reached the server have no
+    # status to read, and the default is the safe one.
+    class _NoStatus(Exception):
+        pass
+
+    assert is_retryable(_NoStatus("connection reset")) is True
+
+
+def test_a_non_integer_status_is_not_trusted_as_a_classification():
+    # Mocks and older SDK versions have been seen carrying a string or a
+    # property object here. Guessing from it would be worse than the default.
+    exc = _OpenAiStyleError(400)
+    exc.status_code = "400"  # type: ignore[assignment]
+
+    assert is_retryable(exc) is True
+
+
+def test_a_provider_refusal_is_reported_failed_on_the_first_attempt():
+    # The whole point of the classification. A meeting Whisper has refused is
+    # finished: it is reported FAILED, the offset is committed, and the queue
+    # head moves on. Previously this was redelivered until the attempt bound
+    # gave up, and the user watched it sit in QUEUED for five rounds.
+    async def refused(event, progress_hook, transcript_hook):
+        raise _OpenAiStyleError(400)
+
+    cb = RecordingCallback()
+    assert drive(worker(cb), refused) is Outcome.COMMIT
+    assert cb.statuses[-1] == "FAILED"
+
+
+def test_a_transient_provider_failure_is_still_left_for_redelivery():
+    # 503 is the opposite case and must keep the old behaviour: nothing is
+    # reported, because the meeting has not failed yet.
+    async def overloaded(event, progress_hook, transcript_hook):
+        raise _OpenAiStyleError(503)
+
+    cb = RecordingCallback()
+    assert drive(worker(cb), overloaded) is Outcome.RETRY
+    assert "FAILED" not in cb.statuses
+
+
+def test_a_transient_provider_failure_still_ends_after_the_attempt_bound():
+    # And it does not retry forever. The bound is unchanged; this only pins
+    # that raising from transcription did not escape it.
+    async def overloaded(event, progress_hook, transcript_hook):
+        raise _OpenAiStyleError(503)
+
+    cb = RecordingCallback()
+    outcome = drive(worker(cb, max_attempts=3), overloaded, failures=2)
+
+    assert outcome is Outcome.COMMIT
+    assert cb.statuses[-1] == "FAILED"
+
+
+@pytest.mark.parametrize(
+    "code", [400, 401, 403, 404, 408, 422, 425, 429, 500, 502, 503, 504]
+)
+def test_both_retry_layers_agree_about_what_a_status_means(code):
+    """The in-process retry and the redelivery decision must not disagree.
+
+    They are separate functions in separate modules by necessity -- the worker
+    does not import the OpenAI SDK and the adapter knows nothing about Kafka --
+    and a status one gives up on immediately while the other retries would send
+    the same doomed request five more times.
+    """
+    from app.providers.openai_adapter import _is_retryable_provider_error
+
+    exc = _OpenAiStyleError(code)
+
+    assert is_retryable(exc) is _is_retryable_provider_error(exc)

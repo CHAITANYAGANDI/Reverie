@@ -2,9 +2,21 @@
 
 Extraction uses JSON mode with prompts that instruct the model to extract only
 what is explicitly present in the transcript and to quote the exact source
-sentence. A light circuit-breaker (bounded retries + timeout + empty fallback)
-wraps every call so a provider outage degrades to an empty structured result
-rather than a 500.
+sentence. A light circuit-breaker (bounded retries + timeout) wraps every call.
+
+What happens when it gives up depends on what the call was for, and the two are
+not interchangeable:
+
+* **Analysis** — summaries, action items, suggestions, translations. These
+  degrade to an empty structured result, because a meeting with a transcript
+  and no summary is still worth reading and the summary can be regenerated.
+* **Transcription** — opts out of that, via `raise_on_exhaustion`. An empty
+  transcript is not a degraded meeting, it is a lost one: nothing downstream
+  can tell it apart from a silent recording, so the failure has to travel up to
+  the Kafka worker where the meeting can be reported FAILED and retried.
+
+Deterministic 4xx responses are not retried at all, at either layer — see
+`_is_retryable_provider_error`.
 """
 
 from __future__ import annotations
@@ -79,17 +91,62 @@ def _rate_limit_wait(exc: Exception) -> float | None:
     return 20.0
 
 
+#: Client statuses that mean "not now" rather than "not ever". Deliberately the
+#: same three as `RETRYABLE_STATUS` in app.callback, which the Kafka worker
+#: classifies redelivery with: one meaning per status across both layers.
+_TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429})
+
+
+def _is_retryable_provider_error(exc: Exception) -> bool:
+    """Whether retrying an OpenAI provider failure could plausibly succeed.
+
+    Mirrored by `is_retryable` in app.kafka_worker, which reads the same
+    attribute to decide whether the *message* is worth redelivering. The two
+    must agree: a status the adapter gives up on immediately and the worker then
+    retries would send the same doomed request five more times.
+    """
+
+    status = getattr(exc, "status_code", None)
+
+    # Network errors, timeouts and unknown failures may be transient.
+    if not isinstance(status, int):
+        return True
+
+    # Server failures and explicitly transient client statuses may recover.
+    if status >= 500 or status in _TRANSIENT_HTTP_STATUS:
+        return True
+
+    # Other 4xx responses mean the request itself was rejected.
+    if 400 <= status < 500:
+        return False
+
+    return True
+
+
 async def _with_retries(
     op: Callable[[], Awaitable[T]],
     *,
     attempts: int,
     fallback: T,
     label: str,
+    retry_if: Callable[[Exception], bool] | None = None,
+    raise_on_exhaustion: bool = False,
 ) -> T:
     """Run `op` with bounded retries + exponential backoff.
 
-    On exhaustion, log and return `fallback` instead of raising — the
-    circuit-breaker-ish behaviour required by the spec.
+    `retry_if` decides whether a given failure is worth another attempt. Without
+    it every exception is retried, which is right for a caller that cannot tell
+    the difference and wrong for one that can: a provider answering 400 will
+    answer 400 again, so the retries are pure latency and the log line that
+    matters arrives three attempts late.
+
+    `raise_on_exhaustion` chooses what giving up means. The default returns
+    `fallback`, which is what the analysis callers want — a meeting with no
+    summary is degraded, not lost. Transcription passes True instead, because
+    its fallback is an empty transcript and nothing downstream can tell that
+    apart from a recording with no speech in it. The `fallback` argument is
+    still required either way; it belongs to the signature this helper shares
+    with those other callers.
 
     Rate limits are waited out rather than backed off from. The generic
     backoff starts at half a second and triples by the third attempt, so a
@@ -102,6 +159,14 @@ async def _with_retries(
         try:
             return await op()
         except Exception as exc:  # noqa: BLE001 — deliberately broad; we degrade.
+            if retry_if is not None and not retry_if(exc):
+                logger.error(
+                    "OpenAI %s failed permanently: %s",
+                    label,
+                    type(exc).__name__,
+                )
+                raise
+
             wait = _rate_limit_wait(exc)
             # The class name, never the message: an APIStatusError renders
             # the provider's response body, and a validation error raised
@@ -115,7 +180,17 @@ async def _with_retries(
                 type(exc).__name__,
             )
             if attempt >= attempts:
-                logger.error("OpenAI %s exhausted retries; returning fallback.", label)
+                if raise_on_exhaustion:
+                    logger.error(
+                        "OpenAI %s exhausted retries; raising.",
+                        label,
+                    )
+                    raise
+
+                logger.error(
+                    "OpenAI %s exhausted retries; returning fallback.",
+                    label,
+                )
                 return fallback
             if wait is not None:
                 await asyncio.sleep(wait)
@@ -216,6 +291,8 @@ class OpenAiTranscriptionAdapter(TranscriptionPort):
             attempts=self._settings.openai_max_retries + 1,
             fallback=TranscriptResponse(transcript="", language="en", segments=[]),
             label="transcribe",
+            retry_if=_is_retryable_provider_error,
+            raise_on_exhaustion=True,
         )
 
 

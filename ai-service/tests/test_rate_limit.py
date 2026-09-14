@@ -12,6 +12,15 @@ import pytest
 from app.providers.openai_adapter import _rate_limit_wait, _with_retries
 
 
+def _make_no_sleep():
+    """An `asyncio.sleep` that returns at once, so backoff costs no wall time."""
+
+    async def _sleep(_seconds):
+        return None
+
+    return _sleep
+
+
 class _Resp:
     def __init__(self, headers: dict):
         self.headers = headers
@@ -99,3 +108,93 @@ async def test_non_rate_limit_errors_keep_the_short_backoff(monkeypatch):
 
     assert result == "fallback"
     assert slept == [0.5, 1.0]
+
+
+# --- what giving up means, which is not the same for every caller ----------- #
+#
+# `_with_retries` is shared between the analysis calls and transcription, and
+# they want opposite things on exhaustion. Analysis degrades: a meeting with a
+# transcript and no summary is readable, and the summary can be regenerated.
+# Transcription cannot degrade, because its fallback is an empty transcript and
+# nothing downstream distinguishes that from a recording with no speech in it.
+
+
+class _PermanentError(Exception):
+    """An OpenAI-style 4xx: the request itself was refused."""
+
+    def __init__(self, status_code: int = 400):
+        super().__init__(f"provider returned {status_code}")
+        self.status_code = status_code
+
+
+@pytest.mark.asyncio
+async def test_analysis_still_degrades_to_its_fallback(monkeypatch):
+    # The behaviour every summary/extraction caller relies on, unchanged.
+    monkeypatch.setattr("app.providers.openai_adapter.asyncio.sleep", _make_no_sleep())
+    calls = {"n": 0}
+
+    async def op():
+        calls["n"] += 1
+        raise RuntimeError("provider is down")
+
+    result = await _with_retries(op, attempts=3, fallback="fallback", label="summarize")
+
+    assert result == "fallback"
+    assert calls["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_a_caller_can_ask_to_be_told_instead(monkeypatch):
+    # Transcription's choice. The retries still happen -- the failure was
+    # transient -- but the caller hears about it rather than being handed an
+    # empty transcript that looks like a successful one.
+    monkeypatch.setattr("app.providers.openai_adapter.asyncio.sleep", _make_no_sleep())
+    calls = {"n": 0}
+
+    async def op():
+        calls["n"] += 1
+        raise RuntimeError("provider is down")
+
+    with pytest.raises(RuntimeError):
+        await _with_retries(
+            op, attempts=3, fallback="fallback", label="transcribe",
+            raise_on_exhaustion=True,
+        )
+
+    assert calls["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_a_permanent_failure_is_raised_without_burning_the_attempts():
+    # No sleep patch on purpose: if this ever retried, the real backoff would
+    # make the test visibly slow rather than quietly wrong.
+    calls = {"n": 0}
+
+    async def op():
+        calls["n"] += 1
+        raise _PermanentError(400)
+
+    with pytest.raises(_PermanentError):
+        await _with_retries(
+            op, attempts=3, fallback="fallback", label="transcribe",
+            retry_if=lambda exc: getattr(exc, "status_code", None) != 400,
+        )
+
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_if_does_not_change_the_fallback_for_callers_that_want_one(monkeypatch):
+    # `retry_if` and `raise_on_exhaustion` are independent. A caller may want to
+    # stop retrying a hopeless request and still degrade rather than raise.
+    monkeypatch.setattr("app.providers.openai_adapter.asyncio.sleep", _make_no_sleep())
+
+    async def op():
+        raise RuntimeError("transient")
+
+    result = await _with_retries(
+        op, attempts=2, fallback="fallback", label="summarize",
+        retry_if=lambda exc: True,
+    )
+
+    assert result == "fallback"
