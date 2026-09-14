@@ -1,4 +1,21 @@
 /** @type {import('next').NextConfig} */
+
+const cspReportOnly = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "media-src 'self' blob: https:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https://*.clerk.accounts.dev https://accounts.google.com",
+  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
+].join("; ");
+
 const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
@@ -78,6 +95,17 @@ const nextConfig = {
             // it. Both, because the old one is still what some proxies read.
             key: "Content-Security-Policy",
             value: "frame-ancestors 'none'",
+          },
+          {
+            /*
+             * First full CSP pass: REPORT-ONLY.
+             *
+             * Nothing is blocked yet. We exercise auth, API calls, Sentry,
+             * recording/live transcription and normal navigation in production,
+             * then tighten the policy from the violations we actually observe.
+             */
+            key: "Content-Security-Policy-Report-Only",
+            value: cspReportOnly,
           },
           {
             // Send the origin to other sites, never the path. Meeting URLs
