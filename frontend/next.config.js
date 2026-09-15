@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 
-const cspReportOnly = [
+const csp = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
@@ -52,13 +52,9 @@ const nextConfig = {
    * nosniff, X-Frame-Options: DENY -- but every one of these responses is a
    * page in somebody's browser, and the browser only enforces what it is told.
    *
-   * No Content-Security-Policy here, deliberately. A CSP tight enough to be
-   * worth having has to enumerate what Clerk loads and what Next injects, and
-   * one written without measuring first is either so loose it changes nothing
-   * or so tight it breaks sign-in in a way that only shows up in production.
-   * It is worth doing properly, with report-only first, and it is not worth
-   * guessing at during a rename. `frame-ancestors` is the exception: it has no
-   * such coupling, so it is set below alongside X-Frame-Options.
+   * The full Content-Security-Policy below was exercised in report-only mode
+   * against production before enforcement, including Clerk authentication,
+   * API traffic, Sentry, navigation, and live transcription.
    */
   async headers() {
     return [
@@ -91,21 +87,15 @@ const nextConfig = {
             value: "DENY",
           },
           {
-            // The modern spelling of the line above, for browsers that prefer
-            // it. Both, because the old one is still what some proxies read.
-            key: "Content-Security-Policy",
-            value: "frame-ancestors 'none'",
-          },
-          {
             /*
-             * First full CSP pass: REPORT-ONLY.
-             *
-             * Nothing is blocked yet. We exercise auth, API calls, Sentry,
-             * recording/live transcription and normal navigation in production,
-             * then tighten the policy from the violations we actually observe.
-             */
-            key: "Content-Security-Policy-Report-Only",
-            value: cspReportOnly,
+            * Full Content Security Policy.
+            *
+            * The policy was first exercised in report-only mode against production
+            * auth, API calls, Sentry, navigation and live transcription. The observed
+            * production Clerk frontend API origin is included before enforcement.
+            */
+            key: "Content-Security-Policy",
+            value: csp,
           },
           {
             // Send the origin to other sites, never the path. Meeting URLs
