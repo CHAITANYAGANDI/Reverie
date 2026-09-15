@@ -6,14 +6,14 @@ const cspReportOnly = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev",
+  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.reverieai.in",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
   "frame-src 'self' https://*.clerk.accounts.dev https://accounts.google.com",
-  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
+  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.reverieai.in https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
 ].join("; ");
 
 const nextConfig = {
