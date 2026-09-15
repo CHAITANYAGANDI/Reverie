@@ -34,6 +34,7 @@ from app.providers.assemblyai_adapter import (
     TranscriptionConfigurationError,
 )
 from app.schemas import MeetingUploadedEvent
+from app.storage import AudioDownloadTooLargeError
 
 
 EVENT = MeetingUploadedEvent(
@@ -269,6 +270,14 @@ def test_a_request_that_was_wrong_is_not_retryable(code):
         "x", request=httpx.Request("POST", "http://x"), response=httpx.Response(code)
     )
     assert is_retryable(exc) is False
+
+
+def test_a_recording_over_the_memory_ceiling_is_not_retryable():
+    # The ceiling is a fact about the object and this container, not about the
+    # attempt: redelivery cannot make the recording smaller. Retrying would
+    # re-download up to the ceiling, fail the same way, and hold the single
+    # partition while every queued meeting waits behind it.
+    assert is_retryable(AudioDownloadTooLargeError("too large")) is False
 
 
 @pytest.mark.parametrize(
