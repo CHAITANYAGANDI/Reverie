@@ -59,7 +59,9 @@ class ProvisioningRefusalTest {
         // Dev mode, because the subject then comes off a header and this test
         // needs no JWKS, no token and no Clerk. What is under test is what the
         // filter does with a refusal, and that is the same either way.
-        return new AuthenticationFilter(users, new ClerkTokens("dev", "", ""), "dev");
+        return new AuthenticationFilter(
+                new ProvisionedIdentityResolver(users, new SelfOnlyAccess(false, "")),
+                new ClerkTokens("dev", "", ""), "dev");
     }
 
     private static MockHttpServletRequest request() {

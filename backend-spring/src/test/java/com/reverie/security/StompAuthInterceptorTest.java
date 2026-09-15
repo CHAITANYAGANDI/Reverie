@@ -71,7 +71,10 @@ class StompAuthInterceptorTest {
 
     @BeforeEach
     void setUp() {
-        interceptor = new StompAuthInterceptor(tokens, users, meetings);
+        interceptor = new StompAuthInterceptor(
+                tokens,
+                new ProvisionedIdentityResolver(users, new SelfOnlyAccess(false, "")),
+                meetings);
         when(tokens.devMode()).thenReturn(false);
         when(users.provision(anyString(), any())).thenReturn(LOCAL_ID);
         // The owner owns exactly one meeting, and only under their own id.

@@ -11,6 +11,7 @@ import com.reverie.repository.MeetingRepository;
 import com.reverie.repository.ProjectRepository;
 import com.reverie.repository.TranscriptMomentRepository;
 import com.reverie.repository.UserRepository;
+import com.reverie.security.ProvisionedIdentityResolver;
 import com.reverie.security.SecurityUtils;
 import com.reverie.security.SignInSecurity;
 import org.slf4j.Logger;
@@ -18,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -76,6 +79,7 @@ public class PrivacyService {
     private final AuditService audit;
     private final AccountMail mail;
     private final FreeTierService freeTier;
+    private final ProvisionedIdentityResolver identities;
     private final String frontendUrl;
 
     public PrivacyService(MeetingRepository meetings,
@@ -90,6 +94,7 @@ public class PrivacyService {
                           AuditService audit,
                           AccountMail mail,
                           FreeTierService freeTier,
+                          ProvisionedIdentityResolver identities,
                           @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl) {
         this.meetings = meetings;
         this.actionItems = actionItems;
@@ -103,6 +108,7 @@ public class PrivacyService {
         this.audit = audit;
         this.mail = mail;
         this.freeTier = freeTier;
+        this.identities = identities;
         this.frontendUrl = frontendUrl.endsWith("/")
                 ? frontendUrl.substring(0, frontendUrl.length() - 1)
                 : frontendUrl;
@@ -222,6 +228,7 @@ public class PrivacyService {
          */
         UserEntity account = users.findById(userId).orElse(null);
         String address = account == null ? null : account.getEmail();
+        String subject = account == null ? null : account.getClerkUserId();
 
         /*
          * THE ONE PREREQUISITE, AND IT COMES BEFORE EVERYTHING.
@@ -257,12 +264,12 @@ public class PrivacyService {
          * one.
          */
         if (account != null) {
-            String subject = account.getClerkUserId();
             TenantContext.runAsSystem(
                     () -> freeTier.bindCurrentIdentityBeforeDeletion(userId, subject));
         }
 
         int objects = erasure.eraseAccount(userId);
+        forgetProvisionedIdentityAfterCommit(subject);
         log.info("Account {} closed: {} meeting(s), {} stored object(s).", userId, meetingCount, objects);
         /*
          * Queued inside this transaction, after the erasure and before the
@@ -278,6 +285,50 @@ public class PrivacyService {
          */
         mail.accountClosed(userId, address, meetingCount, objects);
         return new Closed(meetingCount, objects);
+    }
+
+    /**
+     * Forget this subject's cached mapping, once the deletion is real.
+     *
+     * <p><b>Not a plain call, and the difference is the whole point.</b> This
+     * method runs inside {@code closeAccount}'s transaction, so evicting here
+     * would evict while the rows still exist to every other connection. A
+     * request arriving in that window would miss, re-provision, read the account
+     * that is still there, and cache it again — leaving a mapping to a row that
+     * is deleted a moment later, which is precisely the state the eviction
+     * exists to prevent. Worse, the deletion can still roll back, and then the
+     * eviction would have been a lie about something that never happened.
+     *
+     * <p>So it is deferred to {@code afterCommit}, which runs once the rows are
+     * actually gone. {@code afterCompletion} would be the wrong hook: it fires
+     * on rollback too, and a rolled-back close leaves an account whose mapping
+     * is still correct.
+     *
+     * <p>Nothing is scheduled asynchronously. The callback runs on this thread,
+     * immediately after the commit, before the request returns — so there is no
+     * window in which the caller has been told the account is gone while the
+     * mapping still answers.
+     *
+     * <p>A subject whose identity binding refused never reaches this line:
+     * {@code bindCurrentIdentityBeforeDeletion} throws above, nothing is
+     * deleted, and nothing is evicted.
+     */
+    private void forgetProvisionedIdentityAfterCommit(String clerkUserId) {
+        if (clerkUserId == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            // No transaction to outlive -- whatever deleted the account has
+            // already finished, so there is nothing to wait for.
+            identities.forget(clerkUserId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                identities.forget(clerkUserId);
+            }
+        });
     }
 
     /** What closing an account destroyed, counted before it went. */
