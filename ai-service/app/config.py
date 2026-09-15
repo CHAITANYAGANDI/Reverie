@@ -285,6 +285,27 @@ class Settings(BaseSettings):
 
     # --- HTTP download ---
     download_timeout_seconds: float = 60.0
+    # The largest recording ai-service will hold in memory at once.
+    #
+    # **Not the upload limit.** Spring accepts 500 MiB and that is unchanged;
+    # this is a property of *this container*, which has 1 GiB and would be
+    # OOM-killed long before 500 MiB of audio finished arriving — the bytes are
+    # held once by the response accumulator and again by whatever is handed
+    # them, so the peak is roughly double the file.
+    #
+    # It is not a limit on meeting length either, because the normal path never
+    # touches it. AssemblyAI fetches the presigned object URL itself, so a
+    # three-hour recording is transferred once, by the provider, and never
+    # enters this process. What this bounds is the *fallback* paths that
+    # genuinely need the bytes here: a provider that cannot fetch a URL
+    # (Whisper uploads a file), a presigned URL the provider could not reach,
+    # or a deployment with no public endpoint configured.
+    #
+    # 128 MiB is about twelve hours of the 24 kbps Opus a browser records, and
+    # comfortably above anything Reverie has seen, while leaving the container
+    # most of its memory. Crossing it fails the job with a safe message rather
+    # than killing the worker mid-meeting and taking the queue head with it.
+    download_max_bytes: int = 128 * 1024 * 1024
 
     # --- MP3 export ---
     # How long one ffmpeg encode may take. Generous on purpose: LAME runs at

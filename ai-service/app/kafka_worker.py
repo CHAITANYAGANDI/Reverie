@@ -104,7 +104,7 @@ from app.providers.assemblyai_adapter import (
     TranscriptionRequest,
 )
 from app.providers.factory import AiProviderFactory
-from app.storage import fetch_audio, presigned_get_url
+from app.storage import AudioDownloadTooLargeError, fetch_audio, presigned_get_url
 from app.log_safety import frames
 
 logger = logging.getLogger("ai-service.kafka")
@@ -139,6 +139,19 @@ def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, AudioUnreachableError):
         # Only escapes when the byte-upload fallback has already been tried, so
         # there is no second path left to take.
+        return False
+    if isinstance(exc, AudioDownloadTooLargeError):
+        # The recording is over this service's in-memory ceiling, which is a
+        # fact about the object and the configuration rather than about this
+        # attempt. Redelivery cannot make it smaller, so each retry would
+        # re-download up to the ceiling, fail identically, and hold the single
+        # partition while every queued meeting waits behind it.
+        #
+        # It only reaches here when something genuinely needed the bytes
+        # locally -- a provider that uploads rather than fetching, or a
+        # presigned URL the provider could not reach. Speaker refinement is
+        # unaffected: it catches audio_loader failures itself and keeps the
+        # provider's labels.
         return False
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
