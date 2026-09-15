@@ -13,7 +13,7 @@ const csp = [
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
   "frame-src 'self' https://*.clerk.accounts.dev https://accounts.google.com",
-  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.reverieai.in https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
+  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.reverieai.in https://e683004bc0b99c6f00b901a43898799e.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
 ].join("; ");
 
 const nextConfig = {
