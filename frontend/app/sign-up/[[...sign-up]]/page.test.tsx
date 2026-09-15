@@ -182,6 +182,47 @@ describe("creating the account", () => {
     expect(container.querySelector("#clerk-captcha")).toBeInTheDocument();
   });
 
+  it("keeps exactly one of them", () => {
+    // Clerk mounts by id. A second element is not a spare -- it is ambiguity
+    // about which one the widget lands in, and a challenge rendered into the
+    // one nobody can see is a sign-up nobody can finish.
+    const { container } = render(<SignUpPage />);
+
+    expect(container.querySelectorAll("#clerk-captcha")).toHaveLength(1);
+  });
+
+  it("has it on the first stage, before anything can ask for it", () => {
+    // The details stage is where `create` and the Google button both live, so
+    // this is the render that has to carry it. Asserted by what is on screen
+    // rather than by a stage variable, because the stage is an implementation
+    // detail and the element's presence is the contract.
+    const { container } = render(<SignUpPage />);
+
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(container.querySelector("#clerk-captcha")).toBeInTheDocument();
+  });
+
+  it("dresses the challenge for a dark page and the form's width", () => {
+    // Only read when the challenge is the visible kind. Light-on-dark on the
+    // one screen whose job is reassurance reads as something having gone wrong.
+    const { container } = render(<SignUpPage />);
+    const slot = container.querySelector("#clerk-captcha") as HTMLElement;
+
+    expect(slot.getAttribute("data-cl-theme")).toBe("dark");
+    expect(slot.getAttribute("data-cl-size")).toBe("flexible");
+  });
+
+  it("still has it while the code is being typed", async () => {
+    // The verify stage can still be challenged -- `prepare` and `attempt` are
+    // sign-up calls too -- and the element sits outside the stage conditional
+    // so that it survives the move.
+    const { container } = render(<SignUpPage />);
+    await fillAndSubmit();
+
+    await screen.findByLabelText(/code/i);
+    expect(container.querySelectorAll("#clerk-captcha")).toHaveLength(1);
+  });
+
   it("signs somebody in on the spot where the instance verifies nothing", async () => {
     // Uncommon, and real: with email verification switched off there is no code
     // to wait for, and stopping at a code screen would strand the account.

@@ -398,7 +398,7 @@ export default function SsoCallbackPage() {
           reason — if a widget does appear, it appears where somebody is
           looking rather than jammed into a corner.
         */}
-        <div id="clerk-captcha" />
+        <div id="clerk-captcha" data-cl-theme="dark" data-cl-size="flexible" />
       </div>
     );
   }

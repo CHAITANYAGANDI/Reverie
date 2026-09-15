@@ -1,19 +1,44 @@
 /** @type {import('next').NextConfig} */
 
+/**
+ * Where Clerk's bot protection lives.
+ *
+ * Smart CAPTCHA is Cloudflare Turnstile behind Clerk's own domain, so it needs
+ * two origins and it needs them in two directives: the widget is a *script*
+ * that draws its challenge in an *iframe*, and a policy that allows one without
+ * the other fails in a way that looks like the challenge simply never appeared.
+ *
+ * This is the other half of the mount element. With `#clerk-captcha` on the page
+ * and these origins missing, Clerk has somewhere to put the challenge and no
+ * way to fetch it — which is why email/password sign-up kept reporting "We
+ * could not confirm you are not a robot." after the element was added.
+ */
+const CLERK_BOT_PROTECTION = "https://challenges.cloudflare.com https://*.protect.clerk.com";
+
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.reverieai.in",
+  `script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.reverieai.in ${CLERK_BOT_PROTECTION}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
-  "frame-src 'self' https://*.clerk.accounts.dev https://accounts.google.com",
-  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.reverieai.in https://e683004bc0b99c6f00b901a43898799e.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
+  `frame-src 'self' https://*.clerk.accounts.dev https://accounts.google.com ${CLERK_BOT_PROTECTION}`,
+  /*
+   * `https://*.protect.clerk.com:*`, and the port wildcard is the whole reason
+   * this entry exists separately from the two above.
+   *
+   * `https://*.clerk.com` is already here and CSP host wildcards do span
+   * multiple labels, so it already matches `*.protect.clerk.com` -- on port 443
+   * and nowhere else. A host-source with no port means the scheme's default
+   * port, and Clerk's abuse and fraud protection can answer on others. Without
+   * `:*` those calls are blocked by a policy that looks like it permits them.
+   */
+  "connect-src 'self' https://api.reverieai.in wss://api.reverieai.in https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.reverieai.in https://*.protect.clerk.com:* https://e683004bc0b99c6f00b901a43898799e.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io wss://streaming.assemblyai.com",
 ].join("; ");
 
 const nextConfig = {

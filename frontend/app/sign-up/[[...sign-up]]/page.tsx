@@ -318,8 +318,19 @@ export default function SignUpPage() {
             Clerk mounts its bot check into this element. It is invisible unless
             a sign-up actually looks automated, and without the element Clerk
             has nowhere to put the challenge and refuses the sign-up outright.
+
+            <p>Outside the stage conditional on purpose: it has to exist before
+            `signUp.create` on the details stage and before
+            `authenticateWithRedirect` on the Google button above it, and both
+            of those run from this render.
+
+            <p>The two `data-cl-` attributes are read by the widget when it is
+            the visible kind. Without the theme it renders light on a dark page,
+            which looks like something went wrong on a screen whose whole job is
+            reassurance; `flexible` lets it take the form's width instead of its
+            own fixed one.
           */}
-          <div id="clerk-captcha" />
+          <div id="clerk-captcha" data-cl-theme="dark" data-cl-size="flexible" />
 
           <div className={stage === "details" ? "mt-6" : "mt-[26px]"}>
             <SubmitButton busy={busy === "form"} disabled={!isLoaded || busy === "resend"}>

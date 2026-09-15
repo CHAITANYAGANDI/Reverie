@@ -272,6 +272,24 @@ function SignInForm() {
             </>
           )}
 
+          {/*
+            The bot check, on the sign-in form, which reads like a mistake until
+            you follow Continue with Google.
+
+            <p>`transferable` defaults to true, so a Google account Clerk has
+            never seen turns this sign-in into a *sign-up* — and a sign-up is
+            what bot protection guards. The challenge is therefore required
+            while the person is still standing on this page, and with nowhere to
+            render it Clerk refuses: "We could not confirm you are not a robot."
+            Signing in with a password never triggers it, which is why the
+            failure looked like it belonged to Google rather than to this form.
+
+            <p>Unconditional, like the sign-up form's. It costs an empty div on
+            the two password-reset stages, and the alternative is a condition
+            that has to stay correct about which stage can start a transfer.
+          */}
+          <div id="clerk-captcha" data-cl-theme="dark" data-cl-size="flexible" />
+
           <div className="mt-6">
             <SubmitButton busy={busy === "form"} disabled={!isLoaded}>
               {stage === "credentials"

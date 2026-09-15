@@ -626,6 +626,21 @@ describe("the bot check", () => {
     expect(present).toBe(true);
   });
 
+  it("keeps exactly one of them", () => {
+    // Clerk mounts by id; a second is ambiguity, not a spare.
+    const { container } = render(<SsoCallbackPage />);
+
+    expect(container.querySelectorAll("#clerk-captcha")).toHaveLength(1);
+  });
+
+  it("dresses the challenge for a dark page and the form's width", () => {
+    const { container } = render(<SsoCallbackPage />);
+    const slot = container.querySelector("#clerk-captcha") as HTMLElement;
+
+    expect(slot.getAttribute("data-cl-theme")).toBe("dark");
+    expect(slot.getAttribute("data-cl-size")).toBe("flexible");
+  });
+
   it("is reachable rather than hidden, for the challenge that is interactive", () => {
     /*
      * Most challenges are invisible and this element stays empty. The one that

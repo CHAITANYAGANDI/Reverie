@@ -227,3 +227,68 @@ describe("a forgotten password", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 });
+
+/**
+ * The bot check on the sign-in form.
+ *
+ * <p>Which reads like a mistake until you follow Continue with Google.
+ * `transferable` defaults to true, so a Google account Clerk has never seen
+ * turns this sign-in into a *sign-up* — and a sign-up is what bot protection
+ * guards. The challenge is required while the person is still standing on this
+ * page, so the element has to be here, not only on the sign-up form.
+ *
+ * <p>Production reported "We could not confirm you are not a robot." for Google
+ * sign-up. Signing in with a password never triggers it, which is why the
+ * failure looked like it belonged to Google rather than to this form.
+ */
+describe("the bot check", () => {
+  it("has somewhere to render, which the Google transfer needs", () => {
+    const { container } = render(<SignInPage />);
+
+    expect(container.querySelector("#clerk-captcha")).toBeInTheDocument();
+  });
+
+  it("keeps exactly one of them", () => {
+    // Clerk mounts by id; a second is ambiguity, not a spare.
+    const { container } = render(<SignInPage />);
+
+    expect(container.querySelectorAll("#clerk-captcha")).toHaveLength(1);
+  });
+
+  it("is already on the page when Google is pressed", async () => {
+    /*
+     * The ordering is the fix. `authenticateWithRedirect` is what starts the
+     * transfer, so the element has to exist before it is called -- not be
+     * created in response to it.
+     */
+    let present: boolean | null = null;
+    clerk.authenticateWithRedirect.mockImplementation(async () => {
+      present = document.getElementById("clerk-captcha") !== null;
+    });
+
+    render(<SignInPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /Continue with Google/ }));
+
+    await waitFor(() => expect(clerk.authenticateWithRedirect).toHaveBeenCalled());
+    expect(present).toBe(true);
+  });
+
+  it("dresses the challenge for a dark page and the form's width", () => {
+    const { container } = render(<SignInPage />);
+    const slot = container.querySelector("#clerk-captcha") as HTMLElement;
+
+    expect(slot.getAttribute("data-cl-theme")).toBe("dark");
+    expect(slot.getAttribute("data-cl-size")).toBe("flexible");
+  });
+
+  it("is reachable rather than hidden, for the challenge that is interactive", () => {
+    // Most are invisible. The one that is not has to be clickable, or the
+    // transfer cannot be completed at all.
+    const { container } = render(<SignInPage />);
+    const slot = container.querySelector("#clerk-captcha") as HTMLElement;
+
+    expect(slot.closest(".sr-only")).toBeNull();
+    expect(slot.closest("[hidden]")).toBeNull();
+    expect(slot.closest("[aria-hidden='true']")).toBeNull();
+  });
+});
