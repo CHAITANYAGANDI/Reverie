@@ -558,3 +558,102 @@ describe("what it wears", () => {
     expect(container.textContent ?? "").not.toMatch(/clerk/i);
   });
 });
+
+/**
+ * The bot check, and why an empty page needs one.
+ *
+ * <p>Reported from production. The Clerk log for a Google sign-up read
+ * `sign_up.captcha.required`, `sign_up.captcha.failed`, `oauth_callback.failed`
+ * — a person who had done nothing but press Continue with Google, refused.
+ *
+ * <p>Bot sign-up protection can challenge an OAuth sign-up as readily as the
+ * email one, and Clerk renders the challenge into `#clerk-captcha`. The sign-up
+ * form has carried one all along; this route did not, because it draws nothing,
+ * and drawing nothing is how the element went missing.
+ *
+ * <p>These assert on the DOM rather than on a screenshot, because the whole
+ * point of the element is that it is normally invisible. A test that only
+ * looked at what is on screen would have passed throughout the outage.
+ */
+describe("the bot check", () => {
+  it("is on the page while the exchange is working", () => {
+    const { container } = render(<SsoCallbackPage />);
+
+    expect(container.querySelector("#clerk-captcha")).not.toBeNull();
+  });
+
+  it("is already there when Clerk is handed the callback", async () => {
+    /*
+     * The ordering is the fix. React commits the DOM before it runs effects, so
+     * rendering the element is enough — but "enough" is exactly the kind of
+     * claim that stops being true when somebody moves the element into the
+     * effect, or behind a `loaded` guard, and every visible assertion still
+     * passes. So this reads the document at the moment of the call.
+     */
+    let present: boolean | null = null;
+    handleRedirectCallback.mockImplementation(async () => {
+      present = document.getElementById("clerk-captcha") !== null;
+    });
+
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(handleRedirectCallback).toHaveBeenCalled());
+    expect(present).toBe(true);
+  });
+
+  it("is already there when a half-finished sign-up is filled in", async () => {
+    /*
+     * The other road to the same need. `fillMissing` runs before the exchange
+     * and calls `signUp.update`, which is a sign-up mutation and can be
+     * challenged in its own right.
+     */
+    let present: boolean | null = null;
+    signUp = {
+      status: "missing_requirements",
+      missingFields: ["username"],
+      emailAddress: "someone@example.com",
+      createdSessionId: null,
+      update,
+    };
+    update.mockImplementation(async () => {
+      present = document.getElementById("clerk-captcha") !== null;
+      return { status: "complete", missingFields: [], createdSessionId: "sess_1" };
+    });
+
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(present).toBe(true);
+  });
+
+  it("is reachable rather than hidden, for the challenge that is interactive", () => {
+    /*
+     * Most challenges are invisible and this element stays empty. The one that
+     * is not has to be clickable, so it must not be `sr-only`, `hidden`, or
+     * inside something that is — a hidden challenge is a sign-up nobody can
+     * complete, which is the bug again with extra steps.
+     */
+    const { container } = render(<SsoCallbackPage />);
+    const slot = container.querySelector("#clerk-captcha") as HTMLElement;
+
+    expect(slot).not.toBeNull();
+    expect(slot.className).toBe("");
+    expect(slot.hasAttribute("hidden")).toBe(false);
+    expect(slot.getAttribute("aria-hidden")).toBeNull();
+    expect(slot.closest(".sr-only")).toBeNull();
+    expect(slot.closest("[hidden]")).toBeNull();
+    expect(slot.closest("[aria-hidden='true']")).toBeNull();
+  });
+
+  it("shows no Reverie UI while it waits, captcha slot and all", () => {
+    /*
+     * Requirement two: the element is added, and the route still draws a dark
+     * frame and nothing else. An empty div contributes no text and no height.
+     */
+    const { container } = render(<SsoCallbackPage />);
+
+    expect(visibleText(container)).toBe("");
+    expect(container.querySelector("[data-ai-mark]")).toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

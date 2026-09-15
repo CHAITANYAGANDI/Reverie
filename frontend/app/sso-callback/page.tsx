@@ -362,13 +362,43 @@ export default function SsoCallbackPage() {
    */
   if (phase.state === "working") {
     return (
-      <div className="min-h-screen bg-surface">
+      <div className="grid min-h-screen place-items-center bg-surface">
         {/* Not visible, and not nothing. A sighted reader gets a dark frame or
             two; without this a screen-reader user gets silence on a route that
             is a real navigation stop. */}
         <span className="sr-only" role="status">
           Completing authentication…
         </span>
+
+        {/*
+          WHERE CLERK PUTS A BOT CHECK, IF IT ASKS FOR ONE.
+
+          <p>Bot sign-up protection can challenge an OAuth sign-up as readily as
+          the email one, and this is the element Clerk renders the challenge
+          into. Without it there is nowhere to put the challenge and the
+          sign-up is refused — which is what production was doing: the Clerk
+          log read `sign_up.captcha.required`, then `sign_up.captcha.failed`,
+          then `oauth_callback.failed`, for a person who had done nothing wrong
+          but press Continue with Google.
+
+          <p>The sign-up form has carried one of these all along. This route
+          did not, because it draws nothing — and drawing nothing is exactly
+          how the element went missing.
+
+          <p>It renders here, in the first commit, rather than being created
+          when it is wanted: React commits the DOM before it runs effects, so
+          by the time the exchange below starts this is already on the page.
+          Mounting it from inside the effect would be a race with the very call
+          that needs it.
+
+          <p>Empty it occupies nothing, so the route still shows a dark frame
+          and no Reverie UI. Deliberately NOT `sr-only` or `hidden`: most
+          challenges are invisible, but the one that is not has to be clickable
+          or the sign-up cannot be completed at all. Centred for the same
+          reason — if a widget does appear, it appears where somebody is
+          looking rather than jammed into a corner.
+        */}
+        <div id="clerk-captcha" />
       </div>
     );
   }
