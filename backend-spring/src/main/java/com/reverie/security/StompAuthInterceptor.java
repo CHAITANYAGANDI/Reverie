@@ -1,7 +1,6 @@
 package com.reverie.security;
 
 import com.reverie.repository.MeetingRepository;
-import com.reverie.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.Message;
@@ -78,12 +77,14 @@ public class StompAuthInterceptor implements ChannelInterceptor {
             Pattern.compile("^/topic/users/([^/]+)/notifications$");
 
     private final ClerkTokens tokens;
-    private final UserService users;
+    private final ProvisionedIdentityResolver identities;
     private final MeetingRepository meetings;
 
-    public StompAuthInterceptor(ClerkTokens tokens, UserService users, MeetingRepository meetings) {
+    public StompAuthInterceptor(ClerkTokens tokens,
+                                ProvisionedIdentityResolver identities,
+                                MeetingRepository meetings) {
         this.tokens = tokens;
-        this.users = users;
+        this.identities = identities;
         this.meetings = meetings;
     }
 
@@ -114,10 +115,12 @@ public class StompAuthInterceptor implements ChannelInterceptor {
             throw refuse("CONNECT without a valid credential");
         }
         // Provisioning runs before the local user id exists, so it cannot
-        // satisfy a tenant policy yet — the same bootstrap the HTTP filter does.
+        // satisfy a tenant policy yet — the same bootstrap the HTTP filter does,
+        // through the same resolver, so a connection and a request cannot come
+        // to disagree about which row a subject owns.
         String localUserId;
         try {
-            localUserId = TenantContext.asSystem(() -> users.provision(subject, emailOf(accessor)));
+            localUserId = identities.resolve(subject, emailOf(accessor));
         } catch (Exception e) {
             throw refuse("could not resolve the account behind that credential");
         }

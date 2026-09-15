@@ -22,6 +22,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -79,13 +81,16 @@ class PrivacyServiceTest {
      */
     @Mock private FreeTierService freeTier;
 
+    /** The mapping cache the close path has to invalidate once it commits. */
+    @Mock private com.reverie.security.ProvisionedIdentityResolver identities;
+
     private PrivacyService service;
     private UserEntity user;
 
     @BeforeEach
     void setUp() {
         service = new PrivacyService(meetings, actionItems, moments, projects, conversations,
-                users, retention, erasure, storage, audit, mail, freeTier,
+                users, retention, erasure, storage, audit, mail, freeTier, identities,
                 "https://reverie.test/");
         user = new UserEntity();
         user.setId(USER);
@@ -397,6 +402,82 @@ class PrivacyServiceTest {
 
             assertThat(tx).isNotNull();
             assertThat(tx.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+        }
+    }
+
+    @Nested
+    @DisplayName("forgetting the cached identity mapping")
+    class CacheInvalidation {
+
+        /**
+         * Why this is asserted around a commit rather than around the call.
+         *
+         * <p>`closeAccount` is `@Transactional`, so everything in its body runs
+         * while the rows are still there to every other connection. An eviction
+         * written inline would therefore land inside the transaction, and a
+         * request arriving in that window would miss, re-provision, read the
+         * account that still exists, and cache it again -- leaving a mapping to
+         * a row deleted a moment later. The eviction has to wait for the commit
+         * it is describing.
+         */
+        @Test
+        @DisplayName("evicts after the commit, and not before it")
+        void evictsOnlyAfterCommit() {
+            when(erasure.eraseAccount(USER)).thenReturn(1);
+            TransactionSynchronizationManager.initSynchronization();
+            try {
+                service.closeAccount(USER, "delete everything");
+
+                // Still inside the transaction: nothing may have been evicted.
+                verify(identities, never()).forget(anyString());
+
+                for (TransactionSynchronization sync
+                        : TransactionSynchronizationManager.getSynchronizations()) {
+                    sync.afterCommit();
+                }
+
+                verify(identities).forget("user_2clerk");
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization();
+            }
+        }
+
+        @Test
+        @DisplayName("a rollback leaves the mapping alone, because the account is still there")
+        void rollbackDoesNotEvict() {
+            when(erasure.eraseAccount(USER)).thenReturn(1);
+            TransactionSynchronizationManager.initSynchronization();
+            try {
+                service.closeAccount(USER, "delete everything");
+
+                for (TransactionSynchronization sync
+                        : TransactionSynchronizationManager.getSynchronizations()) {
+                    sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+                }
+
+                // afterCompletion fires on rollback too, which is exactly why
+                // the eviction hangs off afterCommit instead.
+                verify(identities, never()).forget(anyString());
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization();
+            }
+        }
+
+        @Test
+        @DisplayName("a refused identity binding deletes nothing and evicts nothing")
+        void refusedBindingEvictsNothing() {
+            doThrow(ApiException.serviceUnavailable("could not confirm"))
+                    .when(freeTier).bindCurrentIdentityBeforeDeletion(anyString(), anyString());
+            TransactionSynchronizationManager.initSynchronization();
+            try {
+                assertThatThrownBy(() -> service.closeAccount(USER, "delete everything"))
+                        .isInstanceOf(ApiException.class);
+
+                verify(erasure, never()).eraseAccount(anyString());
+                verify(identities, never()).forget(anyString());
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization();
+            }
         }
     }
 }

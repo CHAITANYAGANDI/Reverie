@@ -1,7 +1,6 @@
 package com.reverie.security;
 
 import com.reverie.common.ApiException;
-import com.reverie.service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,11 +35,15 @@ public class AuthenticationFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthenticationFilter.class);
     private static final String DEV_FALLBACK_USER = "dev-user";
 
-    private final UserService userService;
+    private final ProvisionedIdentityResolver identities;
     private final ClerkTokens tokens;
     private final String authMode;
 
     /**
+     * @param identities what turns a verified subject into a local user id.
+     *     Shared with {@link StompAuthInterceptor} for the same reason
+     *     {@code tokens} is, and non-transactional on purpose — see
+     *     {@link ProvisionedIdentityResolver}.
      * @param tokens what decides whether a token is real. Shared with
      *     {@link StompAuthInterceptor}, so the socket and the API cannot come
      *     to disagree about it — see {@link ClerkTokens}.
@@ -53,10 +56,10 @@ public class AuthenticationFilter extends OncePerRequestFilter {
      *     that forgot to configure Clerk a wall of 401s, which is the correct
      *     failure and an obvious one.
      */
-    public AuthenticationFilter(UserService userService,
+    public AuthenticationFilter(ProvisionedIdentityResolver identities,
                                 ClerkTokens tokens,
                                 @Value("${reverie.auth-mode:clerk}") String authMode) {
-        this.userService = userService;
+        this.identities = identities;
         this.tokens = tokens;
         this.authMode = authMode;
         if (!"clerk".equalsIgnoreCase(authMode)) {
@@ -86,10 +89,11 @@ public class AuthenticationFilter extends OncePerRequestFilter {
             if (clerkUserId != null && !clerkUserId.isBlank()) {
                 // Provisioning looks the user up by clerk_user_id and may insert
                 // a row — both before the local user id exists, so neither can
-                // satisfy a tenant policy yet. This is the bootstrap case the
-                // system context exists for.
-                String localUserId = TenantContext.asSystem(
-                        () -> userService.provision(clerkUserId, identity.email()));
+                // satisfy a tenant policy yet. The resolver enters the system
+                // context for that, and only when it actually has to: a
+                // returning subject is answered from memory without opening a
+                // transaction at all. See ProvisionedIdentityResolver.
+                String localUserId = identities.resolve(clerkUserId, identity.email());
 
                 // From here on every connection this request borrows is stamped
                 // with this user, and row-level security does the rest.
