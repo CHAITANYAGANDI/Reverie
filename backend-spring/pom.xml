@@ -33,6 +33,19 @@
           com.reverie.observability.
         -->
         <sentry.version>8.16.0</sentry.version>
+        <!--
+          Overrides the Flyway release Spring Boot 3.5.3 manages, whose
+          PostgreSQL support stops at 17. Reverie's production database is Neon,
+          which runs PostgreSQL 18, so every boot logs a warning that the
+          database version is newer than Flyway has been tested against.
+          11.20.3 knows about 18 and the warning goes away.
+
+          The property alone is the whole change: spring-boot-dependencies
+          declares the Flyway versions through this property, so raising it
+          moves flyway-core and flyway-database-postgresql together without
+          either dependency being touched.
+        -->
+        <flyway.version>11.20.3</flyway.version>
     </properties>
 
     <dependencyManagement>
