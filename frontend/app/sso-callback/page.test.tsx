@@ -50,7 +50,24 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push }),
 }));
 
-import SsoCallbackPage from "@/app/sso-callback/page";
+/*
+ * THE SUBJECT MOVED, AND NOTHING IT DOES DID.
+ *
+ * <p>`/sso-callback` is now a shell that calls no Clerk hook, because
+ * `useClerk` throws without its provider and a production prerender has none —
+ * see the note on `app/sso-callback/page.tsx`. The exchange itself, every
+ * branch of which the rest of this file exercises, moved verbatim to
+ * `./callback` and is loaded from the shell with `ssr: false`.
+ *
+ * <p>So this suite renders the exchange directly. That is the same component
+ * it has always rendered, under a new path: mounting it through the shell
+ * would mean waiting on a dynamic import in jsdom to assert on a watchdog, and
+ * would test Next's loader rather than the callback.
+ *
+ * <p>`app/sso-callback/shell.test.tsx` covers the other half — that the route
+ * renders without a provider anywhere near it.
+ */
+import { SsoCallback as SsoCallbackPage } from "@/app/sso-callback/callback";
 
 /**
  * What is actually on screen, ignoring anything only a screen reader gets.
