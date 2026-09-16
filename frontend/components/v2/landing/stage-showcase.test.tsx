@@ -572,3 +572,152 @@ describe("what the capture showcase may never contain", () => {
     expect(src).not.toMatch(/layout(Id)?\s*[={]/);
   });
 });
+
+/**
+ * THE PREVIEW CARD ON A PHONE.
+ *
+ * <h2>The two bugs these exist for</h2>
+ *
+ * <p>Reported from a 360px screen, and measured in Chrome against a production
+ * build before anything was changed:
+ *
+ * <ul>
+ *   <li><b>The band overflowed.</b> Its content wanted 333px of a 310px row, so
+ *       the `Recording` chip ran past the card and the card's own
+ *       `overflow-hidden` took its right-hand end off — 22px at 360, 62px at
+ *       320. That is the missing `g` in the screenshot.</li>
+ *   <li><b>The stage panel overflowed.</b> One `h-[360px]` served every width,
+ *       and Capture's three quotes wrap more the narrower the card: 417px of
+ *       content at 320 against 320px of usable box. The `Live text while it
+ *       runs` caption fell entirely below the fold.</li>
+ * </ul>
+ *
+ * <h2>Why this is asserted as class names, and what that is worth</h2>
+ *
+ * <p>jsdom has no layout engine. `getBoundingClientRect` returns zeroes and no
+ * stylesheet is applied, so a test that rendered this at 320px and measured the
+ * overflow would read 0 before the fix and 0 after it — passing on both, which
+ * is worse than no test. The clipping itself was therefore verified in a real
+ * browser at 320, 344, 360, 375, 390, 400, 414, 430, 480, 540, 600, 640, 768,
+ * 1024 and 1280, in all three stages.
+ *
+ * <p>What is left for this file is the contract: that the values which bought
+ * the room are still present, and — the half that actually rots — that every
+ * one of them is still paired with the `sm:` that puts the designed value back.
+ * The cheap way to make a phone fit is to shrink the desktop, and that is the
+ * regression these pairs catch.
+ */
+describe("the preview card at a phone's width", () => {
+  /** The chip, which is the thing that was visibly cut off. */
+  function chip(container: HTMLElement) {
+    return [...container.querySelectorAll("span")].find((s) =>
+      ["Recording", "Record"].includes(s.textContent?.trim() ?? ""),
+    )!;
+  }
+
+  it("keeps the Recording chip whole and unshrinkable", () => {
+    // `shrink-0` stops flex squeezing it; `whitespace-nowrap` stops the label
+    // breaking inside the pill once it cannot shrink.
+    const { container } = draw();
+    const pill = chip(container);
+
+    expect(pill.className).toContain("shrink-0");
+    expect(pill.className).toContain("whitespace-nowrap");
+  });
+
+  it("gives the band back its gutter, gap and chip padding at sm", () => {
+    const { container } = draw();
+    const band = chip(container).parentElement!;
+    const pill = chip(container);
+
+    expect(band.className).toContain("px-1.5");
+    expect(band.className).toContain("sm:px-3");
+    expect(band.className).toContain("gap-0");
+    expect(band.className).toContain("sm:gap-1");
+
+    expect(pill.className).toContain("pl-2");
+    expect(pill.className).toContain("pr-2.5");
+    expect(pill.className).toContain("sm:pl-2.5");
+    expect(pill.className).toContain("sm:pr-3.5");
+  });
+
+  it("gives each place back its padding at sm, underline included", () => {
+    // The active place's underline is an `after:inset-x` tied to that padding.
+    // Move one without the other and the rule stops matching the word.
+    const { container } = draw();
+    const home = [...container.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Home",
+    )!;
+
+    expect(home.className).toContain("px-1");
+    expect(home.className).toContain("sm:px-[11px]");
+    expect(home.className).toContain("after:inset-x-1");
+    expect(home.className).toContain("sm:after:inset-x-[11px]");
+  });
+
+  it("keeps all three places and the chip's own words", () => {
+    // The room was bought from the spacing, not from the content. A mock that
+    // drops a place or abbreviates a label to fit is no longer a picture of
+    // the product, which is the entire job of this frame.
+    const { container } = draw();
+    const places = [...container.querySelectorAll("span")]
+      .map((s) => s.textContent?.trim())
+      .filter((t) => ["Home", "Library", "Ask"].includes(t ?? ""));
+
+    expect(places).toEqual(["Home", "Library", "Ask"]);
+    expect(chip(container).textContent?.trim()).toBe("Recording");
+  });
+
+  it("keeps the mark at the size the real band draws", () => {
+    // 32px is the note above the mark: this is the application at full scale,
+    // and shrinking the identity would have been the easy way to find 4px.
+    const { container } = draw();
+    const slot = container.querySelector("[aria-hidden] span")!;
+
+    expect(slot.className).toContain("h-8");
+    expect(slot.className).toContain("w-8");
+    expect(slot.className).toContain("shrink-0");
+  });
+
+  it("gives the stage panel a height per breakpoint, tallest on the narrowest", () => {
+    /*
+     * The order is the claim. The narrower the card the more Capture's quotes
+     * wrap, so the phone value has to be the LARGEST of the three — which is
+     * the opposite of how a responsive height usually reads, and exactly the
+     * thing somebody tidying this up would invert.
+     */
+    const { container } = draw();
+    const card = chip(container).closest("[aria-hidden]")!;
+    const box = card.children[1] as HTMLElement;
+
+    expect(box.className).toContain("h-[452px]");
+    expect(box.className).toContain("min-[400px]:h-[404px]");
+    expect(box.className).toContain("sm:h-[400px]");
+
+    const heights = ["h-[452px]", "min-[400px]:h-[404px]", "sm:h-[400px]"]
+      .map((c) => Number(c.match(/(\d+)px/)![1]));
+    expect(heights).toEqual([...heights].sort((a, b) => b - a));
+  });
+
+  it("still fixes that height rather than letting the frame breathe", () => {
+    // A `min-h` would fit every stage and resize the card between them, which
+    // is the instability the sticky column was built to avoid. The fix is a
+    // better number, not a looser rule.
+    const { container } = draw();
+    const box = chip(container).closest("[aria-hidden]")!.children[1] as HTMLElement;
+
+    expect(box.className).not.toMatch(/(^|\s|:)min-h-/);
+    expect(box.className).toContain("overflow-hidden");
+  });
+
+  it("tightens the panel inset on a phone and restores it at sm", () => {
+    const { container } = draw();
+    const box = chip(container).closest("[aria-hidden]")!.children[1] as HTMLElement;
+    const panel = box.firstElementChild as HTMLElement;
+
+    for (const el of [box, panel]) {
+      expect(el.className).toContain("p-4");
+      expect(el.className).toContain("sm:p-6");
+    }
+  });
+});

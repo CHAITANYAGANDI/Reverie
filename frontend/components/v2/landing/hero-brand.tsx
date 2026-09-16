@@ -42,8 +42,9 @@
  *
  * <h2>The words are type, and that is now the whole of it</h2>
  *
- * <p>`Reverie` in the headline face with `AI` in the orb's own sampled blue,
- * and `CONVERSATIONAL INTELLIGENCE` in letterspaced caps.
+ * <p>`Reverie` in the headline face with `AI` in the orb's own sampled light —
+ * a sweep from the bands' blue into the cyan of the waveform through the
+ * sphere — and `CONVERSATIONAL INTELLIGENCE` in letterspaced caps.
  *
  * <p>Type is what the lockup could not be, and that was the whole reason it was
  * a picture: the approved render sets `Reverie` in a face this product does not
@@ -148,27 +149,46 @@ export function HeroBrandLockup() {
         >
           Reverie{" "}
           {/*
-            `AI` IN THE ORB'S OWN COLOUR, and only `AI`.
+            `AI` IN THE ORB'S OWN LIGHT, and only `AI`.
 
-            <p>`--brand-orb`, which is #087afd sampled from the approved
-            artwork: the median of the lit, saturated pixels inside the sphere.
-            Not `--brand-text` and not `--brand` — both were tried and both are
-            visibly lighter than the mark forty pixels above, which is fine for
-            a word anywhere else on a page and wrong for the one word whose job
-            is to be the same blue as the orb. See the note on the token.
+            <p>It was flat `--brand-orb` — #087afd, the median of the lit
+            pixels inside the sphere. That is the colour of the orb's *bands*,
+            and beside the artwork it read as blue text rather than as the lit
+            thing above it, because the orb's character is not one blue: it is
+            a sweep from that blue into the cyan waveform running through the
+            middle. See the tokens.
 
-            <p>The glow is the same colour and `em`-based, so it scales with
-            the word instead of being a 24px halo around a 28px letter pair on
-            a phone. Two stops: a tight one that reads as the letters being lit
-            and a wide one that reads as the light around them — which is what
-            the artwork's own wordmark does, and the reason a flat blue would
-            have looked like coloured text rather than light.
+            <p>So the word is that sweep. It still STARTS on `--brand-orb`, so
+            the tie to the mark is the first thing the eye meets, and rises
+            through `--brand-wave` into `--brand-wave-lit` across the two
+            letters — left to right, which is the direction the wave runs in
+            the artwork. Three stops and no more: a gradient with a stop per
+            letter is a novelty, and this has to survive being read.
+
+            <p>WHY THE FALLBACK IS REAL. `background-clip: text` needs a
+            transparent fill to show through, and a transparent fill with no
+            gradient behind it is an invisible word. `color` is therefore still
+            `--brand-orb`: anything that does not paint the gradient gets
+            exactly what this said before, rather than a gap in the wordmark.
+
+            <p>The glow moved from `text-shadow` to `drop-shadow` for the same
+            reason. A text shadow paints behind the glyph, and behind a
+            transparent glyph is *through* it — the letters fill with their own
+            halo and go muddy. `drop-shadow` follows the painted result, so it
+            lights the letterforms instead of bleeding into them. Still `em`,
+            so it scales with the word rather than being a 24px halo around a
+            28px letter pair on a phone.
           */}
           <span
             className="text-brand-orb"
             style={{
-              textShadow:
-                "0 0 0.14em hsl(var(--brand-orb) / 0.5), 0 0 0.5em hsl(var(--brand-orb) / 0.38)",
+              backgroundImage:
+                "linear-gradient(100deg, hsl(var(--brand-orb)) 0%, hsl(var(--brand-wave)) 56%, hsl(var(--brand-wave-lit)) 100%)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              filter:
+                "drop-shadow(0 0 0.1em hsl(var(--brand-wave) / 0.45)) drop-shadow(0 0 0.38em hsl(var(--brand-orb) / 0.36))",
             }}
           >
             AI

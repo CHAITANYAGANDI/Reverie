@@ -55,6 +55,7 @@ import {
   OrDivider,
   SubmitButton,
 } from "@/components/auth/auth-form";
+import { useBfcacheRestore } from "@/lib/bfcache";
 import { authErrorMessage, isAlreadySignedIn, isAlreadyVerified } from "@/lib/clerk-errors";
 import { blockedMessage, completedSession, fillableFields, type SignUpState } from "@/lib/clerk-signup";
 import { WELCOME } from "@/lib/routes";
@@ -77,6 +78,17 @@ export default function SignUpPage() {
   const [error, setError] = React.useState("");
   const [sent, setSent] = React.useState(false);
   const [busy, setBusy] = React.useState<"form" | "google" | "resend" | null>(null);
+
+  /*
+   * The same restore the sign-in page takes, for the same reason: this screen
+   * carries the identical `Continue with Google` and the identical leave-the-
+   * origin redirect, so it strands the identical spinner when a phone freezes
+   * the document instead of unloading it. See lib/bfcache.
+   *
+   * <p>`form` and `resend` are left alone — both are awaited requests whose
+   * outcome a restored document cannot know.
+   */
+  useBfcacheRestore(() => setBusy((current) => (current === "google" ? null : current)));
 
   function fail(cause: unknown) {
     if (isAlreadySignedIn(cause)) {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -290,5 +290,127 @@ describe("the bot check", () => {
     expect(slot.closest(".sr-only")).toBeNull();
     expect(slot.closest("[hidden]")).toBeNull();
     expect(slot.closest("[aria-hidden='true']")).toBeNull();
+  });
+});
+
+/**
+ * COMING BACK FROM GOOGLE WITH NOTHING TO SHOW FOR IT.
+ *
+ * <p>Reported from a phone: choose Continue with Google, cancel or press Back,
+ * and the button is still turning. It never recovers, and because it is
+ * `disabled` while busy the only control that could start the flow again is
+ * the one that is stuck.
+ *
+ * <p>`authenticateWithRedirect` leaves the origin, so nothing after it runs and
+ * the busy flag is only ever cleared by the page being thrown away. Mobile
+ * browsers freeze the document into the back/forward cache instead and restore
+ * it — same React tree, same state. Desktop Chrome usually reloads here, which
+ * is why this reproduced on a phone and not on the machine it was written on.
+ *
+ * <h2>What jsdom can and cannot say</h2>
+ *
+ * <p>It cannot put a document in the back/forward cache; no test runner can.
+ * What it can do is deliver the event a restore produces — `pageshow` with
+ * `persisted` — and assert the state transition on the other side of it, which
+ * is the whole of the fix. That a real browser fires that event on this page
+ * was checked separately against a production build.
+ *
+ * <p>So the redirect is mocked as a promise that never settles, which is what
+ * a navigation away actually looks like from this component's point of view.
+ */
+describe("returning from a cancelled Google sign-in", () => {
+  /** Leave the flow hanging, exactly as a real navigation does. */
+  function neverReturns() {
+    clerk.authenticateWithRedirect.mockImplementation(() => new Promise(() => {}));
+  }
+
+  async function startGoogle() {
+    const button = await screen.findByRole("button", { name: /Continue with Google/ });
+    await userEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    return button;
+  }
+
+  /** The restore itself. `persisted` is the flag that means bfcache. */
+  function restore(persisted: boolean) {
+    const event = new Event("pageshow") as Event & { persisted?: boolean };
+    Object.defineProperty(event, "persisted", { value: persisted });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+  }
+
+  it("puts the button back to work", async () => {
+    render(<SignInPage />);
+    neverReturns();
+    const button = await startGoogle();
+
+    restore(true);
+
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  it("shows the Google mark again rather than the spinner", async () => {
+    // The visible half of the same bug: `busy` swaps the mark for a spinner,
+    // so a stuck flag is a button that turns for ever.
+    render(<SignInPage />);
+    neverReturns();
+    const button = await startGoogle();
+    expect(button.querySelector(".animate-spin")).not.toBeNull();
+
+    restore(true);
+
+    await waitFor(() => expect(button.querySelector(".animate-spin")).toBeNull());
+    expect(button.querySelector("svg")).not.toBeNull();
+  });
+
+  it("can start the flow a second time", async () => {
+    // The point of the fix is not the pixels, it is that the person can retry.
+    render(<SignInPage />);
+    neverReturns();
+    const button = await startGoogle();
+
+    restore(true);
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.click(button);
+
+    expect(clerk.authenticateWithRedirect).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an ordinary page show, which is not a restore", async () => {
+    /*
+     * `pageshow` also fires on every normal load. Acting on that one would
+     * clear the flag during the moments between the click and the browser
+     * actually leaving, so `persisted` is the whole condition.
+     */
+    render(<SignInPage />);
+    neverReturns();
+    const button = await startGoogle();
+
+    restore(false);
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(button).toBeDisabled();
+  });
+
+  it("does not release a password sign-in that is still in flight", async () => {
+    /*
+     * A restored document cannot know whether an awaited request finished.
+     * Releasing this button would let the same credentials be submitted twice,
+     * so only the Google flag — the one that provably ended in a navigation —
+     * is cleared.
+     */
+    clerk.create.mockImplementation(() => new Promise(() => {}));
+    render(<SignInPage />);
+    await screen.findByRole("button", { name: "Sign in" });
+    await signIn();
+
+    const submit = screen.getByRole("button", { name: /Sign(ing)? in/ });
+    await waitFor(() => expect(submit).toBeDisabled());
+
+    restore(true);
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(submit).toBeDisabled();
   });
 });
