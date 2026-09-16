@@ -6,10 +6,13 @@
  * <h2>What changed, and what deliberately did not</h2>
  *
  * <p>Only the scroll behaviour and the background. The lockup, the two links,
- * the 68px height, the `max-w-doc` measure, the padding, the type and the
- * INK button are the bar that was here before, moved into a client component
- * without a pixel of difference — `app/page.test.tsx` pins the header's two
- * links and their order, and it passes unchanged.
+ * the 68px height, the `max-w-doc` measure, the type and the INK button are the
+ * bar that was here before, moved into a client component without a pixel of
+ * difference — `app/page.test.tsx` pins the header's two links and their order,
+ * and it passes unchanged.
+ *
+ * <p>The padding is the one exception, and only below `sm`. See "Narrow
+ * phones".
  *
  * <p>It had to become a client component because the page is a server one and
  * this now reads the scroll position. Extracted into its own file rather than
@@ -35,6 +38,25 @@
  * a menu or a sheet — a small surface over a busy one — and at 28px across the
  * full width of the page the hero artwork's top edge was visibly smeared as it
  * passed under the bar. 18 reads as glass and leaves the mark alone.
+ *
+ * <h2>Narrow phones</h2>
+ *
+ * <p>The row is the lockup and two actions, and on a 320px screen those do not
+ * fit inside a 24px gutter with 32px between them. Flex resolved that the only
+ * way it can: both links shrank to their longest word, and `Sign in` came apart
+ * onto two lines inside a 36px-tall pill.
+ *
+ * <p>So the actions are `shrink-0` and `whitespace-nowrap` — they are two words
+ * and a destination, and there is no version of either that reads correctly
+ * broken in half — and the space around them comes down instead: a 16px gutter,
+ * 12px between the lockup and the nav, 8px between the two actions, and a
+ * little less inside each pill. Every one of those is a `sm:` away from the
+ * value it had, so from 640px up this is the bar that was designed, untouched.
+ *
+ * <p>The trade is deliberate. With nothing left to shrink, a viewport too
+ * narrow even for the reduced values overflows the row rather than folding a
+ * button — which is visible, and therefore fixable, in a way that a silently
+ * wrapped label is not.
  *
  * <h2>The threshold</h2>
  *
@@ -94,20 +116,23 @@ export function StickyHeader() {
         "data-[scrolled]:shadow-[inset_0_-1px_0_rgb(var(--line)),0_8px_24px_-16px_rgb(0_0_0_/_0.6)]",
       ].join(" ")}
     >
-      <div className="mx-auto flex h-[68px] max-w-doc items-center gap-8 px-6 lg:px-8">
+      {/* The gutter and the gap, smaller on a phone and only there. See
+          "Narrow phones" above for what this is buying and what it costs. */}
+      <div className="mx-auto flex h-[68px] max-w-doc items-center gap-3 px-4 sm:gap-8 sm:px-6 lg:px-8">
         {/* 21px of wordmark with a 30px orb beside it — see `MARK` in
             components/v2/lockup, which is where that ratio lives so the bar,
             the auth shell and the SSO screen cannot drift apart. 30 is also
             what the bare orb here measured before the word came back, so the
             mark itself did not change size. */}
         <Lockup size={21} />
-        <nav aria-label="Reverie" className="ml-auto flex items-center gap-6">
+        {/* `shrink-0`, so the pair is never the thing that gives. */}
+        <nav aria-label="Reverie" className="ml-auto flex shrink-0 items-center gap-2 sm:gap-6">
           {/* A 36px target, not a 20px line of text. It sits beside a filled
               button of the same height, and a link half its neighbour's height
               is both harder to hit and reads as less of an option than it is. */}
           <Link
             href="/sign-in"
-            className="flex h-9 items-center rounded-full px-2 text-body text-ink-3 transition-colors hover:text-ink"
+            className="flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-1.5 text-body text-ink-3 transition-colors hover:text-ink sm:px-2"
           >
             Sign in
           </Link>
@@ -117,7 +142,7 @@ export function StickyHeader() {
               every button is an accent that means nothing." */}
           <Link
             href="/sign-up"
-            className="flex h-9 items-center rounded-full bg-ink px-4 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90"
+            className="flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-ink px-3 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90 sm:px-4"
           >
             Get started
           </Link>
