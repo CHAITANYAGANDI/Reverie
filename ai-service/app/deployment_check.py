@@ -38,6 +38,12 @@ logger = logging.getLogger("ai-service.deployment-check")
 #: The internal token this repository ships. Public, therefore not a secret.
 PUBLISHED_DEV_TOKEN = "dev-internal-token"
 
+#: The Compose service name of the PostgreSQL container that runs beside this
+#: service on the Oracle VM (deploy/oracle/docker-compose.yml). Named rather
+#: than written inline so the exception below is one deliberate thing rather
+#: than a string that reads as incidental.
+LOCAL_DB_SERVICE = "postgres"
+
 #: Hosts that cannot be right when two services are deployed separately.
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
 
@@ -118,16 +124,29 @@ def production_problems(settings: Settings) -> list[str]:
         )
 
     # --- Retrieval and storage ---------------------------------------------- #
-    if not (settings.pg_host or "").strip():
+    pg_host = (settings.pg_host or "").strip().lower()
+    pg_sslmode = (settings.pg_sslmode or "").strip().lower()
+    if not pg_host:
         problems.append(
             "PG_HOST is not set, which disables RAG entirely: chat and semantic "
             "search answer from nothing."
         )
-    elif settings.pg_sslmode.lower() not in ("require", "verify-ca", "verify-full"):
+    elif pg_host == LOCAL_DB_SERVICE and pg_sslmode == "disable":
+        # The one database this service may reach in plaintext: the `postgres`
+        # service in deploy/oracle/docker-compose.yml, which publishes no port
+        # and is reachable only over the private bridge on the same VM. The
+        # service name is the whole exception -- Docker's embedded DNS resolves
+        # it to that container and to nothing else -- so it cannot widen later
+        # to an RFC1918 address or a localhost tunnel that merely looks private.
+        pass
+    elif pg_sslmode not in ("require", "verify-ca", "verify-full"):
         problems.append(
-            "PG_SSLMODE is '" + settings.pg_sslmode + "'. A managed database "
-            "reached over the internet needs 'require' or stricter; 'prefer' "
-            "silently accepts an unencrypted connection."
+            "PG_SSLMODE is '" + settings.pg_sslmode + "'. A database reached "
+            "across a network this deployment does not own needs 'require' or "
+            "stricter; 'prefer' silently accepts an unencrypted connection. "
+            "The sole exception is PG_HOST '" + LOCAL_DB_SERVICE + "', the "
+            "same-host Compose service on the private bridge, which may use "
+            "'disable'."
         )
 
     if not (settings.s3_endpoint or "").strip():

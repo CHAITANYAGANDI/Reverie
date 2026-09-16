@@ -128,9 +128,53 @@ class TestDataStores:
     def test_stricter_modes_are_accepted(self, sslmode: str) -> None:
         assert production_problems(production(pg_sslmode=sslmode)) == []
 
+    def test_an_external_database_may_not_disable_tls_either(self) -> None:
+        # 'disable' is the same fault as 'prefer', minus the ambiguity: the
+        # default fixture host is a managed database on the public internet.
+        problems = production_problems(production(pg_sslmode="disable"))
+        assert any("PG_SSLMODE" in p for p in problems)
+
     def test_missing_object_storage_is_refused(self) -> None:
         problems = production_problems(production(s3_endpoint=None))
         assert any("S3_ENDPOINT" in p for p in problems)
+
+
+class TestTheSameHostDatabase:
+    """The Oracle deployment runs PostgreSQL beside this service.
+
+    It is a Compose service on a private bridge with no published port, so the
+    connection never leaves the VM and there is no certificate to verify. That
+    is the one place plaintext is correct, and the exception is written as the
+    service name so it cannot quietly grow to cover anything else.
+    """
+
+    def test_the_compose_service_may_speak_plaintext(self) -> None:
+        assert production_problems(production(pg_host="postgres", pg_sslmode="disable")) == []
+
+    def test_but_not_with_fallback_semantics(self) -> None:
+        # 'prefer' is not 'disable'. It means "encrypt if the server offers it,
+        # otherwise do not", and a check that accepted it here would be
+        # accepting an outcome nobody stated. The exception is for the one
+        # configuration the Compose file actually sets.
+        problems = production_problems(production(pg_host="postgres", pg_sslmode="prefer"))
+        assert any("PG_SSLMODE" in p for p in problems)
+
+    def test_the_exception_is_the_name_and_not_the_shape_of_the_name(self) -> None:
+        # Nothing that merely looks private inherits it: not localhost, not a
+        # bridge address, not a host that happens to contain the word.
+        for host in ("localhost", "127.0.0.1", "10.0.0.5", "postgres.example.com", "my-postgres"):
+            problems = production_problems(production(pg_host=host, pg_sslmode="disable"))
+            assert any("PG_SSLMODE" in p for p in problems), host
+
+    def test_it_may_still_use_tls_if_it_ever_gains_a_certificate(self) -> None:
+        assert production_problems(production(pg_host="postgres", pg_sslmode="require")) == []
+
+    @pytest.mark.parametrize("host", ["postgres", "  postgres  ", "POSTGRES"])
+    @pytest.mark.parametrize("sslmode", ["disable", " disable", "DISABLE"])
+    def test_spacing_and_case_are_not_the_difference(self, host: str, sslmode: str) -> None:
+        # A value read from a Compose file or a .env line can arrive with either,
+        # and a deployment that fails on one of them fails for no stated reason.
+        assert production_problems(production(pg_host=host, pg_sslmode=sslmode)) == []
 
 
 class TestHowItFails:
