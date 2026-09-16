@@ -85,33 +85,54 @@ describe("the hero identity", () => {
     expect(screen.queryAllByRole("img")).toHaveLength(0);
   });
 
-  it("sets `AI` in the orb's own blue, and only `AI`", () => {
+  it("sets `AI` in the orb's own light, and only `AI`", () => {
     /*
      * A COLOUR MATCH, WHICH IS WHY IT IS PINNED.
      *
-     * <p>`--brand-orb` is #087afd, sampled from the approved artwork: the
-     * median of the 97,336 lit, saturated pixels inside the sphere. It exists
-     * for this one word and nothing else should reach for it — it is not a tier
-     * in the ramp, it is "the same blue as the thing above it".
+     * <p>It was flat `--brand-orb` — #087afd, the median of the lit pixels
+     * inside the sphere. That is the colour of the orb's *bands*, and beside
+     * the artwork it read as blue text rather than as the lit thing above it:
+     * the orb's character is a sweep from that blue into the cyan waveform
+     * through the middle, not one blue.
      *
-     * <p>`--brand-text` and `--brand` were both tried here. Both are visibly
-     * lighter beside the mark, which is correct for a word anywhere else on a
-     * page and wrong forty pixels under the orb. So the specific token is
-     * asserted rather than "some brand colour": swapping it back for a tier
-     * that merely looks blue is exactly the regression this catches.
-     *
-     * <p>And `Reverie` stays ink. The pair is a white word and a lit one, not
-     * two blue ones.
+     * <p>So all three tokens are asserted, and the order matters. `--brand-orb`
+     * has to lead, because the tie to the mark is what this word is for; a
+     * gradient that started on the cyan would be a prettier word and a weaker
+     * lockup. `--brand-text` and `--brand` are still wrong here for the reason
+     * they always were, and swapping any of these for a tier that merely looks
+     * blue is what this catches.
      */
     lockup();
 
     const ai = screen.getByText("AI");
-    expect(ai.className).toContain("text-brand-orb");
-    expect(ai.getAttribute("style")).toContain("--brand-orb");
-    // The glow is the same colour as the word, in `em` so it scales with it.
-    expect(ai.getAttribute("style")).toMatch(/text-shadow:[^;]*0\.14em/);
-    expect(ai.getAttribute("style")).not.toMatch(/\dpx/);
+    const style = ai.getAttribute("style") ?? "";
 
+    // The sweep, in order: the mark's blue, then the wave, then its crest.
+    expect(style).toMatch(
+      /linear-gradient\([^)]*--brand-orb[\s\S]*--brand-wave[\s\S]*--brand-wave-lit/,
+    );
+    expect(style).toContain("background-clip: text");
+    expect(style).toContain("-webkit-text-fill-color: transparent");
+
+    /*
+     * THE FALLBACK IS LOAD-BEARING. A transparent fill with no gradient behind
+     * it is an invisible word, so the flat colour stays declared underneath.
+     */
+    expect(ai.className).toContain("text-brand-orb");
+
+    /*
+     * `drop-shadow`, not `text-shadow`. A text shadow paints behind the glyph,
+     * and behind a transparent glyph is through it — the letters fill with
+     * their own halo. And `em`, so the glow scales with the word rather than
+     * being a fixed halo around a 28px letter pair on a phone.
+     */
+    expect(style).toContain("drop-shadow");
+    expect(style).not.toContain("text-shadow");
+    expect(style).toMatch(/drop-shadow\(0 0 [\d.]+em/);
+    expect(style).not.toMatch(/\dpx/);
+
+    // And `Reverie` stays ink. The pair is a white word and a lit one, not two
+    // blue ones.
     const word = screen.getByText("Reverie");
     expect(word.className).toContain("text-ink");
     expect(word.className).not.toMatch(/text-brand/);

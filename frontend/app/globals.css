@@ -138,6 +138,24 @@
      */
     --brand-orb: 212 98% 51%;     /* #087afd  4.75:1 — the artwork's own blue */
 
+    /*
+     * THE WAVE THROUGH THE SPHERE, SAMPLED THE SAME WAY.
+     *
+     * <p>`--brand-orb` above is the median of the lit bands with the bright
+     * waveform deliberately EXCLUDED. These two are that waveform: the same
+     * 110,131-pixel lit region, read at the 75th and 90th percentiles of
+     * lightness, which is where the bands stop being blue and become the cyan
+     * run through the middle of the orb. The lit region's hue mass sits in
+     * 190-230deg, so the three tokens are one sweep rather than three colours.
+     *
+     * <p>Together they are the hero wordmark's `AI`: `--brand-orb` at the
+     * leading edge so the word still starts on the mark's own blue, rising to
+     * these. Contrast only improves along that sweep — 4.75:1 at the darkest
+     * stop, which is the one already measured and the worst case.
+     */
+    --brand-wave: 196 98% 64%;    /* #49cdfd — the wave's body */
+    --brand-wave-lit: 195 96% 79%;/* #94e3fd — its brightest run */
+
     /* Three semantic hues. Not four, not six. Each is paired with a word and a
      * glyph everywhere it appears, so the colour is confirmation and never the
      * message. Recording is deliberately the same red as danger: they never

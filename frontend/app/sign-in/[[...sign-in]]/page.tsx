@@ -39,6 +39,7 @@ import {
   OrDivider,
   SubmitButton,
 } from "@/components/auth/auth-form";
+import { useBfcacheRestore } from "@/lib/bfcache";
 import { authErrorMessage, isAlreadySignedIn } from "@/lib/clerk-errors";
 import { factorStrategies, signInBlockMessage } from "@/lib/sign-in-block";
 import { HOME } from "@/lib/routes";
@@ -93,6 +94,20 @@ function SignInForm() {
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState<"form" | "google" | null>(null);
+
+  /*
+   * BACK FROM GOOGLE, ON A PHONE, INTO THE SAME REACT TREE.
+   *
+   * <p>`withGoogle` leaves the origin and nothing after it runs, so on every
+   * browser that discards the page this flag dies with the document. Mobile
+   * browsers freeze it instead, and Back from the consent screen restores the
+   * button still spinning and still `disabled`. See lib/bfcache.
+   *
+   * <p>Only `google` is cleared. `form` is a request this page is still
+   * awaiting a promise for, and a restored document has no way to know whether
+   * it resolved — releasing that button could submit a second time.
+   */
+  useBfcacheRestore(() => setBusy((current) => (current === "google" ? null : current)));
 
   /**
    * Where to land, and why it is checked.

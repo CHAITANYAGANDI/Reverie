@@ -277,8 +277,24 @@ function Window({
       aria-hidden
       className="w-full overflow-hidden rounded-xl border border-line bg-surface"
     >
-      <div className="v2-band flex h-band items-center gap-1 px-3">
-        <span className="flex h-8 w-8 items-center justify-center text-ink">
+      {/*
+        THE BAND IS THE APPLICATION'S, AND IT HAS TO FIT A PHONE.
+
+        <p>At 320px the card is 272px wide and this row wanted 333: the mark,
+        three places, and a `Recording` chip, all at the sizes the real band
+        draws them. Flex cannot shrink a row below its longest unbreakable
+        word, so it overflowed and the card's own `overflow-hidden` took the
+        chip's right-hand end off — measured at 62px gone on a 320px screen and
+        22px on a 360px one, which is the missing `g` in the report.
+
+        <p>What gives is the SPACE, not the type: the gutter, the gaps and the
+        padding inside each place come down below `sm` and are restored at it.
+        The mark stays 32px and the chip keeps its words, because a mock that
+        drops a place or abbreviates a label to fit has stopped being a picture
+        of the product.
+      */}
+      <div className="v2-band flex h-band items-center gap-0 px-1.5 sm:gap-1 sm:px-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-ink">
           {/* THE SAME SIZE THE REAL BAND DRAWS, not a smaller stand-in. This
               mock is a picture of the application at full scale — a real 48px
               band with the real three places in it — so a mark at 18 where the
@@ -286,14 +302,14 @@ function Window({
               It was an 18px lens, and the discrepancy came along with it. */}
           <ReverieAiMark size={32} />
         </span>
-        <span className="ml-1 flex items-center">
+        <span className="ml-0.5 flex items-center sm:ml-1">
           {["Home", "Library", "Ask"].map((place) => (
             <span
               key={place}
               className={cn(
-                "relative flex h-band items-center px-[11px] text-body",
+                "relative flex h-band shrink-0 items-center px-1 text-body sm:px-[11px]",
                 place === "Home"
-                  ? "font-headline text-ink after:absolute after:inset-x-[11px] after:bottom-0 after:h-[2px] after:rounded-t-[1px] after:bg-ink after:content-['']"
+                  ? "font-headline text-ink after:absolute after:inset-x-1 after:bottom-0 after:h-[2px] after:rounded-t-[1px] after:bg-ink after:content-[''] sm:after:inset-x-[11px]"
                   : "text-ink-3",
               )}
             >
@@ -309,7 +325,8 @@ function Window({
             page should not run an animation forever to say so. */}
         <span
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-foot font-headline",
+            "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full pl-2 pr-2.5 text-foot font-headline",
+            "sm:gap-1.5 sm:pl-2.5 sm:pr-3.5",
             stage === 0 ? "bg-danger/15 text-danger" : "bg-brand-fill text-white",
           )}
         >
@@ -333,10 +350,29 @@ function Window({
         </span>
       </div>
 
-      {/* One height for all three, so the window does not resize under the
-          reader as the stage changes — a frame that grows and shrinks while you
-          scroll is the thing that makes a sticky visual feel unstable. */}
-      <div className="relative h-[360px] overflow-hidden p-5 sm:h-[400px] sm:p-6">
+      {/*
+        One height for all three, so the window does not resize under the
+        reader as the stage changes — a frame that grows and shrinks while you
+        scroll is the thing that makes a sticky visual feel unstable. That is
+        why this is a height and not a minimum, and it stays one.
+
+        <p>IT WAS ONE HEIGHT FOR ALL THREE STAGES AND ALL WIDTHS, which is the
+        bug. The tallest stage is Capture, and the narrower the card the more
+        its three quotes wrap: 334px of content at 430, 362 at 390, and 417 at
+        320 — against 320px of usable box. So the bottom of the panel was cut
+        off at every width tested, and at 320 the `Live text while it runs`
+        caption fell entirely below the fold of the card.
+
+        <p>The fix is the same fixed-height frame, sized per breakpoint from
+        what the content actually measures, plus a slightly tighter inset on a
+        phone. `min-[400px]` rather than `sm` because the wrap that costs the
+        extra 55px happens between 320 and 400, nowhere near 640 — and the
+        numbers are the measured ones with a margin, not round guesses.
+
+        <p>They are tuned to this copy. Adding a fourth quote, or a longer one,
+        means measuring again; that is the price of a frame that cannot move.
+      */}
+      <div className="relative h-[452px] overflow-hidden p-4 min-[400px]:h-[404px] sm:h-[400px] sm:p-6">
         <AnimatePresence mode="wait" initial={false}>
           <m.div
             key={stage}
@@ -344,7 +380,7 @@ function Window({
             animate={{ opacity: 1, y: 0 }}
             exit={moving ? { opacity: 0, y: -10 } : undefined}
             transition={{ duration: 0.4, ease: LANDING_EASE }}
-            className="absolute inset-0 p-5 sm:p-6"
+            className="absolute inset-0 p-4 sm:p-6"
           >
             {stage === 0 ? (
               <Capturing clock={capture} />
