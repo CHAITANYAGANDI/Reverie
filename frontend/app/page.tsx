@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Lockup } from "@/components/v2/lockup";
+import { StickyHeader } from "@/components/v2/landing/sticky-header";
 import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand";
 import { HeroBeat } from "@/components/v2/landing/hero-beat";
 import { HERO_BEATS } from "@/components/v2/landing/hero-beats";
@@ -125,7 +126,7 @@ export default function LandingPage() {
 
       <LandingMotion>
         <div className="relative">
-          <Header />
+          <StickyHeader />
 
           {/*
            * The rhythm. Roughly a screen of air between moments on a desktop, so
@@ -155,59 +156,21 @@ export default function LandingPage() {
   );
 }
 
-/**
- * The public nav: the lockup, and the two ways in.
+/*
+ * `Header` moved to `components/v2/landing/sticky-header.tsx`.
  *
- * <p>Sixty-eight pixels and no border. It must not be heavier than the hero —
- * this page has one job, and a bar competing with the claim under it is the
- * commonest way a landing page loses that job.
+ * <p>It stays on screen while the page scrolls now, and it fades from nothing
+ * into the product's own glass once there is content behind it -- which needs
+ * the scroll position, which needs a client component. This file is a server
+ * component and the note at the top of it says so; marking the whole front
+ * door a client to learn whether somebody has scrolled twelve pixels would be
+ * a poor trade, so the bar went to its own file instead.
  *
- * <p>The mark and the word. It was a `<Mic />` glyph in a filled rounded square
- * — the generic recorder logo the V2 identity study rejected — then the lens
- * lockup, then the orb on its own with the word taken off, and the word is back
- * beside it on request.
- *
- * <p>Which reads better than the argument for removing it, in the end. That
- * argument was that the hero names the product a few hundred pixels below, so
- * the bar was saying it twice; but a bar with a single small mark in the corner
- * and nothing else is a bar that has lost something, and the hero is far enough
- * down the page that the two never read as a repetition.
+ * <p>Nothing about it changed otherwise: same lockup, same two links in the
+ * same order, same 68px, same measure, same padding, same INK button. The
+ * reasoning for each of those is in the component's own header, where it can
+ * be read beside the markup it explains.
  */
-function Header() {
-  return (
-    <header className="relative z-10">
-      <div className="mx-auto flex h-[68px] max-w-doc items-center gap-8 px-6 lg:px-8">
-        {/* 21px of wordmark with a 30px orb beside it — see `MARK` in
-            components/v2/lockup, which is where that ratio lives so the bar,
-            the auth shell and the SSO screen cannot drift apart. 30 is also
-            what the bare orb here measured before the word came back, so the
-            mark itself did not change size. */}
-        <Lockup size={21} />
-        <nav aria-label="Reverie" className="ml-auto flex items-center gap-6">
-          {/* A 36px target, not a 20px line of text. It sits beside a filled
-              button of the same height, and a link half its neighbour's height
-              is both harder to hit and reads as less of an option than it is. */}
-          <Link
-            href="/sign-in"
-            className="flex h-9 items-center rounded-full px-2 text-body text-ink-3 transition-colors hover:text-ink"
-          >
-            Sign in
-          </Link>
-          {/* INK, not the accent.
-              The V2 palette's own rule: "the primary button in this product is
-              INK — a Save button is not an observation, and an accent spent on
-              every button is an accent that means nothing." */}
-          <Link
-            href="/sign-up"
-            className="flex h-9 items-center rounded-full bg-ink px-4 text-body font-headline text-surface transition-opacity duration-press ease-soft hover:opacity-90"
-          >
-            Get started
-          </Link>
-        </nav>
-      </div>
-    </header>
-  );
-}
 
 /**
  * TWO MOMENTS: who this is, and what it promises.
