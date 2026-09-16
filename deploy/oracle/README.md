@@ -3,10 +3,17 @@
 Both compute services — `reverie-backend` (Spring Boot) and `reverie-ai`
 (FastAPI) — on one Always Free Ampere A1 VM, behind Caddy.
 
-Nothing stateful moves. Neon still holds the database, Confluent Cloud the
-broker, Cloudflare R2 the recordings, Vercel the frontend. **Render stays live
-as the rollback** until this is proven; see [Cutover](#cutover) and
-[Rollback](#rollback).
+**The database is here too.** PostgreSQL 16 with pgvector runs in this stack,
+on a named volume, reachable only on the private bridge — Neon is gone.
+Confluent Cloud still holds the broker, Cloudflare R2 the recordings, Vercel
+the frontend. **Render stays live as the rollback** until this is proven; see
+[Cutover](#cutover) and [Rollback](#rollback).
+
+That changes what this VM is. It used to own no user data, which made it
+disposable: a replacement was this repository, a populated `.env` and a DNS
+record. It is not disposable now. `postgres_data` is the only copy of every
+meeting, transcript and account, and rollback is no longer free either — see
+[Backups](#backups) and [Rollback](#rollback).
 
 ```
                          Internet
@@ -21,13 +28,15 @@ as the rollback** until this is proven; see [Cutover](#cutover) and
                   │  reverie-backend   │  Spring :8080  (not published)
                   │      :8080         │
                   └─────┬────────┬─────┘
-          Neon ◀────────┘        │ internal network
-      Confluent ◀───────┘        ▼
-             R2 ◀───────┘  ┌──────────────┐
-                           │  reverie-ai  │  FastAPI :8000 (not published,
-                           │    :8000     │  no route from Caddy at all)
-                           └──────┬───────┘
-                                  └──▶ Confluent, R2, Neon, providers
+      Confluent ◀───────┘        │ internal network
+             R2 ◀───────┘        ▼
+                   ┌──────────────┐   ┌──────────────┐
+                   │  reverie-ai  │   │  postgres    │  :5432
+                   │    :8000     │──▶│  + pgvector  │  (not published,
+                   └──────┬───────┘   └──────┬───────┘   never on the host)
+                          │                  │
+                          │                  └──▶ postgres_data volume
+                          └──▶ Confluent, R2, providers
 ```
 
 ---
@@ -134,9 +143,12 @@ sudo usermod -aG docker $USER    # log out and back in
 No Java and no Python on the host. The containers own their runtimes, which is
 what makes the VM replaceable.
 
-**Do not install PostgreSQL, Kafka or MinIO here.** Those are Neon, Confluent
-and R2, and putting a copy on this disk would put user data on a VM that is
-meant to be disposable.
+**Do not install PostgreSQL on the host.** It runs as a container in this
+stack, on the `postgres_data` volume, and a second copy installed on the host
+is a second database for somebody to connect to by accident.
+
+**Do not install Kafka or MinIO at all.** Those are Confluent and R2, and a
+local copy of either puts user data somewhere nothing is backing up.
 
 ---
 
@@ -225,9 +237,57 @@ docker compose ps
 docker compose logs -f reverie-backend
 ```
 
+### What happens on the very first boot, in order
+
+It matters because it only happens once, and because the step that sets up the
+database is invisible if you are watching the backend's log.
+
+1. **`postgres` starts on an empty `postgres_data` volume.** The image runs
+   `initdb`, creates the `reverie` database and the `reverie` superuser from
+   `POSTGRES_USER`/`POSTGRES_PASSWORD`, then — because the data directory was
+   empty — executes everything in `/docker-entrypoint-initdb.d`.
+2. **`postgres-init/01-roles.sh` runs, as the owner** — against a *temporary*
+   server the entrypoint starts with `listen_addresses=''`, so it is reachable
+   on the Unix socket and not over TCP. The script creates `reverie_app`
+   (`NOBYPASSRLS`) and `reverie_sys` (`BYPASSRLS`), sets their passwords from
+   the environment, grants schema usage and DML, and — the part that matters —
+   sets `ALTER DEFAULT PRIVILEGES` so that tables Flyway has *not created yet*
+   are usable the moment it creates them.
+3. **The entrypoint stops the temporary server and starts the real one**, this
+   time listening on TCP.
+4. **The healthcheck starts passing.** `pg_isready -h 127.0.0.1` is refused
+   until step 3, which is what makes it a gate rather than a formality.
+
+   That `-h` is load-bearing. Without it `pg_isready` asks over the Unix
+   socket, which the *temporary* server of step 2 is already answering — so the
+   gate would open while the role script was still running. The failure that
+   causes is not a refused connection, which would at least be obvious: Flyway
+   logs in as the owner, which `initdb` created in step 1, so the migrations
+   could run before `ALTER DEFAULT PRIVILEGES` had been set. The tables would
+   be created without the runtime grants, and you would have a database that
+   migrated cleanly and answers every application query with `permission denied
+   for table`.
+5. **`reverie-backend` and `reverie-ai` start**, held until then by
+   `depends_on: condition: service_healthy`.
+6. **Flyway runs, as `reverie`.** `V2` issues `CREATE EXTENSION vector` — which
+   is why the owner is a superuser and why the image is `pgvector/pgvector` —
+   and the 69 migrations create the schema. Every table lands with the grants
+   from step 2 already attached.
+7. **Spring connects as `reverie_app` and `reverie_sys`** through its two
+   Hikari pools, and the worker opens its psycopg pool as `reverie_app`.
+
+Steps 1–2 never run again. `docker-entrypoint-initdb.d` is skipped whenever the
+data directory is non-empty, so a restart, a rebuild or a `docker compose down`
+(without `-v`) leaves the roles and the data exactly as they were.
+
+If step 2 fails — a missing password, say — the container exits non-zero and
+the volume is left half-built. Do not "fix it forward": remove the volume with
+`docker compose down -v` and start again, or you will have a database whose
+roles do not match the script.
+
 > **`--quiet`, and never without it against a real `.env`.** Plain
 > `docker compose config` renders the *resolved* file to stdout, which means
-> every value in `.env` — Neon's passwords, the Confluent API secret, the R2
+> every value in `.env` — the three database passwords, the Confluent API secret, the R2
 > keys, Clerk's secret key, the free-tier HMAC — printed in full. That lands in
 > terminal scrollback, in anything piped to a file, in a pasted snippet and in a
 > screenshot. `--quiet` performs exactly the same validation and prints nothing
@@ -366,7 +426,26 @@ treated as one.
 |---|---|---|---|---|
 | `reverie-backend` | 2 GB | 1.0 | 581 MB settled, 589 MB peak | ~3.5× the peak, and still ~700 MB spare in the worst case below |
 | `reverie-ai` | 1 GB | 1.0 | 98 MB idle, 143 MB peak | ~7× the peak; the headroom is for `ffmpeg` and concurrent exports |
-| host remainder | ~3 GB | — | — | kernel, Docker, page cache, Caddy, TLS, `ffmpeg` spikes |
+| `postgres` | 1.5 GB | 1.0 | **not yet measured here** | `shared_buffers` 256 MB + 50 × `work_mem` 8 MB worst case + backends; conservative until it has run under real traffic |
+| host remainder | **~1.3 GB** | — | — | kernel, Docker, Caddy (uncapped), page cache |
+
+**The host budget got tight when the database moved in, and it is worth being
+explicit about it.** 2 + 1 + 1.5 GB of hard limits on a 5.8 GiB host with **no
+swap** leaves roughly 1.3 GB for everything else — and two things live in that
+1.3 GB that did not before:
+
+- **Caddy has no `mem_limit`.** It is small and steady, but it is uncapped, so
+  under memory pressure the kernel's OOM killer chooses among the containers
+  by score rather than by importance.
+- **`effective_cache_size=1GB` is a promise about the page cache** that the
+  remaining 1.3 GB now has to keep while also holding the kernel and Docker.
+  It is a planner hint, not an allocation, so nothing crashes if it is wrong —
+  queries just get worse plans.
+
+Nothing here is over-committed and there is no swap to hide a mistake in, which
+is the right trade for a database host. But this is the number to watch first:
+if `free -h` available memory sits below ~500 MB under normal traffic, reduce
+`postgres` to 1 GB before raising anything.
 
 The number the backend limit has to satisfy is the **worst case**, not the
 average: `-Xmx1024m` fully committed, plus the JVM floor this application
@@ -389,7 +468,8 @@ each one lists the variables it reads and is handed nothing else.
 | | Gets |
 |---|---|
 | `caddy` | `BACKEND_HOSTNAME`, `ACME_EMAIL` — the two names its Caddyfile reads |
-| `reverie-backend` | Neon (runtime + system + Flyway), Confluent via `KAFKA_SASL_JAAS_CONFIG`, Clerk, the free-tier HMAC, R2, Resend, its own Sentry DSN, the internal token |
+| `postgres` | the three database passwords, and nothing else — no broker, no provider key, no Clerk |
+| `reverie-backend` | the database (runtime + system + Flyway), Confluent via `KAFKA_SASL_JAAS_CONFIG`, Clerk, the free-tier HMAC, R2, Resend, its own Sentry DSN, the internal token |
 | `reverie-ai` | Confluent via `KAFKA_SASL_USERNAME`/`PASSWORD`, R2, `PG_*` as the **unprivileged** role, provider keys, its own Sentry DSN, the internal token |
 
 What that buys is a blast radius. The worker takes an arbitrary media file from
@@ -422,6 +502,70 @@ not the same as absent — it overrides the default in `application.yml`, so an
 unset `S3_REGION` would arrive as `""` rather than falling back. The two
 exceptions interpolate because the name changes (`SENTRY_DSN_BACKEND` →
 `SENTRY_DSN`), where blank is the documented "monitoring off" state anyway.
+
+---
+
+## Backups
+
+**This is the part the old architecture did not need.** Neon took backups.
+Nothing takes one now unless you arrange it, and `postgres_data` is the only
+copy of every meeting, transcript, summary and account in the product.
+
+A dump, from the host, as the owner:
+
+```bash
+docker compose exec -T postgres \
+  pg_dump -U reverie -d reverie --format=custom \
+  > "reverie-$(date -u +%Y%m%dT%H%M%SZ).dump"
+```
+
+`--format=custom` so it restores selectively with `pg_restore`, and `-T` so
+Compose does not allocate a TTY and corrupt the stream with carriage returns.
+
+Restoring into an empty database:
+
+```bash
+docker compose exec -T postgres \
+  pg_restore -U reverie -d reverie --clean --if-exists < reverie-TIMESTAMP.dump
+```
+
+Three things worth deciding now rather than after an incident:
+
+- **Off-host.** A dump sitting on the VM is not a backup of the VM. Copy it
+  somewhere else — R2 is already configured and already holds the recordings.
+- **Scheduled.** A backup somebody remembers to take is one that stops being
+  taken. `cron` on the host is enough.
+- **Restore-tested.** An untested dump is a belief, not a backup. Restore one
+  into a scratch container and count the rows before you rely on it.
+
+`FREE_TIER_IDENTITY_HMAC_SECRET` must be backed up **with** the database.
+Restoring one without the other resets every account's lifetime free
+allowance, silently — see the note on that variable in `.env.example`.
+
+---
+
+## Rotating a database password
+
+`postgres-init/01-roles.sh` runs **once**, on an empty volume. Editing a
+password in `.env` afterwards changes what the applications present and not
+what the database expects, so the next boot fails to authenticate. Change both,
+in this order:
+
+```bash
+# 1. In the database, as the owner. Quote the literal.
+docker compose exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U reverie -d reverie \
+  -c "ALTER ROLE reverie_app PASSWORD 'the-new-one'"
+
+# 2. Then in .env, the same value, and restart what reads it.
+$EDITOR .env
+docker compose up -d reverie-backend reverie-ai
+```
+
+`reverie_sys` is the same with `REVERIE_DATASOURCE_SYSTEM_PASSWORD`. The owner
+(`FLYWAY_PASSWORD`) is also the container's `POSTGRES_PASSWORD`, so rotating it
+means `ALTER ROLE reverie` plus the same edit, and a restart of `postgres`
+itself.
 
 ---
 
@@ -482,8 +626,21 @@ real launch-hardening item and is **not** part of this migration.
 
 ## Rollback
 
-Minutes, and no data to restore — Neon, Confluent and R2 are shared by both
-deployments, so neither has state the other lacks.
+**Read this before cutting over, because it is no longer free.**
+
+It used to be minutes with no data to restore: Neon, Confluent and R2 were
+shared by both deployments, so neither had state the other lacked. That is no
+longer true of the database. Once Oracle is live, meetings are written to
+`postgres_data` **here**, and Render's backend points at a Neon that stops
+receiving them. Rolling back after real traffic loses every meeting created in
+between unless it is migrated back by hand.
+
+So the rollback below is only clean while Oracle has taken no production
+traffic — the validation window, before the Vercel switch. After that,
+treat rollback as a data migration and not as a config change.
+
+Confluent and R2 are still shared, so recordings and queued work are not at
+risk either way.
 
 1. Set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` back to the Render URL.
 2. **Redeploy Vercel** (they are build-time inlined).

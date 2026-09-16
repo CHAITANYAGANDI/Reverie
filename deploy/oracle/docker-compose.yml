@@ -1,14 +1,21 @@
 # Reverie on one Oracle Cloud Ampere A1 (ARM64) host.
 #
-# Both compute services move here from Render. Everything stateful stays where
-# it is: Neon holds the database, Confluent Cloud the broker, Cloudflare R2 the
-# recordings, Vercel the frontend. These containers own no user data, which is
-# what makes the VM disposable -- a replacement is this repository, this file,
-# a populated .env, and a DNS record.
+# The database is now local. PostgreSQL 16 with pgvector runs here, on a named
+# volume, reachable only on the private bridge; Neon is gone. Confluent Cloud
+# still holds the broker, Cloudflare R2 the recordings, Vercel the frontend.
+#
+# That changes what the VM is. It used to own no user data at all, which made
+# it disposable -- a replacement was this repository, a populated .env and a
+# DNS record. It is not disposable any more: `postgres_data` is the only copy
+# of every meeting, transcript and account. Losing this volume loses the
+# product. See README "Backups", and take one before you need one.
 #
 #   Internet -> Caddy (80/443, TLS) -> reverie-backend:8080
 #                                             |
-#                                             +-> reverie-ai:8000  (private)
+#                                    +--------+--------+
+#                                    |                 |
+#                              reverie-ai:8000   postgres:5432
+#                                (private)          (private)
 #
 # Run from this directory:  docker compose up -d
 # See README.md for the full first-boot sequence.
@@ -24,6 +31,105 @@ x-logging: &logging
     max-file: "3"
 
 services:
+  # ------------------------------------------------------------ postgres ---
+  # The database, local to this host since the move off Neon.
+  #
+  # `pgvector/pgvector:pg16` rather than plain `postgres:16`, because V2 issues
+  # `CREATE EXTENSION vector` and the RAG tables do not exist without it. It is
+  # the same image family the "Migrations from empty" CI job runs the 69
+  # migrations against, so what boots here is what CI proves.
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: reverie-postgres
+    restart: unless-stopped
+    # NO `ports:`, and this one matters more than the others. A published 5432
+    # would be reachable from the internet -- Docker writes its own iptables
+    # rules and the Oracle security list does not get a say -- which is a
+    # password-guessing surface on the only copy of the data. `expose` keeps it
+    # on the private bridge, where Spring and the worker reach it by name.
+    expose:
+      - "5432"
+    environment:
+      # The bootstrap superuser, which is the schema owner and Flyway's login.
+      # Superuser because V2 needs CREATE EXTENSION. It never serves a request.
+      - POSTGRES_DB=reverie
+      - POSTGRES_USER=reverie
+      # The owner's password is Flyway's password, because the owner is who
+      # Flyway connects as. One secret, named once.
+      - POSTGRES_PASSWORD=${FLYWAY_PASSWORD:?set FLYWAY_PASSWORD in .env}
+      # Read by postgres-init/01-roles.sh on first boot and by nothing else.
+      # Passed under the names the applications already use rather than copied
+      # into new ones: these are the passwords of the roles Spring and the
+      # worker log in as, and a second name for the same secret is a second
+      # thing to rotate and get wrong.
+      - SPRING_DATASOURCE_PASSWORD
+      - REVERIE_DATASOURCE_SYSTEM_PASSWORD
+    # Conservative, and sized for a 1.5 GB container on a 5.8 GB host that is
+    # also running a JVM, a Python worker and Caddy. shared_buffers is the
+    # usual 25% of the container; effective_cache_size is a hint to the planner
+    # about what the OS is likely caching, not an allocation. max_connections
+    # is 50 against a real demand of 20 -- Spring's tenant pool is 10, its
+    # system pool 5, the worker's psycopg pool 5 -- which leaves room for
+    # pg_isready, a psql session and a backup without touching the ceiling.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - max_connections=50
+    volumes:
+      # The only stateful thing on this host.
+      - postgres_data:/var/lib/postgresql/data
+      # Runs once, on an empty volume. NOT infra/postgres-init, which is the
+      # development copy and has development passwords written into the file.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    # PostgreSQL puts parallel-query and some parallel-maintenance state in
+    # shared memory, and Docker's default /dev/shm is 64 MB, which shows up as
+    # "could not resize shared memory segment" under an unlucky query rather
+    # than at startup.
+    shm_size: 256m
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.0
+    healthcheck:
+      # `-h 127.0.0.1` is the whole point of this line, and leaving it out is a
+      # first-boot race rather than a style preference.
+      #
+      # The entrypoint runs the scripts in docker-entrypoint-initdb.d against a
+      # TEMPORARY server it starts with `listen_addresses=''` -- reachable on
+      # the Unix socket and not on TCP. `pg_isready` with no `-h` uses that
+      # socket, so it answers "accepting connections" while 01-roles.sh is
+      # still running. The gate would open early, and the damage is not a
+      # failed connection: Flyway logs in as the owner, which initdb already
+      # created, so the migrations could run BEFORE the script's
+      # ALTER DEFAULT PRIVILEGES. The tables would then be created without the
+      # runtime grants, and the result is a database that migrated cleanly and
+      # answers every application query with "permission denied for table".
+      #
+      # Asking over TCP is refused until the temporary server is stopped and
+      # the real one starts, which is after the scripts have finished. That is
+      # exactly the condition the two dependants are waiting on.
+      #
+      # `-d reverie` as well, so this is "ready for this database" rather than
+      # "something is listening".
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U reverie -d reverie"]
+      interval: 10s
+      timeout: 5s
+      # First boot runs initdb and then the role script before it will answer,
+      # and this is ARM64 on two cores. Generous, so a slow first start is not
+      # read as a failure.
+      start_period: 60s
+      retries: 6
+    networks:
+      - internal
+    logging: *logging
+
   # --------------------------------------------------------------- caddy ---
   # The only service with a published port. Terminates TLS, obtains and renews
   # the certificate automatically, and proxies to Spring.
@@ -69,6 +175,20 @@ services:
       context: ../../backend-spring
     container_name: reverie-backend
     restart: unless-stopped
+    # Spring runs the migrations, so it must not start until the database will
+    # answer. Without this Flyway meets a refused connection on every cold
+    # boot and the container restarts its way to success, which works and looks
+    # like a fault.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Long enough for `server.shutdown: graceful` to mean something. Spring is
+    # configured to finish in-flight requests with a 20 s
+    # `timeout-per-shutdown-phase`, and Docker's default stop is 10 s followed
+    # by SIGKILL -- so every deploy killed it mid-shutdown and exited 137,
+    # which reads as an OOM kill in `docker inspect` and is not one. 30 s
+    # leaves the 20 s budget room to complete and be acknowledged.
+    stop_grace_period: 30s
     # NO `ports:`. Reachable only from `edge` (Caddy) and `internal` (the
     # worker). Publishing 8080 would put Spring on the internet beside Caddy
     # rather than behind it, and the Oracle security list would not stop it --
@@ -90,14 +210,28 @@ services:
       - SPRING_PROFILES_ACTIVE
       - APP_FRONTEND_URL              # CORS + STOMP allowed origin
       - APP_PUBLIC_URL
-      # --- Neon: runtime role, system role, and Flyway's owner ------------
-      - SPRING_DATASOURCE_URL
-      - SPRING_DATASOURCE_USERNAME
+      # --- PostgreSQL: runtime role, system role, and Flyway's owner -------
+      #
+      # Topology is fixed here, not in .env. The host, port, database and the
+      # three role names are facts about this compose file -- `postgres` is a
+      # service name two lines up -- and leaving them in .env is how a stale
+      # Neon hostname survives a migration and points production at a database
+      # that is no longer being written to. Only the passwords come from .env,
+      # because only the passwords are secret.
+      #
+      # No `sslmode` on the URL. The hop is Docker's private bridge on one
+      # host; the driver defaults to no TLS and there is no network between
+      # these two containers for anything to listen on.
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reverie
+      # Unprivileged, so the V9 policies actually bind.
+      - SPRING_DATASOURCE_USERNAME=reverie_app
       - SPRING_DATASOURCE_PASSWORD
-      - REVERIE_DATASOURCE_SYSTEM_USERNAME
+      # BYPASSRLS. Only the paths with no user behind them.
+      - REVERIE_DATASOURCE_SYSTEM_USERNAME=reverie_sys
       - REVERIE_DATASOURCE_SYSTEM_PASSWORD
-      - FLYWAY_URL
-      - FLYWAY_USER
+      # The schema owner, and only for migrations.
+      - FLYWAY_URL=jdbc:postgresql://postgres:5432/reverie
+      - FLYWAY_USER=reverie
       - FLYWAY_PASSWORD
       # --- Confluent: Spring's own names, JAAS rather than user/password ---
       - SPRING_KAFKA_BOOTSTRAP_SERVERS
@@ -176,12 +310,23 @@ services:
   # Never reachable from the internet. It sits on `internal` only, and Caddy is
   # not attached to that network, so there is no route to it even by mistake.
   # Outbound still works -- a bridge network NATs egress -- which is what lets
-  # it reach Confluent, R2, Neon and the providers.
+  # it reach Confluent, R2 and the providers. PostgreSQL is on this same
+  # network, so that hop never leaves the host at all.
   reverie-ai:
     build:
       context: ../../ai-service
     container_name: reverie-ai
     restart: unless-stopped
+    # The worker opens its psycopg pool during startup and degrades to "RAG
+    # off" if it cannot -- quietly, which is the worst version. Waiting for the
+    # database removes the race on a cold boot.
+    #
+    # Deliberately not waiting for reverie-backend: the worker is a Kafka
+    # consumer first, and its callbacks retry. Making it wait would serialise
+    # two slow starts for no gain.
+    depends_on:
+      postgres:
+        condition: service_healthy
     expose:
       - "8000"
     # NO `env_file:` -- see the note on the backend. Every name below is a field
@@ -190,9 +335,10 @@ services:
     # what a compromise of this container exposes.
     #
     # Nothing about Flyway, Clerk, Resend, the free-tier HMAC or either Spring
-    # datasource appears here. The worker reaches Neon as the unprivileged role
-    # through its own PG_* settings, and posts back to Spring with the internal
-    # token -- it has no use for the schema owner's password.
+    # datasource appears here. The worker reaches PostgreSQL as the unprivileged
+    # role through its own PG_* settings, and posts back to Spring with the
+    # internal token -- it has no use for the schema owner's password, which is
+    # the one login that could drop the policies keeping tenants apart.
     environment:
       # --- Confluent: the worker's own names, user/password rather than JAAS ---
       - KAFKA_BOOTSTRAP_SERVERS
@@ -209,13 +355,23 @@ services:
       - S3_SECRET_KEY
       - S3_BUCKET
       - S3_REGION
-      # --- Neon, for RAG. The unprivileged role, so the policies bind ---------
-      - PG_HOST
-      - PG_PORT
-      - PG_DATABASE
-      - PG_USER
-      - PG_PASSWORD
-      - PG_SSLMODE
+      # --- PostgreSQL, for RAG. The unprivileged role, so the policies bind ---
+      #
+      # Same fixed-topology reasoning as the backend: only the password is a
+      # secret, and it is the same secret, so it is interpolated from the one
+      # name .env holds rather than being a second copy the operator has to
+      # keep in step.
+      #
+      # `disable`, not `require`. Neon refused unencrypted connections, which
+      # is why this used to say require; this database is one hop away on a
+      # private bridge with no TLS configured, and `require` against it fails
+      # the connection outright.
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DATABASE=reverie
+      - PG_USER=reverie_app
+      - PG_PASSWORD=${SPRING_DATASOURCE_PASSWORD:?set SPRING_DATASOURCE_PASSWORD in .env}
+      - PG_SSLMODE=disable
       # --- Providers ----------------------------------------------------------
       - AI_PROVIDER
       - OPENAI_API_KEY
@@ -262,13 +418,20 @@ networks:
   # Caddy <-> Spring.
   edge:
     driver: bridge
-  # Spring <-> worker. Deliberately NOT `internal: true`: the worker needs
-  # egress to Confluent, R2, Neon and the transcription providers, and this is
-  # the only network it is on. Isolation here comes from Caddy being absent and
-  # from nothing publishing a port, not from blocking outbound traffic.
+  # Spring <-> worker <-> PostgreSQL. Deliberately NOT `internal: true`: the
+  # worker needs egress to Confluent, R2 and the transcription providers, and
+  # this is the only network it is on. Isolation here comes from Caddy being
+  # absent and from nothing publishing a port -- which is also the whole of
+  # what keeps the database off the internet.
   internal:
     driver: bridge
 
 volumes:
   caddy_data:
   caddy_config:
+  # Every meeting, transcript, summary and account. The one thing on this host
+  # that cannot be rebuilt from the repository, and the reason the VM stopped
+  # being disposable when the database moved here. Named rather than a bind
+  # mount so a stray `docker compose down -v` is the only way to lose it, and
+  # so the path is Docker's to manage.
+  postgres_data:
