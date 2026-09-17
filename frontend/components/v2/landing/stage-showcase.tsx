@@ -49,7 +49,7 @@ const STAGES: Stage[] = [
     // canonical transcript is written from the whole file after Stop. Leaving
     // that inside a picture marked `aria-hidden` meant the one reader who most
     // needs it — anybody who cannot see the picture — never got it.
-    body: "Record in the browser with nothing to install and nothing joining the call — and the recording keeps running while you look something else up. Or import audio or video you already have. Words appear live as they are said; the full transcript is written from the recording after you stop.",
+    body: "Record directly in Reverie with nothing to install, and the recording keeps running while you look something else up. Or bring in audio or video you already have. Words appear as they are said, and the full transcript is written from the recording after you stop.",
   },
   {
     kicker: "Understand",

@@ -95,13 +95,13 @@ describe("the Privacy & Demo Notice", () => {
       (h) => h.textContent,
     );
     expect(sections).toEqual([
-      "Portfolio status",
-      "What Reverie processes",
-      "AI processing",
-      "Model training",
-      "Recording responsibly",
-      "Retention and deletion",
-      "AI limitations",
+      "About this demo",
+      "What Reverie uses",
+      "Outside services",
+      "How your information is used",
+      "Before you record",
+      "Keeping and deleting your information",
+      "Reverie can make mistakes",
     ]);
   });
 
@@ -117,7 +117,7 @@ describe("the Privacy & Demo Notice", () => {
 
     expect(
       screen.getByText(
-        /Reverie is intended for demonstration and portfolio evaluation\. Do not use the demo for confidential, legally privileged, highly sensitive, or production-critical information\./,
+        /Do not use it for confidential or legally privileged conversations, for anything highly sensitive, or for work you cannot afford to lose\./,
       ),
     ).toBeInTheDocument();
   });
@@ -136,10 +136,10 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
 
     expect(
-      screen.getByText(/not consent from anybody else in the room/i),
+      screen.getByText(/does not mean anyone else has agreed to be\s+recorded/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/authorised to record and process/i),
+      screen.getByText(/allowed to record or use/i),
     ).toBeInTheDocument();
   });
 
@@ -148,9 +148,9 @@ describe("the Privacy & Demo Notice", () => {
 
     // Two windows, both starting at Never, and a nightly pass. RETENTION_CHOICES
     // and RetentionJob's cron.
-    expect(screen.getByText(/both start at Never/i)).toBeInTheDocument();
+    expect(screen.getByText(/how long to keep the\s+recording and how long to keep the whole meeting/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Once a day Reverie removes anything past the window/i),
+      screen.getByText(/choose how long to keep the\s+recording/i),
     ).toBeInTheDocument();
   });
 
@@ -171,7 +171,7 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
 
     expect(
-      screen.getByText(/One small record is kept on purpose/),
+      screen.getByText(/Reverie keeps a small usage record/),
     ).toBeInTheDocument();
     // "and it is the only one" is gone: a disaster-recovery backup outlives a
     // deletion too. What makes this record different is that it is kept on
@@ -181,14 +181,9 @@ describe("the Privacy & Demo Notice", () => {
     // Still says it cannot be reversed and still says what it is not, in words
     // that do not require knowing what a hash is.
     expect(
-      screen.getByText(/scrambled in a way that cannot be reversed/i),
+      screen.getByText(/not a readable copy of your name or email address/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/no readable email address and no/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/cannot bring any of them back/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/it cannot restore them/i)).toBeInTheDocument();
     // No claim that the retained row is anonymous in the absolute sense, and no
     // claim that it is more than it is.
     const text = document.body.textContent ?? "";
@@ -227,7 +222,7 @@ describe("the Privacy & Demo Notice", () => {
     const text = document.body.textContent ?? "";
 
     // The live copy disappears from Reverie when it is deleted.
-    expect(text).toMatch(/Deleting really deletes/i);
+    expect(text).toMatch(/cannot be restored there/i);
     expect(text).toMatch(/disappears from Reverie/i);
 
     // Backups can keep an older copy briefly before they are removed.
@@ -248,10 +243,10 @@ describe("the Privacy & Demo Notice", () => {
     const text = document.body.textContent ?? "";
 
     expect(text).toMatch(
-      /kept on purpose, and unlike a backup it does\s+not\s+expire/i,
+      /Unlike a backup, it does not expire/i,
     );
     expect(text).toMatch(
-      /how much of your free\s+allowance has already been used/i,
+      /keeps a small usage record\s+after account deletion/i,
     );
   });
 
@@ -280,7 +275,7 @@ describe("the Privacy & Demo Notice", () => {
     const { container } = render(<PrivacyNoticePage />);
     const text = container.textContent ?? "";
 
-    expect(text).toMatch(/does not reach the outside AI\s+services/i);
+    expect(text).toMatch(/does not delete copies\s+that outside services may keep/i);
     expect(text).not.toMatch(
       /deleted everywhere|erased from (our|all) providers/i,
     );
@@ -296,7 +291,7 @@ describe("the Privacy & Demo Notice", () => {
     expect(text).toMatch(/does not train on your meetings/i);
     // What is not: anything about what a provider does with an API request.
     // That belongs to the provider's terms and is said to belong there.
-    expect(text).toMatch(/set their own rules for what they do with/i);
+    expect(text).toMatch(/Outside services used by Reverie follow their own\s+privacy rules/i);
     expect(text).not.toMatch(
       /never used by (any|our) provider|no provider (ever )?trains/i,
     );

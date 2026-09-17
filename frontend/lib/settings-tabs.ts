@@ -56,7 +56,7 @@ export interface TabSpec {
 export const SETTINGS_TABS: TabSpec[] = [
   { id: "general", label: "General" },
   { id: "email", label: "Email" },
-  { id: "data", label: "Data Retention" },
+  { id: "data", label: "Keep & Delete" },
   { id: "plans", label: "Plans" },
 ];
 

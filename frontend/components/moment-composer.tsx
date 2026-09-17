@@ -123,8 +123,8 @@ export function ActionItemDialog({
         <DialogHeader>
           <DialogTitle>Create an action item</DialogTitle>
           <DialogDescription>
-            Goes into this meeting&apos;s action items and the workspace list,
-            alongside the ones Reverie extracted.
+            Goes into this meeting&apos;s action items and your overall list,
+            alongside the ones Reverie found.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

@@ -12,7 +12,7 @@ import { HeroBrandLockup, HeroHorizon } from "@/components/v2/landing/hero-brand
  * word, then tagline as three separate elements; that the paths came from
  * `mark-geometry` rather than a second copy of the geometry; that the bottom
  * ribbon's rotation sat on a `<g>` and not on the path; and that
- * `CONVERSATIONAL INTELLIGENCE` was live text.
+ * `MEETINGS, WRITTEN DOWN` was live text.
  *
  * <p>None of that survives, and neither does what replaced it. The hero drew
  * the approved product lockup as a picture, then the Reverie AI orb at 320px,
@@ -79,7 +79,7 @@ describe("the hero identity", () => {
     const { container } = lockup();
 
     expect(screen.getAllByText("Reverie")).toHaveLength(1);
-    expect(screen.getAllByText("CONVERSATIONAL INTELLIGENCE")).toHaveLength(1);
+    expect(screen.getAllByText("MEETINGS, WRITTEN DOWN")).toHaveLength(1);
     expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
     // Nothing in the accessibility tree but the words themselves.
     expect(screen.queryAllByRole("img")).toHaveLength(0);
@@ -145,7 +145,7 @@ describe("the hero identity", () => {
     lockup();
 
     const name = screen.getByText("Reverie");
-    const tag = screen.getByText("CONVERSATIONAL INTELLIGENCE");
+    const tag = screen.getByText("MEETINGS, WRITTEN DOWN");
 
     expect(name.compareDocumentPosition(tag)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });

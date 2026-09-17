@@ -151,12 +151,12 @@ type EmailSwitch =
 const EMAIL_SWITCHES: { field: EmailSwitch; label: string; detail: string }[] = [
   {
     field: "retentionWarningEmail",
-    label: "Before retention deletes something",
+    label: "Before something is removed",
     detail: "A week's notice, and only when something is actually due.",
   },
   {
     field: "retentionAppliedEmail",
-    label: "After retention deletes something",
+    label: "After something is removed",
     detail: "One message for the night's work, never one per meeting.",
   },
   {

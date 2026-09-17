@@ -19,7 +19,7 @@ import { render, screen } from "@testing-library/react";
  * link somebody bookmarked should show them settings rather than a blank pane,
  * which is what a catch-all route renders for a path it does not recognise.
  *
- * <p>Email and Data Retention are the two that came back: they were sections at
+ * <p>Email and Keep & Delete are the two that came back: they were sections at
  * the foot of General, each with a query on them, so every visit to General
  * paid for both. The lazy-mount claim below is the whole reason the split is
  * worth anything.
@@ -59,14 +59,14 @@ describe("the frame", () => {
     pathname = "/settings/plans";
     render(<AccountSettings />);
 
-    for (const label of ["General", "Email", "Data Retention", "Plans"]) {
+    for (const label of ["General", "Email", "Keep & Delete", "Plans"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });
 
   it("mounts only the open tab, which is what the split bought", () => {
     /*
-     * Email reads the preferences and Data Retention reads the privacy
+     * Email reads the preferences and Keep & Delete reads the privacy
      * overview. Both were sections of General, so both queries ran on every
      * visit to the page somebody opens to edit one field.
      */
@@ -79,7 +79,7 @@ describe("the frame", () => {
     expect(screen.queryByTestId("tab-general")).toBeNull();
   });
 
-  it("opens Data Retention on its own path", () => {
+  it("opens Keep & Delete on its own path", () => {
     pathname = "/settings/data";
     render(<AccountSettings />);
 
@@ -173,7 +173,7 @@ describe("which tab is open", () => {
     expect(rendered).toHaveBeenCalledWith("plans");
   });
 
-  it("opens Data Retention under the old /privacy URL", () => {
+  it("opens Keep & Delete under the old /privacy URL", () => {
     /*
      * `RETENTION_APPLIED` notifications still link there and those rows cannot
      * be rewritten. It landed on General while the retention dials were a

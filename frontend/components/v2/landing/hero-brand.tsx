@@ -204,7 +204,7 @@ export function HeroBrandLockup() {
             textIndent: "clamp(0.16em, 0.6vw, 0.3em)",
           }}
         >
-          CONVERSATIONAL INTELLIGENCE
+          MEETINGS, WRITTEN DOWN
         </span>
       </div>
     </m.div>

@@ -266,7 +266,7 @@ function TrainingSection() {
   return (
     <section aria-labelledby="training-heading" className="space-y-1 pt-6">
       <h2 id="training-heading" className="flex items-center gap-2 text-title-3 font-headline text-ink">
-        <Lightbulb className="h-4 w-4 text-ink-3" /> Feedback and training
+        <Lightbulb className="h-4 w-4 text-ink-3" /> How your information is used
       </h2>
       <div className="space-y-2 border-b border-line py-4 text-callout text-ink-3">
         <p>
@@ -274,14 +274,12 @@ function TrainingSection() {
             Reverie does not train on your meetings.
           </strong>{" "}
           Reverie does not use your recordings, transcripts or notes to train
-          its AI. Nobody here reads them, and they are not mixed in with anyone
-          else&apos;s.
+          its AI.
         </p>
         <p>
-          Making your notes does mean sending the audio and the transcript to
-          outside AI services, which handle them under their own privacy rules.
-          There is no switch in this section because there is nothing to switch
-          off — a toggle here would suggest a use that does not happen.
+          Some features use outside services to turn recordings into text and to
+          create notes, summaries and answers. Those services handle what they
+          receive under their own privacy rules.
         </p>
         {/* Said here because it changed, and because it is the one part of
             the path that is not "after you press Save". Somebody reading this
@@ -289,14 +287,11 @@ function TrainingSection() {
             while it is still happening, not only afterwards. */}
         <p>
           <strong className="text-foreground">
-            While you are recording, audio is sent to that same speech-to-text
-            service as you speak
+            While you record, audio is sent to an outside service so words can
+            appear live.
           </strong>{" "}
-          — that is what produces the live text on the recording page. It goes
-          straight from your browser, so the words appear without waiting for the
-          meeting to end. The recording itself is still
-          transcribed in full afterwards, and that fuller transcript is the one
-          that is kept.
+          The full transcript is written from the recording afterwards, and that
+          is the one that is kept.
         </p>
         {/* The link moved with the section. It was `#data`, an anchor to the
             retention dials further down this tab; they are a tab of their own
@@ -309,7 +304,7 @@ function TrainingSection() {
             href={pathForTab("data")}
             className="text-brand-text underline-offset-2 hover:underline"
           >
-            yours to set under Data Retention
+            yours to set under Keep &amp; Delete
           </Link>
           , and you can delete the whole account below.
         </p>
@@ -451,11 +446,15 @@ function CloseAccountSection() {
           the Privacy & Demo Notice, which describes the same row.
         */}
         <p className="text-sm text-muted-foreground">
-          Deletes your meetings, recordings, transcripts, notes and chats{" "}
-          <strong className="text-foreground">permanently</strong>. Export
-          anything you want to keep first. A count of the free minutes and
-          imports already used is kept, so the free allowance cannot be reset by
-          starting again; it holds no content and cannot restore any.
+          Deletes your meetings, recordings, transcripts, notes and chats from
+          Reverie. Export anything you want to keep first. Some deleted
+          information may remain in backups for a short time before those copies
+          are automatically removed.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          A small usage record is kept so the free allowance cannot be reset by
+          starting again. It does not contain your meeting content and cannot
+          restore it.
         </p>
 
         {open ? (

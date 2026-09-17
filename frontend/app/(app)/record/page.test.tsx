@@ -834,7 +834,7 @@ describe("RecordPage responsibility notice", () => {
     renderPage();
 
     expect(
-      screen.getByText(/Make sure everyone who needs to know has been informed/i),
+      screen.getByText(/Make sure everyone who needs to know has been told/i),
     ).toBeInTheDocument();
     // Not the consent gate that was removed: nothing to tick and nothing to
     // confirm. One button, which records.
@@ -866,10 +866,10 @@ describe("RecordPage responsibility notice", () => {
     renderPage();
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/Reverie cannot check it for you/i);
+    expect(text).toMatch(/Reverie cannot confirm this for you/i);
     // The principle that requirements vary, without naming a jurisdiction or
     // stating a rule -- which would be legal advice this page cannot give.
-    expect(text).toMatch(/varies with where you all are/i);
+    expect(text).toMatch(/can vary depending on where you are and the\s+situation/i);
     expect(text).not.toMatch(/one-party|two-party|GDPR|state law|jurisdiction/i);
   });
 
@@ -879,7 +879,7 @@ describe("RecordPage responsibility notice", () => {
     renderPage();
 
     expect(
-      screen.getByText(/Make sure everyone who needs to know has been informed/i),
+      screen.getByText(/Make sure everyone who needs to know has been told/i),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument(),
@@ -938,7 +938,7 @@ describe("RecordPage responsibility notice", () => {
 
     // Still there — somebody may not have said it yet — and still last on the
     // page, under the words rather than over them.
-    const notice = screen.getByText(/Make sure everyone who needs to know has been informed/i);
+    const notice = screen.getByText(/Make sure everyone who needs to know has been told/i);
     expect(notice).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "What can I say?" })).toBeInTheDocument();
   });

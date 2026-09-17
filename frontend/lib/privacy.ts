@@ -72,8 +72,8 @@ export function confirmsDeletion(typed: string): boolean {
  * thing that actually gets said.
  */
 export const RECORDING_ANNOUNCEMENT =
-  "Just so everyone knows — I'm recording this meeting with Reverie, " +
-  "which will transcribe it and write up the notes and action items. " +
+  "Just so everyone knows — I'm recording this meeting with Reverie. " +
+  "It will write down what we say and create notes and action items. " +
   "Say if you'd rather I didn't.";
 
 /** The API's JSON `message` when there is one, so a refusal explains itself. */

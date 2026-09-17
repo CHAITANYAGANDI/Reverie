@@ -70,7 +70,7 @@ import { PRIVACY_NOTICE } from "@/lib/routes";
 export const metadata = {
   title: "Reverie — remember the conversation",
   description:
-    "Reverie turns recordings into a clear record: speakers, transcript, brief, action items, search, and answers grounded in the exact words that were said.",
+    "Reverie turns recordings into a clear record: speakers, transcript, brief, action items, search, and answers linked to the exact words that support them.",
 };
 
 export default function LandingPage() {
@@ -250,8 +250,8 @@ function Hero() {
         className="mx-auto mt-[clamp(1.125rem,1.6vh,1.5rem)] max-w-[62ch] text-[1.0625rem] leading-[1.6] text-ink-2"
       >
         Reverie turns recordings into a clear record: speakers, transcript,
-        brief, action items, search, and answers grounded in the exact words
-        that were said.
+        brief, action items, search, and answers linked to the exact words that
+        support them.
       </HeroBeat>
 
       {/*
@@ -384,11 +384,11 @@ const GROUPS = [
       {
         label: "Record in your browser",
         detail:
-          "Nothing to install, and nothing joins the call to do it. The recording keeps running while you look something else up.",
+          "Record directly in Reverie, with nothing to install. The recording keeps running while you look something else up.",
       },
       {
         label: "Import audio or video",
-        detail: "A file you already have, uploaded straight to private storage.",
+        detail: "A file you already have, added to your account.",
       },
       {
         label: "Speakers, separated",
@@ -414,7 +414,7 @@ const GROUPS = [
       {
         label: "Ask one meeting, or all of them",
         detail:
-          "Answers cite the passages they came from, and a folder can be the scope.",
+          "Answers link to the exact words they came from. You can ask about one meeting, a folder, or everything.",
       },
       {
         label: "A transcript you can correct",
@@ -488,7 +488,7 @@ const KEEPING = [
     // carries the provider caveat in full.
     label: "No training on your meetings",
     detail:
-      "Reverie does not use your recordings, transcripts or notes to train its AI, and nobody here reads them. Some features use outside AI services, which handle information under their own privacy rules.",
+      "Reverie does not use your recordings, transcripts or notes to train its AI. Some features use outside services, which handle the information they receive under their own privacy rules.",
   },
   {
     // There is no transcript dial. `RetentionPolicy` has exactly two fields --
@@ -497,7 +497,7 @@ const KEEPING = [
     // meeting"). A transcript is removed on a schedule only as part of its
     // meeting, so naming it beside the recording described a control the
     // product does not offer. See components/settings/retention-tab.
-    label: "Retention you set",
+    label: "You choose how long things are kept",
     detail:
       "Choose how long a recording is kept, and how long the whole meeting is kept. Anything past the window is removed.",
   },
@@ -508,7 +508,7 @@ const KEEPING = [
     // backup window is stated rather than left for somebody to discover.
     label: "Delete what you like",
     detail:
-      "A recording, a transcript, one meeting, or the whole account, removed from Reverie straight away. Disaster-recovery backups expire within a week.",
+      "Delete a recording, transcript, meeting or your account whenever you want. Deleted information disappears from the app right away. Some deleted information may remain in backups for a short time before those copies are automatically removed.",
   },
   {
     // "nobody else can read it" is a claim about who can see a database, which
@@ -516,9 +516,9 @@ const KEEPING = [
     // checkable version is the one about features: there are none for sharing,
     // for teams or for administration, so nothing in Reverie puts a meeting in
     // front of a second account.
-    label: "One account, one workspace",
+    label: "One account",
     detail:
-      "There is no sharing and no team workspace. Nothing in Reverie puts one of your meetings in front of another account.",
+      "Reverie does not include sharing or team access. Nothing in Reverie puts one of your meetings in front of another account.",
   },
   {
     // Was "Export in four formats", listing Word, Markdown and plain text.
