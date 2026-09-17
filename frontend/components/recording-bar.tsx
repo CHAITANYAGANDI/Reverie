@@ -174,7 +174,16 @@ export function RecordingBar() {
      */
     <div
       ref={shell}
-      className="pointer-events-none fixed bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-2 p-3 sm:p-4 lg:right-[var(--side-pane-w,0px)]"
+      /*
+       * ABOVE THE BOTTOM TABS, not under them. `--tabbar` is their height
+       * and they are `md:hidden`, so this clears them on a phone and sits
+       * on the window edge from `md` up where there is no tab bar.
+       *
+       * <p>It was the tabs that moved -- they lifted by this bar's height --
+       * which put the transient thing on the bottom edge and slid the
+       * permanent navigation up the screen whenever a recording started.
+       */
+      className="pointer-events-none fixed bottom-tabbar left-0 right-0 z-30 flex flex-col items-center gap-2 p-3 sm:p-4 md:bottom-0 lg:right-[var(--side-pane-w,0px)]"
     >
       <NoAudioNotice />
 

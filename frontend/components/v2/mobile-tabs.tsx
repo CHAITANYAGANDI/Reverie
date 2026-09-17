@@ -26,12 +26,20 @@
  * sheet either way, so its position costs nothing, and a magnifier among three
  * destinations is the classic way to make a tab bar mean two things.
  *
- * <h2>It floats above the recording bar rather than under it</h2>
+ * <h2>The navigation owns the bottom edge, and the dock sits above it</h2>
  *
- * <p>Both are fixed to the bottom. `--recording-bar` is published by the bar
- * itself and is zero when there is no recording, so this sits on the bottom
- * edge normally and lifts by exactly the bar's height while one is running —
- * measured rather than guessed, because that bar is not one height.
+ * <p>It was the other way round: this lifted by `--recording-bar` while one was
+ * running, which put the recording dock below the navigation and hard against
+ * the bottom of the window. Two things were wrong with that. The dock is
+ * transient and the tabs are permanent, so the arrangement moved the fixed
+ * thing and parked the temporary one in the place a thumb rests; and on a phone
+ * the very bottom strip is where the system gesture bar lives, which is the
+ * last place to put Stop.
+ *
+ * <p>So this stays on the bottom edge always, and the bar lifts itself clear of
+ * it — see `bottom-tabbar` in components/recording-bar.tsx. `--recording-bar`
+ * is still published, because the page's own bottom padding is measured from
+ * it; it is only no longer this element's offset.
  */
 
 import * as React from "react";
@@ -54,19 +62,28 @@ const TABS: { id: PlaceId; href: string; label: string; icon: typeof Home | null
    * Reverie's assistant. `null` rather than a component, because the orb takes
    * a size where lucide glyphs take a stroke width and a class.
    */
-  { id: "ask", href: ASK, label: "Ask", icon: null },
+  { id: "ask", href: ASK, label: "Reverie AI", icon: null },
 ];
 
 export function MobileTabs({
   pathname,
   create,
-  recording,
+  live,
 }: {
   pathname: string;
   /** Whether Record is offered. Withheld while one is in hand. */
   create: boolean;
-  /** Whether the recorder is holding anything. Lights the Record tab. */
-  recording: boolean;
+  /**
+   * Whether audio is being captured RIGHT NOW -- running or paused.
+   *
+   * <p>Not "the recorder is holding something", which is what this used to be
+   * given and is why the tab still read `Recording`, in red, after Stop. The
+   * recorder is not idle then: it is holding audio waiting to be saved or
+   * discarded. That is what the dock above is for, and what this tab says
+   * instead is `Record`, disabled -- because a second recording cannot be
+   * started until the first one is dealt with.
+   */
+  live: boolean;
 }) {
   const record = useStartRecording(pathname);
   const here = placeFor(pathname);
@@ -74,8 +91,7 @@ export function MobileTabs({
   return (
     <nav
       aria-label="Places"
-      className="v2-band no-print fixed inset-x-0 z-40 flex h-tabbar items-stretch md:hidden"
-      style={{ bottom: "var(--recording-bar, 0px)" }}
+      className="v2-band no-print fixed inset-x-0 bottom-0 z-40 flex h-tabbar items-stretch md:hidden"
     >
       {TABS.map((tab) => {
         const Icon = tab.icon;
@@ -136,11 +152,11 @@ export function MobileTabs({
           // Withheld, not hidden, while one is running: the column disappearing
           // would move the other three under a thumb that is already moving.
           // What it says instead is that a recording is already happening.
-          recording ? "text-danger" : create ? "text-ink-4" : "text-ink-5",
+          live ? "text-danger" : create ? "text-ink-4" : "text-ink-5",
         )}
       >
         <Mic className="h-[18px] w-[18px]" strokeWidth={1.7} />
-        <span>{recording ? "Recording" : "Record"}</span>
+        <span>{live ? "Recording" : "Record"}</span>
       </button>
     </nav>
   );

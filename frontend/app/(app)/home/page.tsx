@@ -470,13 +470,6 @@ function useFirstName(): string | null {
 
 function Masthead({ empty }: { empty: boolean }) {
   /*
-   * The balance, because an empty account has two very different meanings and
-   * this line is where the wrong one was being printed. See `spentEmptyNote`.
-   * One request between this and `EmptyState` below: RTK Query caches it.
-   */
-  const spent = isSpent(useAllowance()) && empty;
-
-  /*
    * The clock is read after mounting, never during a render.
    *
    * This page is prerendered as static content, so a greeting computed while
@@ -493,13 +486,9 @@ function Masthead({ empty }: { empty: boolean }) {
   const greeting =
     hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const title = empty
-    ? first
-      ? `Nothing here yet, ${first}.`
-      : "Nothing here yet."
-    : first
-      ? `${greeting}, ${first}.`
-      : `${greeting}.`;
+  /* Only the greeting. The empty account's heading moved to `EmptyState`,
+     which is the block that owns that whole statement now. */
+  const title = first ? `${greeting}, ${first}.` : `${greeting}.`;
 
   return (
     /*
@@ -552,16 +541,24 @@ function Masthead({ empty }: { empty: boolean }) {
         wrap instead of forcing the row wider than the column at 390px.
       */}
       {/*
-        SUPPRESSED WHEN THE ALLOWANCE IS SPENT, and the dateline above is not.
-        <p>`SpentState` owns the heading and the sentence in that case, as one
-        centred block -- see the component. Printing them here as well put the
-        same two lines top-left and the third one 64px below them, which is
-        what the screenshots showed.
+        SUPPRESSED WHEN THE LIST IS EMPTY, and the dateline above is not.
+
+        <p>This was suppressed only when the allowance was SPENT, because only
+        `SpentState` was centred; an empty account still had its heading and
+        sentence set top-left here while the invitation to act sat below them.
+        That reads as two compositions rather than one -- the statement in one
+        corner and the buttons answering it somewhere else -- and it is the
+        alignment this screen was reported for.
+
+        <p>So both empty screens now work the same way: whichever block is
+        rendered below owns all of its own lines and sets them as one centred
+        column. `EmptyState` and `SpentState` are the two.
+
         <p>The `h1` is not rendered empty either: an empty heading is a
-        landmark a screen reader announces and finds nothing in. The panel
-        carries the page's `h1` instead, so there is still exactly one.
+        landmark a screen reader announces and finds nothing in. The block
+        below carries the page's `h1` instead, so there is still exactly one.
       */}
-      {spent ? null : (
+      {empty ? null : (
       <div className="mt-2 flex items-center gap-4">
         <h1 className="v2-page-greet min-h-[1.875rem] min-w-0 flex-1 font-headline text-ink">
           {now ? title : ""}
@@ -575,7 +572,7 @@ function Masthead({ empty }: { empty: boolean }) {
         )}
       </div>
       )}
-      {spent ? null : (
+      {empty ? null : (
       <p className="v2-page-lede mt-2 max-w-[68ch] text-ink-3">
         {/*
           THE REFERENCE'S SENTENCE, VERBATIM.
@@ -590,10 +587,13 @@ function Masthead({ empty }: { empty: boolean }) {
           into a folder" in this page's suite. Copy that restates a guarantee
           is copy that goes stale the day the guarantee breaks, and it reads to
           somebody who has never heard of the bug as an odd thing to mention.
+
+          <p>The empty account's sentence used to be the other half of a
+          ternary here. It lives on `EmptyState` now, next to the buttons that
+          answer it, because that block is the one that has to read as a single
+          statement.
         */}
-        {empty
-          ? "Reverie becomes useful after your first conversation. Record one in the browser, or bring in a file you already have."
-          : "Recent conversations and anything that needs your attention."}
+        Recent conversations and anything that needs your attention.
       </p>
       )}
     </header>
@@ -669,13 +669,45 @@ function EmptyState() {
    * next click is a refusal. See `spentEmptyNote`.
    */
   const allowance = useAllowance();
+  const first = useFirstName();
   if (isSpent(allowance)) {
     return <SpentState />;
   }
 
+  /*
+   * ONE CENTRED COLUMN, WHERE THERE WERE TWO COMPOSITIONS.
+   *
+   * <p>The heading and the sentence were set top-left by the masthead and the
+   * buttons answering them began a second block underneath, so the screen read
+   * as a statement in one corner and a response somewhere else. It is one
+   * statement, and it is now set as one: `items-center pt-16 text-center` and
+   * `max-w-[46ch]` on the lede, which are `EmptyPanel`'s numbers rather than
+   * new ones -- the same shape `SpentState` and the folder page already use.
+   *
+   * <p>THE PROSE BELOW STAYS LEFT-ALIGNED, and that is not an oversight.
+   * Centred text is set from a ragged left edge, which costs a reader the
+   * anchor their eye returns to on every line; it is fine for a heading and a
+   * sentence and wrong for six paragraphs. So the two sections are a column
+   * that is CENTRED ON THE PAGE while its contents are ranged left -- which is
+   * also the only way the steps' numbers and the facts' glyphs can line up
+   * with each other down a shared edge.
+   */
   return (
-    <div>
-      <div className="flex flex-wrap gap-2.5">
+    <div className="flex flex-col items-center pt-16 text-center">
+      <h1 className="v2-page-greet font-headline text-ink">
+        {first ? `Nothing here yet, ${first}.` : "Nothing here yet."}
+      </h1>
+      {/* `text-balance` on both of these, and only on these. Centred text is
+          judged on the shape of its block, and left to itself this lede ended
+          on a one-word line and the note below it broke between `No` and
+          `card.` -- both of which read as an accident rather than a setting.
+          It is for short blocks only, which these are. */}
+      <p className="v2-page-lede mt-2.5 max-w-[46ch] text-balance text-ink-3">
+        Reverie becomes useful after your first conversation. Record one in the
+        browser, or bring in a file you already have.
+      </p>
+
+      <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5">
         <Button asChild>
           <Link href={recordHref("/home")}>
             <Mic className="mr-2 h-4 w-4" /> Record a meeting
@@ -688,15 +720,26 @@ function EmptyState() {
         </Button>
       </div>
       {/* `UsageLimitService.MINUTES_ALLOWANCE` and `IMPORT_ALLOWANCE`. */}
-      <p className="mt-3 text-foot text-ink-5">
+      <p className="mt-3 max-w-[52ch] text-balance text-foot text-ink-5">
         100 minutes of transcription and three imports, for the life of the
         account. No card.
       </p>
 
-      <div className="h-11" />
+      {/*
+        THE COLUMN. `max-w-[38rem]` is the width the content already asks for:
+        the widest line in it is a fact's body at `66ch`, and a track much
+        wider than its longest line stops reading as a column and starts
+        reading as text that failed to fill the page.
 
+        <p>`text-left` undoes the centring for everything inside, once, rather
+        than each block opting out.
+      */}
+      <div className="mt-14 w-full max-w-[38rem] text-left">
       <section className="mb-6">
-        <h2 className="v2-label mb-4">What happens to a conversation</h2>
+        {/* The label is centred with the column, not with its rows: it names
+            the group, so it belongs to the block rather than to the first
+            line of it. */}
+        <h2 className="v2-label mb-4 text-center">What happens to a conversation</h2>
         <div className="flex flex-col gap-5">
           <Step n="1" title="It is written down, with the speakers separated">
             Reverie transcribes the recording and tells the voices apart, so a
@@ -716,7 +759,7 @@ function EmptyState() {
       </section>
 
       <section>
-        <h2 className="v2-label mb-1">Three things worth knowing now</h2>
+        <h2 className="v2-label mb-1 text-center">Three things worth knowing now</h2>
         <div className="flex flex-col">
           <Fact
             icon={Mic}
@@ -741,6 +784,7 @@ function EmptyState() {
           </Fact>
         </div>
       </section>
+      </div>
     </div>
   );
 }

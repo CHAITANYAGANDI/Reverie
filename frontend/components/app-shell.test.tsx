@@ -24,7 +24,7 @@ const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 
 let pathname: string;
 /** What the recorder is holding. Drives the band, the tabs and the clearance. */
-let recorderState: "idle" | "recording";
+let recorderState: "idle" | "recording" | "paused" | "stopped";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
@@ -58,8 +58,8 @@ vi.mock("@/components/v2/app-band", () => ({
   ),
 }));
 vi.mock("@/components/v2/mobile-tabs", () => ({
-  MobileTabs: (props: { create: boolean; recording: boolean }) => (
-    <nav data-testid="tabs" data-create={String(props.create)} data-recording={String(props.recording)} />
+  MobileTabs: (props: { create: boolean; live: boolean }) => (
+    <nav data-testid="tabs" data-create={String(props.create)} data-live={String(props.live)} />
   ),
 }));
 vi.mock("@/components/search-command", () => ({
@@ -222,7 +222,34 @@ describe("the recorder's reach", () => {
     expect(screen.getByTestId("band")).toHaveAttribute("data-create", "false");
     expect(screen.getByTestId("tabs")).toHaveAttribute("data-create", "false");
     expect(screen.getByTestId("band")).toHaveAttribute("data-recording", "true");
-    expect(screen.getByTestId("tabs")).toHaveAttribute("data-recording", "true");
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-live", "true");
+  });
+
+  it("keeps the tabs lit while the recording is only paused", () => {
+    // A pause is still a recording in hand: the session is open and the tap is
+    // muted. The tab saying so is correct.
+    recorderState = "paused";
+    shell();
+
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-live", "true");
+  });
+
+  it("stops saying `Recording` once the recording has stopped", () => {
+    /*
+     * REPORTED FROM A PHONE: press Stop and the tab stays red and reads
+     * `Recording`, above a dock offering `Save & process`.
+     *
+     * <p>`stopped` is not `idle` -- the audio is held, waiting to be saved or
+     * discarded -- and the tabs were being given `state !== "idle"`. Record
+     * must STILL be withheld here, because a second recording cannot start
+     * while the first is unsaved, so the two claims are separate and only the
+     * narrower one reaches the label.
+     */
+    recorderState = "stopped";
+    shell();
+
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-live", "false");
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-create", "false");
   });
 
   it("offers them again the moment the recorder is empty", () => {
