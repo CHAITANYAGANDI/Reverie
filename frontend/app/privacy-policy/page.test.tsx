@@ -51,9 +51,13 @@ describe("the Privacy & Demo Notice", () => {
     // a disclosure by a portfolio project.
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Privacy & Demo Notice");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Privacy & Demo Notice",
+    );
     expect(metadata.title).toBe("Privacy & Demo Notice — Reverie");
-    expect(screen.queryByRole("heading", { name: /privacy policy/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /privacy policy/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("is a public route, or the link to it is worthless", () => {
@@ -66,7 +70,8 @@ describe("the Privacy & Demo Notice", () => {
      * everything public, which is the one change here that would be a security
      * bug rather than a layout bug.
      */
-    const at = (pathname: string) => isPublicPath({ nextUrl: { pathname } } as never);
+    const at = (pathname: string) =>
+      isPublicPath({ nextUrl: { pathname } } as never);
 
     expect(at("/privacy-policy")).toBe(true);
     expect(at("/")).toBe(true);
@@ -86,7 +91,9 @@ describe("the Privacy & Demo Notice", () => {
     // level skipped or nested for emphasis is the commonest way a document
     // becomes unnavigable.
     expect(container.querySelectorAll("h3, h4, h5, h6")).toHaveLength(0);
-    const sections = [...container.querySelectorAll("h2")].map((h) => h.textContent);
+    const sections = [...container.querySelectorAll("h2")].map(
+      (h) => h.textContent,
+    );
     expect(sections).toEqual([
       "Portfolio status",
       "What Reverie processes",
@@ -120,14 +127,20 @@ describe("the Privacy & Demo Notice", () => {
     // It is on this page and on the record page, and both import it.
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByText(new RegExp(RECORDING_ANNOUNCEMENT.slice(0, 40)))).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(RECORDING_ANNOUNCEMENT.slice(0, 40))),
+    ).toBeInTheDocument();
   });
 
   it("says the browser's permission is not somebody else's consent", () => {
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByText(/not consent from anybody else in the room/i)).toBeInTheDocument();
-    expect(screen.getByText(/authorised to record and process/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/not consent from anybody else in the room/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/authorised to record and process/i),
+    ).toBeInTheDocument();
   });
 
   it("describes the retention the code actually implements", () => {
@@ -136,8 +149,9 @@ describe("the Privacy & Demo Notice", () => {
     // Two windows, both starting at Never, and a nightly pass. RETENTION_CHOICES
     // and RetentionJob's cron.
     expect(screen.getByText(/both start at Never/i)).toBeInTheDocument();
-    expect(screen.getByText(/Once a day Reverie removes anything past the window/i))
-      .toBeInTheDocument();
+    expect(
+      screen.getByText(/Once a day Reverie removes anything past the window/i),
+    ).toBeInTheDocument();
   });
 
   it("names the one record that outlives the account, and what it cannot do", () => {
@@ -156,7 +170,9 @@ describe("the Privacy & Demo Notice", () => {
      */
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByText(/One small record is kept on purpose/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/One small record is kept on purpose/),
+    ).toBeInTheDocument();
     // "and it is the only one" is gone: a disaster-recovery backup outlives a
     // deletion too. What makes this record different is that it is kept on
     // purpose and does not expire, which is the distinction the next test
@@ -164,9 +180,15 @@ describe("the Privacy & Demo Notice", () => {
     expect(document.body.textContent ?? "").not.toMatch(/it is the only one/i);
     // Still says it cannot be reversed and still says what it is not, in words
     // that do not require knowing what a hash is.
-    expect(screen.getByText(/scrambled in a way that cannot be reversed/i)).toBeInTheDocument();
-    expect(screen.getByText(/no readable email address and no/i)).toBeInTheDocument();
-    expect(screen.getByText(/cannot bring any of them back/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/scrambled in a way that cannot be reversed/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no readable email address and no/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot bring any of them back/i),
+    ).toBeInTheDocument();
     // No claim that the retained row is anonymous in the absolute sense, and no
     // claim that it is more than it is.
     const text = document.body.textContent ?? "";
@@ -177,7 +199,7 @@ describe("the Privacy & Demo Notice", () => {
    * DISASTER-RECOVERY BACKUPS, WHICH THE NOTICE USED NOT TO MENTION.
    *
    * <p>The production database is backed up to the Oracle host and to a
-   * Cloudflare R2 bucket, both expiring after seven days. A backup taken
+   * Cloudflare R2 bucket, both kept on a short retention window. A backup taken
    * before a deletion therefore holds rows the live database no longer has,
    * which is not what "deletion is the real thing" on its own implies.
    *
@@ -191,24 +213,28 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/Reverie keeps backups/i);
-    expect(text).toMatch(/removed automatically\s+after seven days/i);
-    // The window is what somebody deleting an account actually needs: not that
-    // backups exist, but for how long they can still contain them.
-    expect(text).toMatch(/for around a week after it has gone from Reverie/i);
+    expect(text).toMatch(/Reverie keeps backups for about a week/i);
+    expect(text).toMatch(/before they are automatically removed/i);
+    // The important part is what somebody deleting an account actually needs
+    // to know: a deleted copy can remain temporarily in a backup.
+    expect(text).toMatch(
+      /deleted information may remain in a backup for a short time/i,
+    );
   });
 
-  it("keeps live deletion and backup expiry as separate claims", () => {
-    // Collapsing them in either direction is a lie: "deleted everywhere at
-    // once" understates the backups, and "deleted after seven days" overstates
-    // how long the live application keeps anything.
+  it("keeps live deletion and backup removal as separate claims", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
+    // The live copy disappears from Reverie when it is deleted.
     expect(text).toMatch(/Deleting really deletes/i);
-    expect(text).toMatch(/gone from Reverie itself/i);
-    // And the backups are not a second way to read the data.
-    expect(text).toMatch(/Nothing in Reverie can read those\s+backups/i);
+    expect(text).toMatch(/disappears from Reverie/i);
+
+    // Backups can keep an older copy briefly before they are removed.
+    expect(text).toMatch(/Reverie keeps backups for about a week/i);
+    expect(text).toMatch(
+      /deleted information may remain in a backup for a short time/i,
+    );
   });
 
   it("does not confuse the retained entitlement row with a backup", () => {
@@ -221,8 +247,12 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/kept on purpose, and unlike a backup it does\s+not\s+expire/i);
-    expect(text).toMatch(/how much of your free\s+allowance has already been used/i);
+    expect(text).toMatch(
+      /kept on purpose, and unlike a backup it does\s+not\s+expire/i,
+    );
+    expect(text).toMatch(
+      /how much of your free\s+allowance has already been used/i,
+    );
   });
 
   it("claims nothing about backups it has not configured", () => {
@@ -231,7 +261,9 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).not.toMatch(/GDPR|CCPA|PIPEDA|SOC ?2|ISO ?27001|HIPAA/i);
+    expect(text).not.toMatch(
+      /GDPR|CCPA|PIPEDA|SOC ?2|ISO ?27001|HIPAA/i,
+    );
     expect(text).not.toMatch(/encrypted backups|guarantee|certified/i);
   });
 
@@ -249,7 +281,9 @@ describe("the Privacy & Demo Notice", () => {
     const text = container.textContent ?? "";
 
     expect(text).toMatch(/does not reach the outside AI\s+services/i);
-    expect(text).not.toMatch(/deleted everywhere|erased from (our|all) providers/i);
+    expect(text).not.toMatch(
+      /deleted everywhere|erased from (our|all) providers/i,
+    );
     expect(text).not.toMatch(/chat history is deleted/i);
   });
 
@@ -263,7 +297,9 @@ describe("the Privacy & Demo Notice", () => {
     // What is not: anything about what a provider does with an API request.
     // That belongs to the provider's terms and is said to belong there.
     expect(text).toMatch(/set their own rules for what they do with/i);
-    expect(text).not.toMatch(/never used by (any|our) provider|no provider (ever )?trains/i);
+    expect(text).not.toMatch(
+      /never used by (any|our) provider|no provider (ever )?trains/i,
+    );
   });
 
   it("introduces no terms, no acceptance and no compliance furniture", () => {
@@ -317,8 +353,13 @@ describe("the Privacy & Demo Notice", () => {
     const image = container.querySelector("img")!;
     expect(image).not.toBeNull();
     expect(image.getAttribute("alt")).toBe("");
-    expect(image.closest("[data-ai-mark]")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByRole("link", { name: "Reverie" })).toBeInTheDocument();
+    expect(image.closest("[data-ai-mark]")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(
+      screen.getByRole("link", { name: "Reverie" }),
+    ).toBeInTheDocument();
   });
 
   it("reads on the app's own ground, in one column", () => {
@@ -329,7 +370,11 @@ describe("the Privacy & Demo Notice", () => {
 
     expect(container.querySelector(".v2-ambient")).not.toBeNull();
     expect(container.querySelector(".bg-background")).not.toBeNull();
-    expect(container.querySelector("main")!.className).toContain("max-w-measure");
-    expect(container.querySelectorAll(".shadow-e2, .rounded-2xl, .rounded-xl")).toHaveLength(0);
+    expect(container.querySelector("main")!.className).toContain(
+      "max-w-measure",
+    );
+    expect(
+      container.querySelectorAll(".shadow-e2, .rounded-2xl, .rounded-xl"),
+    ).toHaveLength(0);
   });
 });

@@ -305,13 +305,9 @@ export default function PrivacyNoticePage() {
                 age out, and an entitlement row is a decision.
               */}
               <p className={`mt-4 ${PROSE}`}>
-                Reverie keeps backups so that everything can be restored if
-                something goes badly wrong. A backup made before you deleted
-                something still contains it. Nothing in Reverie can read those
-                backups, and they are not used to answer questions or to bring
-                anything back for you. Every backup is removed automatically
-                after seven days, so some deleted information may remain in one
-                for around a week after it has gone from Reverie itself.
+                Reverie keeps backups for about a week before they are automatically
+                removed. This means some deleted information may remain in a backup
+                for a short time after it disappears from Reverie.
               </p>
               {/*
                 THE ONE THING KEPT ON PURPOSE, NAMED.
