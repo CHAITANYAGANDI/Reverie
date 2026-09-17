@@ -641,6 +641,27 @@ describe("the preview card at a phone's width", () => {
     expect(pill.className).toContain("sm:pr-3.5");
   });
 
+  it("holds `Home` off the mark once there is room for it", () => {
+    /*
+     * The squeeze that fitted the chip also pulled `Home` up against the orb —
+     * 6px where the application draws 19 — and it read as part of the mark
+     * rather than as the first of three places.
+     *
+     * <p>The distance is the row gap plus this margin plus the place's own
+     * padding, so restoring it through the margin alone costs the row 13px
+     * once, rather than once per place. Measured slack at 360 is 41px.
+     *
+     * <p>The base value stays: at 320 the row has about a pixel spare.
+     */
+    const { container } = draw();
+    const tabs = [...container.querySelectorAll("span")]
+      .find((s) => s.textContent?.trim() === "Home")!.parentElement!;
+
+    expect(tabs.className).toContain("ml-0.5");
+    expect(tabs.className).toContain("min-[360px]:ml-[15px]");
+    expect(tabs.className).toContain("sm:ml-1");
+  });
+
   it("gives each place back its padding at sm, underline included", () => {
     // The active place's underline is an `after:inset-x` tied to that padding.
     // Move one without the other and the rule stops matching the word.

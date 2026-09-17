@@ -302,7 +302,26 @@ function Window({
               It was an 18px lens, and the discrepancy came along with it. */}
           <ReverieAiMark size={32} />
         </span>
-        <span className="ml-0.5 flex items-center sm:ml-1">
+        {/*
+          HOW FAR `Home` SITS FROM THE MARK, which is three numbers added up:
+          the row's `gap`, this margin, and the place's own left padding.
+
+          <p>Desktop is 4 + 4 + 11 = 19px. Squeezing the row to fit a 320px
+          card took the gap to 0 and the padding to 4, and this margin came
+          down with them — which left 6px, and `Home` reading as though it were
+          part of the mark rather than the first of three places.
+
+          <p>The margin is the cheap lever: unlike the gap or the padding it is
+          paid once, not once per place, so it can buy the distance back on its
+          own. 15 + 4 is the same 19px the application draws, restored from
+          360px up — where the measured slack in this row is 41px and a 13px
+          rise is nothing.
+
+          <p>Below 360 it stays where it was. That is not a preference: at 320
+          the row has 1.1px spare, so there is nothing to spend, and this is
+          the width the chip was clipped at in the first place.
+        */}
+        <span className="ml-0.5 flex items-center min-[360px]:ml-[15px] sm:ml-1">
           {["Home", "Library", "Ask"].map((place) => (
             <span
               key={place}
