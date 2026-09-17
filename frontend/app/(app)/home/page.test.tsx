@@ -694,6 +694,130 @@ describe("when there is nothing to show", () => {
  * <p>The rule these pin: the empty screen is a *claim about the account*, and
  * only a settled, successful, genuinely empty response is allowed to make it.
  */
+/**
+ * THE TWO LISTS UNDER THE INVITATION, AND THE ONE COLUMN THEY SHARE.
+ *
+ * <h2>What was wrong</h2>
+ *
+ * <p>The steps and the facts were set to different numbers: an 18px marker
+ * with a 14px gap against a 16px marker with a 12px gap, and bodies measured
+ * at `52ch` against `66ch`. Rendered at 1280 that is two columns of titles 4px
+ * apart and two ragged right edges 84px apart, with the steps stopping a
+ * quarter of a column short of the facts. Small enough that nothing looks
+ * broken, large enough that the block reads as untidy without saying why.
+ *
+ * <h2>Why this is asserted as class names</h2>
+ *
+ * <p>jsdom has no layout engine, so a test that measured these boxes would
+ * read zero before and zero after and pass on both. The alignment itself was
+ * checked in Chrome against the compiled stylesheet -- one title left edge and
+ * one body right edge at 1280 and at 390, where there were two of each.
+ *
+ * <p>What is left for this file is the contract: that the two rows still agree
+ * on the gutter, that neither has taken a private measure again, and that the
+ * numbers survive. That last one is a decision, not an accident, and decisions
+ * are what rot.
+ */
+describe("the two lists in the first-minute screen", () => {
+  /** A row is a marker and a text block; the text block is the second child. */
+  function rowOf(container: HTMLElement, title: string) {
+    const heading = [...container.querySelectorAll("p")].find(
+      (p) => p.textContent?.trim() === title,
+    )!;
+    return heading.parentElement!.parentElement!;
+  }
+
+  const STEPS = [
+    "It is written down, with the speakers separated",
+    "It becomes a brief you can work with",
+    "You can search it, ask about it, and take it with you",
+  ];
+  const FACTS = [
+    "Reverie records this device, not the far end of a call",
+    "A file you already have works just as well",
+    "Your recordings are never used to train anything",
+  ];
+
+  beforeEach(() => {
+    rows = [];
+  });
+
+  it("gives every row the same marker gutter", async () => {
+    // 16px of marker and 16px of gap, in both lists. A digit and a glyph on
+    // one axis is the difference between a column and two near-misses.
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    for (const title of [...STEPS, ...FACTS]) {
+      const row = rowOf(container, title);
+      // `getAttribute`, not `.className`: the facts' marker is an <svg>, whose
+      // `className` is an SVGAnimatedString rather than a string.
+      const marker = row.firstElementChild!.getAttribute("class") ?? "";
+      expect(row.className).toContain("gap-4");
+      expect(marker).toContain("w-4");
+      expect(marker).toContain("shrink-0");
+    }
+  });
+
+  it("lets the column be the measure, not each row", async () => {
+    /*
+     * The bodies carried `max-w-[52ch]` and `max-w-[66ch]`. A private measure
+     * per row is what put the two sections' right edges 84px apart, and it is
+     * the thing most likely to be added back by somebody tidying one list
+     * without looking at the other.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    for (const title of [...STEPS, ...FACTS]) {
+      const body = rowOf(container, title).lastElementChild!.lastElementChild!;
+      expect(body.className).not.toMatch(/max-w-/);
+      // And the track is the column's, for every row, rather than whatever
+      // that row's own content happened to ask for.
+      expect(body.parentElement!.className).toContain("flex-1");
+    }
+  });
+
+  it("holds the column to a reading width", async () => {
+    // 30rem less the 32px gutter is about 70 characters at the callout size.
+    // It was 38rem, which is 90 -- and only looked acceptable because the rows
+    // were each wrapping early on a measure of their own.
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const column = rowOf(container, STEPS[0]).closest("[class*='max-w-']")!;
+    expect(column.className).toContain("max-w-[30rem]");
+  });
+
+  it("keeps the numbers, because the steps are a sequence", async () => {
+    /*
+     * OFFERED UP FOR REMOVAL AND KEPT. These three happen in order -- it is
+     * written down, then it becomes a brief, then you can search it -- so the
+     * numbering is a fact about the content rather than decoration on it.
+     */
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const markers = STEPS.map(
+      (title) => rowOf(container, title).firstElementChild!.textContent,
+    );
+    expect(markers).toEqual(["1", "2", "3"]);
+  });
+
+  it("does not number the facts, which are not a sequence", async () => {
+    // Three independent things to know. Numbering them would assert an order
+    // that is not there, which is what makes a numbered marker decoration.
+    const { container } = render(<HomePage />);
+    await screen.findByRole("heading", { level: 1 });
+
+    for (const title of FACTS) {
+      const marker = rowOf(container, title).firstElementChild!;
+      expect(marker.textContent).toBe("");
+      expect(marker.tagName.toLowerCase()).toBe("svg");
+    }
+  });
+});
+
 describe("what Home shows when the request does not simply succeed", () => {
   /* The first-minute screen's own call to action. The heading that used to
      carry this ("No conversations") is gone — the masthead says it now, and it

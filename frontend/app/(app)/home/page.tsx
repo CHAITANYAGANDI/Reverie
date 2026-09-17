@@ -726,15 +726,22 @@ function EmptyState() {
       </p>
 
       {/*
-        THE COLUMN. `max-w-[38rem]` is the width the content already asks for:
-        the widest line in it is a fact's body at `66ch`, and a track much
-        wider than its longest line stops reading as a column and starts
-        reading as text that failed to fill the page.
+        THE COLUMN, WHICH IS NOW ALSO THE MEASURE.
+
+        <p>It was `38rem` while each row carried a measure of its own, so the
+        steps wrapped at `52ch` and stopped a quarter of a column short of the
+        facts, which wrapped at `66ch`. Two ragged right edges 84px apart
+        inside one block is what made this read as unaligned.
+
+        <p>So the rows set no width and this does. `30rem` less the 32px
+        marker gutter is about 70 characters of the callout size — inside the
+        45-75 a paragraph is comfortable at, where `38rem` would have been 90.
+        Both lists now begin and end on the same two lines.
 
         <p>`text-left` undoes the centring for everything inside, once, rather
         than each block opting out.
       */}
-      <div className="mt-14 w-full max-w-[38rem] text-left">
+      <div className="mt-14 w-full max-w-[30rem] text-left">
       <section className="mb-6">
         {/* The label is centred with the column, not with its rows: it names
             the group, so it belongs to the block rather than to the first
@@ -843,13 +850,42 @@ function SpentState() {
   );
 }
 
+/**
+ * ONE GRID FOR BOTH LISTS, and it is the whole of this component's job.
+ *
+ * <p>The steps and the facts were set to different numbers: an 18px marker
+ * with a 14px gap here, a 16px marker with a 12px gap there. Measured on the
+ * page that is a 4px step between the two columns of titles — far too small to
+ * look deliberate and far too large to look like nothing, which is exactly the
+ * kind of misalignment that reads as sloppiness without announcing what is
+ * wrong. Both are now a 16px marker and a 16px gap, so every title in the
+ * section starts on one line down the page.
+ *
+ * <p>THE NUMBERS STAY. They were offered up for removal and they earn their
+ * place: these three are a sequence — it is written down, then it becomes a
+ * brief, then you can search it — and the order is the claim. A numbered
+ * marker on content that is not a sequence is decoration, which is why the
+ * three below this are facts with glyphs and no numbers; it does not follow
+ * that numbering is wrong where the order is real.
+ */
 function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3.5">
-      <span className="tabular w-[18px] shrink-0 pt-0.5 font-mono text-foot text-ink-5">{n}</span>
-      <div className="min-w-0">
+    <div className="flex items-start gap-4">
+      {/* `text-center` in a box the same width as the facts' glyph, so a digit
+          and a 16px icon land on the same axis rather than merely nearby. */}
+      <span className="tabular w-4 shrink-0 pt-0.5 text-center font-mono text-foot text-ink-5">
+        {n}
+      </span>
+      {/* `flex-1`, so the text track is the column minus the gutter for every
+          row -- not each row's own max-content width, which left a short one
+          five pixels narrower than its neighbours. */}
+      <div className="min-w-0 flex-1">
         <p className="text-title-3 font-headline text-ink">{title}</p>
-        <p className="mt-1 max-w-[52ch] text-callout leading-[1.5] text-ink-3">{children}</p>
+        {/* No measure of its own. It was `52ch` against the facts' `66ch`,
+            which ended the two sections 84px apart down the right-hand side
+            and left this one stopping a quarter of a column short. The column
+            is the measure now, and it is sized for reading. */}
+        <p className="mt-1 text-callout leading-[1.5] text-ink-3">{children}</p>
       </div>
     </div>
   );
@@ -865,11 +901,15 @@ function Fact({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-3 py-4 shadow-[inset_0_1px_0_rgb(var(--line))]">
+    <div className="flex items-start gap-4 py-4 shadow-[inset_0_1px_0_rgb(var(--line))]">
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-5" aria-hidden />
-      <div className="min-w-0">
+      {/* `flex-1`, so the text track is the column minus the gutter for every
+          row -- not each row's own max-content width, which left a short one
+          five pixels narrower than its neighbours. */}
+      <div className="min-w-0 flex-1">
         <p className="text-title-3 font-headline text-ink">{title}</p>
-        <p className="mt-1 max-w-[66ch] text-callout leading-[1.5] text-ink-3">{children}</p>
+        {/* The same measure as a step's, which is to say none: see Step. */}
+        <p className="mt-1 text-callout leading-[1.5] text-ink-3">{children}</p>
       </div>
     </div>
   );
