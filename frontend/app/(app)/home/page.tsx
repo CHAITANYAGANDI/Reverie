@@ -784,7 +784,7 @@ function EmptyState() {
             icon={FileAudio}
             title="A file you already have works just as well"
           >
-            Import audio or video and it goes through the same pipeline as
+            Import audio or video and Reverie handles it exactly as it handles
             something recorded here.
           </Fact>
           <Fact

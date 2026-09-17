@@ -77,7 +77,7 @@ export function signInBlockMessage(block: SignInBlock): string | null {
    */
   if (block.status === "needs_first_factor" && !hasPassword) {
     if (oauth) {
-      const name = PROVIDER_NAMES[oauth] ?? "the provider you signed up with";
+      const name = PROVIDER_NAMES[oauth] ?? "the service you signed up with";
       return `This account has no password — it was created with ${name}. Use Continue with ${name} above.`;
     }
     if (factors.some((strategy) => strategy.includes("email_code"))) {

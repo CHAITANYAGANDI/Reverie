@@ -903,9 +903,12 @@ describe("the closing section", () => {
        */
       const copy = text();
 
-      expect(copy).toMatch(/Reverie does not train or fine-tune models/i);
-      expect(copy).toMatch(/provider's own terms/i);
+      expect(copy).toMatch(/does not use your recordings, transcripts or notes to train/i);
+      expect(copy).toMatch(/outside AI services/i);
+      expect(copy).toMatch(/their own privacy rules/i);
       expect(copy).not.toMatch(/not used to improve any model/i);
+      // And no engineering vocabulary in the claim itself.
+      expect(copy).not.toMatch(/fine-?tun|model provider|provider API/i);
     });
 
     it("does not say a meeting is unreadable by anyone else", () => {
@@ -915,8 +918,11 @@ describe("the closing section", () => {
       const copy = text();
 
       expect(copy).toMatch(/no sharing/i);
-      expect(copy).toMatch(/no admin view/i);
+      expect(copy).toMatch(/no team workspace/i);
       expect(copy).not.toMatch(/nobody else can read/i);
+      // "admin view" went with it: a reader who has never seen an admin
+      // console learns nothing from being told there is not one.
+      expect(copy).not.toMatch(/admin view/i);
     });
 
     it("does not promise that deletion is instant everywhere", () => {

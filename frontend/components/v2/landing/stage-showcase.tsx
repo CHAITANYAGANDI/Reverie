@@ -54,7 +54,7 @@ const STAGES: Stage[] = [
   {
     kicker: "Understand",
     title: "Speakers, separated",
-    body: "Diarization tells the voices apart and numbers them by who spoke first. Naming them is a rename you make, and every word stays clickable to the second it was said.",
+    body: "Reverie tells the voices apart and numbers them in the order they spoke. Naming them is a rename you make, and every word stays clickable to the second it was said.",
   },
   {
     kicker: "Read",

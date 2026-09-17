@@ -219,8 +219,8 @@ export function ReassignSpeakerDialog({
             {options.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nobody else in this meeting can take these words — but they may
-                belong to someone diarization never separated out. Name them
-                below and the words move to them.
+                belong to someone Reverie did not separate out as their own
+                voice. Name them below and the words move to them.
               </p>
             ) : (
               <div className="flex flex-col gap-1">

@@ -234,7 +234,7 @@ export function useSaveJob(recorder: UseRecorder): UseSaveJob {
         id: meeting.id,
         status: meeting.status ?? "QUEUED",
         progress: statusProgress(meeting.status ?? "QUEUED"),
-        message: "Queued for processing…",
+        message: "Waiting to be processed…",
       });
       setPhase("processing");
       // Handed to the app-wide tracker, which is what settles the job when it
