@@ -64,16 +64,16 @@ export function RetentionTab() {
         <Clock className="h-4 w-4 text-ink-3" /> How long things are kept
       </h2>
       <p className="pb-2 text-callout text-ink-3">
-        Nothing is deleted on a schedule until you choose one here. Both start at
-        Never.
+        Nothing is removed automatically until you choose a time here. Both start
+        at Never.
       </p>
 
       <div className="space-y-6 py-4">
         {overview.isLoading || !policy ? (
           <p className="text-callout text-ink-3">
             {overview.isLoading
-              ? "Loading your policy…"
-              : "Couldn't load your retention policy. Reload the page to try again."}
+              ? "Loading your settings…"
+              : "Couldn't load these settings. Reload the page to try again."}
           </p>
         ) : (
           <>
@@ -111,8 +111,9 @@ export function RetentionTab() {
               Age is counted from when a meeting was created, not from when you
               last opened it — otherwise the recording of a sensitive
               conversation survives longest precisely because people keep going
-              back to it. Reverie checks once a day and tells you what it took.
-              Deletion is immediate and cannot be undone.
+              back to it. Reverie checks once a day and tells you what it
+              removed. When something is deleted, it disappears from the app and
+              cannot be restored there.
             </p>
           </>
         )}

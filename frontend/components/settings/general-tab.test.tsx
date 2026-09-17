@@ -24,7 +24,7 @@ import type { PreferencesResponse, PrivacyOverview } from "@/lib/types";
  * any more are gone, and the legal line does not appear at all unless somebody
  * has supplied real URLs — Reverie ships no terms of service of its own.
  *
- * <p>Email and Data Retention were sections here and are tabs now, so their
+ * <p>Email and Keep & Delete were sections here and are tabs now, so their
  * cases live beside their components. What is left on this tab is the account
  * itself: who you are, what language you speak, what is done with a recording,
  * and the way out.
@@ -333,13 +333,13 @@ describe("the rest of the page", () => {
     render(<GeneralTab />);
 
     expect(
-      screen.getByRole("heading", { name: /Feedback and training/ }),
+      screen.getByRole("heading", { name: /How your information is used/ }),
     ).toBeInTheDocument();
     expect(screen.getByText(/does not train on your meetings/)).toBeInTheDocument();
     // The absence is the point: a toggle would imply a use to opt out of.
     // Scoped to this section -- the email switches below are checkboxes too,
     // and the claim here was only ever about this one.
-    const training = screen.getByRole("heading", { name: /Feedback and training/ });
+    const training = screen.getByRole("heading", { name: /How your information is used/ });
     expect(training.closest("section")!.querySelector("input[type=checkbox]")).toBeNull();
   });
 
@@ -360,7 +360,7 @@ describe("the rest of the page", () => {
     expect(screen.queryByText(/keeps what is yours/)).not.toBeInTheDocument();
   });
 
-  it("sends you to the Data Retention tab rather than to an anchor on this one", () => {
+  it("sends you to the Keep & Delete tab rather than to an anchor on this one", () => {
     /*
      * The training paragraph ends by saying where the retention windows are
      * set. It said "below" and linked to `#data`, which was the section a few
@@ -370,7 +370,7 @@ describe("the rest of the page", () => {
      */
     render(<GeneralTab />);
 
-    const link = screen.getByRole("link", { name: /under Data Retention/i });
+    const link = screen.getByRole("link", { name: /under Keep & Delete/i });
     expect(link).toHaveAttribute("href", "/settings/data");
     // And closing the account really is still below, on this tab.
     expect(screen.getByRole("heading", { name: /Delete this account/i })).toBeInTheDocument();
@@ -414,7 +414,7 @@ describe("the rest of the page", () => {
  */
 
 describe("closing the account", () => {
-  it("says what goes, that it is permanent, and what is kept", () => {
+  it("says what goes, what may linger, and what is kept", () => {
     /*
      * IT SAID "Deletes everything, permanently".
      *
@@ -433,11 +433,14 @@ describe("closing the account", () => {
     expect(screen.getByText(/Deletes your meetings, recordings, transcripts/))
       .toBeInTheDocument();
     // Bold and its own word, so it survives a skim of the paragraph.
-    expect(screen.getByText("permanently")).toBeInTheDocument();
+    // "permanently" is gone: backups hold deleted information for a short
+    // time, so the word was absolute in a way the system is not.
+    expect(screen.getByText(/may remain in backups for a short time/i))
+      .toBeInTheDocument();
 
     // The retained record, named — and named as unable to bring anything back.
     expect(screen.getByText(/free allowance cannot be reset/)).toBeInTheDocument();
-    expect(screen.getByText(/holds no content and cannot restore any/))
+    expect(screen.getByText(/does not contain your meeting content and cannot/i))
       .toBeInTheDocument();
     // And it no longer claims to delete literally everything.
     expect(screen.queryByText(/Deletes everything/)).not.toBeInTheDocument();

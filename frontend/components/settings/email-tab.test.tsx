@@ -67,8 +67,8 @@ describe("email", () => {
     render(<EmailTab />);
 
     expect(await screen.findByRole("heading", { name: /Email notifications/ })).toBeInTheDocument();
-    expect(screen.getByText(/Before retention deletes something/)).toBeInTheDocument();
-    expect(screen.getByText(/After retention deletes something/)).toBeInTheDocument();
+    expect(screen.getByText(/Before something is removed/)).toBeInTheDocument();
+    expect(screen.getByText(/After something is removed/)).toBeInTheDocument();
     expect(screen.getByText(/Action items due tomorrow/)).toBeInTheDocument();
     expect(screen.getByText(/Notes ready for a long recording/)).toBeInTheDocument();
     expect(screen.getByText(/transcription minutes are nearly gone/)).toBeInTheDocument();

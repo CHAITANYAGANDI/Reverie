@@ -195,7 +195,7 @@ function AuthGateError() {
     >
       <p className="font-medium">Couldn&apos;t finish signing you in</p>
       <p className="max-w-sm text-sm text-muted-foreground">
-        Your workspace is still here. Something went wrong renewing your session.
+        Everything in your account is still here. Something went wrong renewing your session.
       </p>
       <Button variant="outline" onClick={retryTokenProbe}>
         Try again

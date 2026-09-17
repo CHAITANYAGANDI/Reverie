@@ -284,8 +284,8 @@ function RecordResponsibly() {
        would read as something having gone wrong with the recording. */
     <div className="v2-note" data-tone="quiet">
       <p className="text-foot leading-[1.5] text-ink-4">
-        Record responsibly. Make sure everyone who needs to know has been
-        informed before recording.{" "}
+        Make sure everyone who needs to know has been told you are
+        recording.{" "}
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -584,10 +584,9 @@ function BeforeRecording({
       <div className="max-w-[54ch] space-y-2">
         <p className="text-callout font-headline text-ink">Before you start</p>
         <p className="text-callout leading-[1.55] text-ink-3">
-          Make sure everyone who needs to know has been informed. What is
-          required varies with where you all are and what is being discussed,
-          and Reverie cannot check it for you — there is no bot in the meeting
-          and no list of who is in the room.
+          Make sure everyone who needs to know has been told that you plan to
+          record. What is required can vary depending on where you are and the
+          situation. Reverie cannot confirm this for you.
         </p>
       </div>
 

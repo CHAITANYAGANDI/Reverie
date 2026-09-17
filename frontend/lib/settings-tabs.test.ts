@@ -19,14 +19,14 @@ import {
  * `/privacy` in particular is written into notification rows that already exist
  * — those rows are a record of something that happened and their link column
  * cannot be rewritten, so the path has to keep working for as long as they do.
- * It now resolves to Data Retention, which is the subject it was a page about.
+ * It now resolves to Keep & Delete, which is the subject it was a page about.
  */
 
 describe("the tabs themselves", () => {
   it("are the four the page offers, in reading order", () => {
     /*
      * General first because it is where somebody lands. Then the two that send
-     * or delete things, Email before Data Retention -- one of the email
+     * or delete things, Email before Keep & Delete -- one of the email
      * switches IS the week's notice that retention is about to take something,
      * so the other order explains the notice before the thing it is about.
      * Plans last: the only tab about money rather than about the account's own
@@ -35,11 +35,11 @@ describe("the tabs themselves", () => {
     expect(SETTINGS_TABS.map((t) => t.id)).toEqual(["general", "email", "data", "plans"]);
   });
 
-  it("labels Data Retention in full, and keeps its URL short", () => {
+  it("labels Keep & Delete in full, and keeps its URL short", () => {
     // "Data" alone in a tab row beside General and Email says nothing about
     // what happens there, and what happens there is deletion. The path stays
     // `/settings/data`, which is what somebody types.
-    expect(SETTINGS_TABS.find((t) => t.id === "data")?.label).toBe("Data Retention");
+    expect(SETTINGS_TABS.find((t) => t.id === "data")?.label).toBe("Keep & Delete");
     expect(SETTINGS_TABS.find((t) => t.id === "email")?.label).toBe("Email");
   });
 
@@ -97,7 +97,7 @@ describe("the paths that used to be pages", () => {
   it("still land somewhere rather than nowhere", () => {
     expect(tabFromPath("/billing")).toBe("plans");
     /*
-     * `/privacy` lands on Data Retention.
+     * `/privacy` lands on Keep & Delete.
      *
      * <p>It went to General for a while, because that is where the retention
      * dials had been moved to and General was the only place left. Now that

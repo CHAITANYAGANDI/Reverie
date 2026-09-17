@@ -37,7 +37,7 @@ import LandingPage from "@/app/page";
  * <p>Letterspaced caps, exactly as specified. Several tests name it, which is
  * exactly why it is one constant.
  */
-const HERO_TAGLINE = "CONVERSATIONAL INTELLIGENCE";
+const HERO_TAGLINE = "MEETINGS, WRITTEN DOWN";
 
 describe("what it promises", () => {
   it("quotes the allowance the server actually enforces", () => {
@@ -79,7 +79,7 @@ describe("what it promises", () => {
     ["sharing, which was removed", /share link|shareable|share a meeting/i],
     ["email, which has no sender in this codebase", /email recap|daily digest|draft email/i],
     ["Notion and agent follow-ups, which never existed", /notion|agent follow|schedule meetings/i],
-    ["a calendar, which was removed", /calendar|ical/i],
+    ["a calendar, which was removed", /calendars?|ical|\.ics/i],
   ])("does not advertise %s", (_label, forbidden) => {
     const { container } = render(<LandingPage />);
 
@@ -211,7 +211,7 @@ describe("the way in", () => {
      * IT USED TO POINT AT THE LOGIN.
      *
      * <p>The link read `Privacy` and went to `/privacy`, which is Account
-     * Settings → Data Retention — inside the authenticated group. So the one
+     * Settings → Keep & Delete — inside the authenticated group. So the one
      * link on this page that somebody follows *before* deciding whether to sign
      * up redirected them to the sign-in form. `/privacy` itself is unchanged
      * and still lands on that tab, because notification rows carry it.
@@ -852,7 +852,7 @@ describe("the closing section", () => {
     render(<LandingPage />);
 
     expect(screen.getByText("No training on your meetings")).toBeInTheDocument();
-    expect(screen.getByText("Retention you set")).toBeInTheDocument();
+    expect(screen.getByText("You choose how long things are kept")).toBeInTheDocument();
     expect(screen.getByText("Delete what you like")).toBeInTheDocument();
     expect(screen.getByText("One plan, no card")).toBeInTheDocument();
   });
@@ -863,7 +863,7 @@ describe("the closing section", () => {
     // pricing rung, which is the checkable version.
     const { container } = render(<LandingPage />);
 
-    expect(container.textContent).toMatch(/no team workspace/i);
+    expect(container.textContent).toMatch(/does not include sharing or team access/i);
     expect(container.textContent).not.toMatch(/upgrade to|contact sales|per seat|per user/i);
   });
 
@@ -904,7 +904,7 @@ describe("the closing section", () => {
       const copy = text();
 
       expect(copy).toMatch(/does not use your recordings, transcripts or notes to train/i);
-      expect(copy).toMatch(/outside AI services/i);
+      expect(copy).toMatch(/outside services/i);
       expect(copy).toMatch(/their own privacy rules/i);
       expect(copy).not.toMatch(/not used to improve any model/i);
       // And no engineering vocabulary in the claim itself.
@@ -917,8 +917,8 @@ describe("the closing section", () => {
       // sharing features is a fact about the product and is checkable.
       const copy = text();
 
-      expect(copy).toMatch(/no sharing/i);
-      expect(copy).toMatch(/no team workspace/i);
+      expect(copy).toMatch(/does not include sharing/i);
+      expect(copy).toMatch(/team access/i);
       expect(copy).not.toMatch(/nobody else can read/i);
       // "admin view" went with it: a reader who has never seen an admin
       // console learns nothing from being told there is not one.
@@ -934,8 +934,8 @@ describe("the closing section", () => {
        */
       const copy = text();
 
-      expect(copy).toMatch(/removed from Reverie straight away/i);
-      expect(copy).toMatch(/backups expire within a week/i);
+      expect(copy).toMatch(/disappears from the app right away/i);
+      expect(copy).toMatch(/may remain in backups for a short time/i);
       expect(copy).not.toMatch(/permanently, on the spot/i);
     });
   });

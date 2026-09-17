@@ -141,21 +141,22 @@ export default function PrivacyNoticePage() {
           </p>
 
           <div className="mt-12 space-y-11">
-            <Section heading="Portfolio status">
+            <Section heading="About this demo">
               <p className={PROSE}>
-                Reverie is a software-engineering and generative-AI portfolio
-                project, built for demonstration and technical evaluation. It is
-                not a commercial service: nothing is sold, there is no
-                subscription, and it comes with no availability, support or
-                data-protection commitments. One account is one workspace —
-                nothing is shared into it, and nobody else can be added to it.
+                Reverie is a portfolio project built as a working
+                demonstration. It is not a commercial service: nothing is sold
+                and there is no subscription. It does not come with the
+                promises a paid service would make about staying available,
+                being supported, or looking after your information.
+                One account is yours alone — nothing is shared into it, and
+                nobody else can be added to it.
               </p>
             </Section>
 
-            <Section heading="What Reverie processes">
+            <Section heading="What Reverie uses">
               <p className={PROSE}>
-                Only what the product needs to turn a conversation into a
-                record:
+                Only what Reverie needs to turn a conversation into a record
+                you can use:
               </p>
               <ul className="mt-5">
                 <Item label="Your account">
@@ -169,17 +170,18 @@ export default function PrivacyNoticePage() {
                   in yourself.
                 </Item>
                 <Item label="Transcripts">
-                  The words, who said them, and when. Reverie also keeps the
-                  transcript in a form it can search, so that a question can be
-                  answered from the right part of a meeting.
+                  The words, who said them, and when — kept in a way that lets
+                  Reverie find the right part of a meeting when you search or
+                  ask a question.
                 </Item>
                 <Item label="What is written from them">
                   The summary, action items, decisions and risks, translations,
                   and the highlights, bookmarks and notes you make yourself.
                 </Item>
                 <Item label="Ask Reverie">
-                  Your questions, the answers, and the scope you asked them in,
-                  kept as named conversations so you can reopen one.
+                  Your questions, the answers, and whether you asked about one
+                  meeting, a folder or everything, kept as named conversations so
+                  you can reopen one.
                 </Item>
                 <Item label="How you have set things up">
                   Folder names, notification settings, how long you asked
@@ -193,66 +195,57 @@ export default function PrivacyNoticePage() {
               </p>
             </Section>
 
-            <Section heading="AI processing">
+            <Section heading="Outside services">
               <p className={PROSE}>
-                Reverie does not do the listening or the writing itself. Some
-                features use outside AI services, and three things are sent to
-                them:
+                Some Reverie features use outside services. Reverie does not do
+                the listening or the writing itself.
               </p>
               <ul className="mt-5">
-                <Item label="The recording, to be written down">
-                  Your recording goes to a speech-to-text service, which sends
-                  back the words, their timings, and who said what.
+                <Item label="Your recording">
+                  It may be sent to an outside service to create the transcript
+                  — the words, their timings, and who said what.
                 </Item>
-                <Item label="Live audio, while you are still recording">
-                  So that words can appear on screen as you speak, audio goes
-                  from your browser to AssemblyAI while the meeting is running.
-                  The full transcript is written from the recording afterwards
-                  and replaces those words.
+                <Item label="Audio, while you are still recording">
+                  While you record, audio may also be sent so words can appear
+                  live. The full transcript is written from the recording
+                  afterwards and replaces those words.
                 </Item>
-                <Item label="The transcript, for everything written from it">
-                  The text goes to OpenAI to write the summary, pick out action
-                  items, decisions and risks, translate, and answer your
-                  questions.
+                <Item label="Your transcript">
+                  It may be sent to an outside service to create summaries,
+                  action items, decisions and risks, translations and answers.
                 </Item>
               </ul>
               <p className={`mt-6 ${PROSE}`}>
-                These outside services handle what they are sent according to
-                their own privacy rules. Reverie cannot make promises on their
-                behalf. If this demo is running without those services connected,
-                it uses built-in stand-in results instead and none of this is
-                sent anywhere.
+                Those services handle the information they receive under their
+                own privacy rules. Reverie cannot make promises on their behalf.
               </p>
             </Section>
 
-            <Section heading="Model training">
+            <Section heading="How your information is used">
               <p className={PROSE}>
                 <strong className="font-headline text-ink">
                   Reverie does not train on your meetings.
                 </strong>{" "}
                 Reverie does not use your recordings, transcripts or notes to
-                train its AI. They are used to produce your own summary, action
-                items and answers, and for nothing else. Nobody here reads them,
-                and they are not mixed in with anyone else&apos;s. The outside
-                services named above set their own rules for what they do with
-                what they receive.
+                train its AI. They are used to provide the features you ask for,
+                such as transcripts, summaries, action items, translations and
+                answers. Outside services used by Reverie follow their own
+                privacy rules.
               </p>
             </Section>
 
-            <Section heading="Recording responsibly">
+            <Section heading="Before you record">
               <p className={PROSE}>
-                Only record or upload conversations you are authorised to record
-                and process. What is required before recording — who must be
-                told, who must agree, and in what form — varies by location and
-                by circumstance, and Reverie neither checks nor can judge it for
-                you.
+                Only record or upload conversations you are allowed to record or
+                use. What is required can vary depending on where you are and
+                the situation. Make sure everyone who needs to know has been
+                told. Reverie cannot decide whether you have permission.
               </p>
               <p className={`mt-4 ${PROSE}`}>
-                Nothing joins your call to announce itself: recording happens in
-                your own browser, so the announcement has to come from you. The
-                browser&apos;s microphone permission is a decision by the person
-                at the keyboard — it is not consent from anybody else in the
-                room. The record page offers a sentence you can read out:
+                Allowing microphone access only lets Reverie use your
+                microphone. It does not mean anyone else has agreed to be
+                recorded, so telling people is still up to you. Here is a
+                sentence you can read out:
               </p>
               {/* The same constant the record page reveals — lib/privacy. Two
                   copies of a sentence people are meant to read aloud is how one
@@ -262,31 +255,29 @@ export default function PrivacyNoticePage() {
               </p>
             </Section>
 
-            <Section heading="Retention and deletion">
+            <Section heading="Keeping and deleting your information">
               <p className={PROSE}>
-                Nothing is deleted on a schedule until you choose a window.
-                Account Settings offers two — one for the recording, one for the
-                whole meeting — and both start at Never, which means kept until
-                you delete them. Once a day Reverie removes anything past the
-                window you chose, counted from when the meeting was made rather
-                than from when you last opened it, and tells you what went.
+                By default, Reverie keeps your recording and your meeting until
+                you delete them. In Settings you can choose how long to keep the
+                recording and how long to keep the whole meeting, and Reverie
+                will then remove them for you and say what it removed. Age is
+                counted from when the meeting was made, not from when you last
+                opened it.
               </p>
               <p className={`mt-4 ${PROSE}`}>
                 You can also delete a recording, a transcript or a whole meeting
-                yourself, at any time. Deleting really deletes: the file and the
-                record of it are removed rather than hidden, and it cannot be
-                undone. Ask Reverie
-                conversations stay until you delete them — they are not covered
-                by the retention windows, though a conversation about one
-                meeting goes when that meeting does.
+                yourself, at any time. Once something is removed from the app it
+                cannot be restored there. Ask Reverie conversations stay until
+                you delete them — they are not covered by the times you choose,
+                though a conversation about one meeting goes when that meeting
+                does.
               </p>
               <p className={`mt-4 ${PROSE}`}>
-                Closing the account erases your meetings and their audio, and
+                Closing the account removes your meetings and their audio, and
                 then asks whoever you signed in with to delete the sign-in
                 itself; if that is refused, you are told so rather than told it
-                worked. Deleting something here does not reach the outside AI
-                services — Reverie does not ask them to delete anything, and how
-                long they keep what they were sent is up to them.
+                worked. Deleting something from Reverie does not delete copies
+                that outside services may keep. Their own privacy rules apply.
               </p>
               {/*
                 DISASTER-RECOVERY BACKUPS, WHICH THE PAGE USED NOT TO MENTION.
@@ -329,27 +320,24 @@ export default function PrivacyNoticePage() {
                 `free_tier_identities` in V69.
               */}
               <p className={`mt-4 ${PROSE}`}>
-                One small record is kept on purpose, and unlike a backup it does
-                not expire. Reverie keeps a note of how much of your free
-                allowance has already been used, so that closing an account and
-                opening another does not reset it. It is scrambled in a way that
-                cannot be reversed, so it holds no readable email address and no
-                name. It contains none of your meetings, recordings,
-                transcripts, notes or chats, it cannot bring any of them back,
-                and the only thing that reads it is the check for how much of
-                your free allowance is left.
+                To stop the free allowance from resetting when an account is
+                deleted and opened again, Reverie keeps a small usage record
+                after account deletion. Unlike a backup, it does not expire. It
+                is not a readable copy of your name or email address. It does
+                not contain your meetings, recordings, transcripts, notes or
+                chats, and it cannot restore them.
               </p>
             </Section>
 
-            <Section heading="AI limitations">
+            <Section heading="Reverie can make mistakes">
               <p className={PROSE}>
-                Transcripts, summaries, action items and answers are produced by
-                models and will sometimes be wrong: a misheard word, a sentence
-                attributed to the wrong speaker, or a confident answer drawn
-                from the wrong passage. Every answer cites the passages it came
-                from and every action item links to the moment it was read out
-                of, so anything that matters can be checked against the
-                recording — and should be.
+                Reverie can sometimes get words, speakers, summaries or answers
+                wrong — a misheard word, a sentence given to the wrong person,
+                or a confident answer taken from the wrong part of a meeting.
+                Every answer links to the words it came from, and every action
+                item links to the moment it was taken from, so anything
+                important can be checked against the recording and the
+                transcript — and should be.
               </p>
             </Section>
           </div>
@@ -358,8 +346,9 @@ export default function PrivacyNoticePage() {
               panel: it is the plainest sentence here, not an alarm. */}
           <p className="mt-14 border-t border-line pt-6 text-callout leading-[1.55] text-ink-3">
             Reverie is intended for demonstration and portfolio evaluation. Do
-            not use the demo for confidential, legally privileged, highly
-            sensitive, or production-critical information.
+            not use it for confidential or legally privileged conversations,
+            for anything highly sensitive, or for work you cannot afford to
+            lose.
           </p>
         </main>
       </div>

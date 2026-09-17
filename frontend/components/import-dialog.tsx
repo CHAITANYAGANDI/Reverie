@@ -193,8 +193,8 @@ export function ImportDialog({
         <DialogHeader>
           <DialogTitle>Transcribe audio and video</DialogTitle>
           <DialogDescription>
-            The file uploads straight to private storage and processing starts
-            on its own. The meeting takes its name from the file.
+            The file is added to your account and Reverie starts work on its
+            own. The meeting takes its name from the file.
           </DialogDescription>
         </DialogHeader>
 

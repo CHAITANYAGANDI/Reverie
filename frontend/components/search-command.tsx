@@ -373,7 +373,7 @@ export function SearchCommand({
           key: "act-settings",
           act: "settings" as const,
           label: "Open settings",
-          hint: "Your account, email and retention",
+          hint: "Your account, email, and what is kept",
         },
       ],
     });

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { PrivacyOverview } from "@/lib/types";
 
 /**
- * Account Settings → Data Retention.
+ * Account Settings → Keep & Delete.
  *
  * <p>Moved here with the section itself, which was the fifth block of General.
  * Nothing about what is asserted changed in the move — the tests are the same

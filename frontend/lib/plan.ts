@@ -59,7 +59,7 @@ export const INCLUDED: FeatureGroup[] = [
     features: [
       {
         label: "Recording in your browser",
-        detail: "Nothing to install, and nothing joins the call to do it.",
+        detail: "Record directly in Reverie, with nothing to install.",
       },
       { label: "Importing an audio or video file you already have" },
       {
