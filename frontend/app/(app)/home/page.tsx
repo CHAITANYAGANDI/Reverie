@@ -738,10 +738,15 @@ function EmptyState() {
         45-75 a paragraph is comfortable at, where `38rem` would have been 90.
         Both lists now begin and end on the same two lines.
 
-        <p>`text-left` undoes the centring for everything inside, once, rather
-        than each block opting out.
+        <p>NO `text-left` ANY MORE. It used to undo the centring for everything
+        inside, on the argument that centred prose is read from a ragged left
+        edge and costs a reader the anchor their eye returns to. That was
+        overruled: the whole screen is one centred statement and these were the
+        only ranged-left thing in it, which is its own kind of wrong. The cost
+        is paid down instead — short measure, balanced wraps, and a marker
+        above each block rather than beside it.
       */}
-      <div className="mt-14 w-full max-w-[30rem] text-left">
+      <div className="mt-14 w-full max-w-[30rem]">
       <section className="mb-6">
         {/* The label is centred with the column, not with its rows: it names
             the group, so it belongs to the block rather than to the first
@@ -870,23 +875,19 @@ function SpentState() {
  */
 function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-4">
-      {/* `text-center` in a box the same width as the facts' glyph, so a digit
-          and a 16px icon land on the same axis rather than merely nearby. */}
-      <span className="tabular w-4 shrink-0 pt-0.5 text-center font-mono text-foot text-ink-5">
-        {n}
-      </span>
-      {/* `flex-1`, so the text track is the column minus the gutter for every
-          row -- not each row's own max-content width, which left a short one
-          five pixels narrower than its neighbours. */}
-      <div className="min-w-0 flex-1">
-        <p className="text-title-3 font-headline text-ink">{title}</p>
-        {/* No measure of its own. It was `52ch` against the facts' `66ch`,
-            which ended the two sections 84px apart down the right-hand side
-            and left this one stopping a quarter of a column short. The column
-            is the measure now, and it is sized for reading. */}
-        <p className="mt-1 text-callout leading-[1.5] text-ink-3">{children}</p>
-      </div>
+    <div className="flex flex-col items-center text-center">
+      {/* The marker moves ABOVE the words rather than beside them. A number in
+          a left gutter is a hanging indent, and a hanging indent exists to
+          give a ranged-left paragraph an edge to hang from — beside centred
+          text it has nothing to align to and reads as a stray digit. */}
+      <span className="tabular font-mono text-foot text-ink-5">{n}</span>
+      <p className="mt-2 text-balance text-title-3 font-headline text-ink">{title}</p>
+      {/* `text-balance`, which centred text needs and ranged-left text does
+          not: a centred block is judged on its silhouette, and the default
+          greedy wrap leaves a long line over a two-word one. */}
+      <p className="mt-1 max-w-[56ch] text-balance text-callout leading-[1.5] text-ink-3">
+        {children}
+      </p>
     </div>
   );
 }
@@ -901,16 +902,17 @@ function Fact({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-4 py-4 shadow-[inset_0_1px_0_rgb(var(--line))]">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-5" aria-hidden />
-      {/* `flex-1`, so the text track is the column minus the gutter for every
-          row -- not each row's own max-content width, which left a short one
-          five pixels narrower than its neighbours. */}
-      <div className="min-w-0 flex-1">
-        <p className="text-title-3 font-headline text-ink">{title}</p>
-        {/* The same measure as a step's, which is to say none: see Step. */}
-        <p className="mt-1 text-callout leading-[1.5] text-ink-3">{children}</p>
-      </div>
+    <div className="flex flex-col items-center py-5 text-center shadow-[inset_0_1px_0_rgb(var(--line))]">
+      {/* Above the title, on the same axis as a step's number, so the two
+          lists still read as one system down the middle of the column. */}
+      <Icon className="h-4 w-4 text-ink-5" aria-hidden />
+      <p className="mt-2 text-balance text-title-3 font-headline text-ink">{title}</p>
+      {/* The same measure as a step's body. Both are centred on the column, so
+          an unequal one would show as two different silhouettes rather than as
+          two different right edges. */}
+      <p className="mt-1 max-w-[56ch] text-balance text-callout leading-[1.5] text-ink-3">
+        {children}
+      </p>
     </div>
   );
 }

@@ -695,36 +695,41 @@ describe("when there is nothing to show", () => {
  * only a settled, successful, genuinely empty response is allowed to make it.
  */
 /**
- * THE TWO LISTS UNDER THE INVITATION, AND THE ONE COLUMN THEY SHARE.
+ * THE TWO LISTS UNDER THE INVITATION, AND THE AXIS THEY SHARE.
  *
- * <h2>What was wrong</h2>
+ * <h2>What was wrong, in two passes</h2>
  *
- * <p>The steps and the facts were set to different numbers: an 18px marker
- * with a 14px gap against a 16px marker with a 12px gap, and bodies measured
- * at `52ch` against `66ch`. Rendered at 1280 that is two columns of titles 4px
- * apart and two ragged right edges 84px apart, with the steps stopping a
- * quarter of a column short of the facts. Small enough that nothing looks
- * broken, large enough that the block reads as untidy without saying why.
+ * <p>First they disagreed with each other: an 18px marker with a 14px gap
+ * against a 16px marker with a 12px gap, and bodies measured at `52ch` against
+ * `66ch`. At 1280 that was two columns of titles 4px apart and two ragged right
+ * edges 84px apart. Fixing that put both lists on one ranged-left column.
+ *
+ * <p>Ranged left was itself the remaining fault, and it was mine: everything
+ * else on this screen — the heading, the sentence, the buttons, the allowance,
+ * both section labels — is centred, so six ranged-left blocks in the middle of
+ * it were the only thing not on the page's axis. Asked for twice. They are
+ * centred now, and the marker moved above each block rather than beside it,
+ * because a number in a left gutter is a hanging indent and a hanging indent
+ * has nothing to hang from when the text is centred.
  *
  * <h2>Why this is asserted as class names</h2>
  *
- * <p>jsdom has no layout engine, so a test that measured these boxes would
- * read zero before and zero after and pass on both. The alignment itself was
- * checked in Chrome against the compiled stylesheet -- one title left edge and
- * one body right edge at 1280 and at 390, where there were two of each.
+ * <p>jsdom has no layout engine, so a test that measured these boxes would read
+ * zero before and zero after and pass on both. The centring itself was checked
+ * in Chrome against the compiled stylesheet: every marker, title and body sits
+ * on the column's centre to within 0.0px, at 1280 and at 390.
  *
- * <p>What is left for this file is the contract: that the two rows still agree
- * on the gutter, that neither has taken a private measure again, and that the
- * numbers survive. That last one is a decision, not an accident, and decisions
- * are what rot.
+ * <p>What is left for this file is the contract — that the blocks are centred,
+ * that the two lists still agree on a measure, and that the numbering decision
+ * survives. That last one is a decision, and decisions rot.
  */
 describe("the two lists in the first-minute screen", () => {
-  /** A row is a marker and a text block; the text block is the second child. */
+  /** A row is now the title's own parent: marker, title, body, all centred. */
   function rowOf(container: HTMLElement, title: string) {
     const heading = [...container.querySelectorAll("p")].find(
       (p) => p.textContent?.trim() === title,
     )!;
-    return heading.parentElement!.parentElement!;
+    return heading.parentElement!;
   }
 
   const STEPS = [
@@ -742,51 +747,63 @@ describe("the two lists in the first-minute screen", () => {
     rows = [];
   });
 
-  it("gives every row the same marker gutter", async () => {
-    // 16px of marker and 16px of gap, in both lists. A digit and a glyph on
-    // one axis is the difference between a column and two near-misses.
-    const { container } = render(<HomePage />);
+  async function drawn() {
+    const view = render(<HomePage />);
     await screen.findByRole("heading", { level: 1 });
+    return view.container;
+  }
+
+  it("centres every block, in both lists", async () => {
+    const container = await drawn();
 
     for (const title of [...STEPS, ...FACTS]) {
       const row = rowOf(container, title);
-      // `getAttribute`, not `.className`: the facts' marker is an <svg>, whose
-      // `className` is an SVGAnimatedString rather than a string.
-      const marker = row.firstElementChild!.getAttribute("class") ?? "";
-      expect(row.className).toContain("gap-4");
-      expect(marker).toContain("w-4");
-      expect(marker).toContain("shrink-0");
+      expect(row.className).toContain("text-center");
+      expect(row.className).toContain("items-center");
+      expect(row.className).toContain("flex-col");
     }
   });
 
-  it("lets the column be the measure, not each row", async () => {
-    /*
-     * The bodies carried `max-w-[52ch]` and `max-w-[66ch]`. A private measure
-     * per row is what put the two sections' right edges 84px apart, and it is
-     * the thing most likely to be added back by somebody tidying one list
-     * without looking at the other.
-     */
-    const { container } = render(<HomePage />);
-    await screen.findByRole("heading", { level: 1 });
+  it("puts the marker above the words rather than beside them", async () => {
+    // Beside centred text a marker has nothing to align to and reads as a
+    // stray digit. Above it, it is the axis the whole block is centred on.
+    const container = await drawn();
 
     for (const title of [...STEPS, ...FACTS]) {
-      const body = rowOf(container, title).lastElementChild!.lastElementChild!;
-      expect(body.className).not.toMatch(/max-w-/);
-      // And the track is the column's, for every row, rather than whatever
-      // that row's own content happened to ask for.
-      expect(body.parentElement!.className).toContain("flex-1");
+      const row = rowOf(container, title);
+      const marker = row.firstElementChild!;
+      expect(marker.nextElementSibling!.textContent?.trim()).toBe(title);
+      // No horizontal gutter left over from the ranged-left arrangement.
+      expect(row.className).not.toMatch(/(^|\s)gap-4(\s|$)/);
+      expect(marker.getAttribute("class") ?? "").not.toContain("shrink-0");
     }
   });
 
-  it("holds the column to a reading width", async () => {
-    // 30rem less the 32px gutter is about 70 characters at the callout size.
-    // It was 38rem, which is 90 -- and only looked acceptable because the rows
-    // were each wrapping early on a measure of their own.
-    const { container } = render(<HomePage />);
-    await screen.findByRole("heading", { level: 1 });
+  it("gives both lists one measure, so they are one silhouette", async () => {
+    /*
+     * Centred blocks are judged on their outline, so an unequal measure shows
+     * here as two different shapes rather than as two different right edges.
+     * `text-balance` for the same reason: a greedy wrap leaves a long line
+     * over a two-word one, which is the thing that makes centred text look
+     * accidental.
+     */
+    const container = await drawn();
 
-    const column = rowOf(container, STEPS[0]).closest("[class*='max-w-']")!;
-    expect(column.className).toContain("max-w-[30rem]");
+    for (const title of [...STEPS, ...FACTS]) {
+      const row = rowOf(container, title);
+      const body = row.lastElementChild!;
+      expect(body.className).toContain("max-w-[56ch]");
+      expect(body.className).toContain("text-balance");
+      expect(row.children[1].className).toContain("text-balance");
+    }
+  });
+
+  it("no longer ranges the column left", async () => {
+    // The column used to undo the page's centring for everything inside it.
+    const container = await drawn();
+
+    const column = rowOf(container, STEPS[0]).closest("[class*='max-w-[30rem]']")!;
+    expect(column.className).not.toMatch(/text-left/);
   });
 
   it("keeps the numbers, because the steps are a sequence", async () => {
@@ -795,20 +812,16 @@ describe("the two lists in the first-minute screen", () => {
      * written down, then it becomes a brief, then you can search it -- so the
      * numbering is a fact about the content rather than decoration on it.
      */
-    const { container } = render(<HomePage />);
-    await screen.findByRole("heading", { level: 1 });
+    const container = await drawn();
 
-    const markers = STEPS.map(
-      (title) => rowOf(container, title).firstElementChild!.textContent,
-    );
+    const markers = STEPS.map((title) => rowOf(container, title).firstElementChild!.textContent);
     expect(markers).toEqual(["1", "2", "3"]);
   });
 
   it("does not number the facts, which are not a sequence", async () => {
     // Three independent things to know. Numbering them would assert an order
     // that is not there, which is what makes a numbered marker decoration.
-    const { container } = render(<HomePage />);
-    await screen.findByRole("heading", { level: 1 });
+    const container = await drawn();
 
     for (const title of FACTS) {
       const marker = rowOf(container, title).firstElementChild!;
