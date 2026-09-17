@@ -858,10 +858,80 @@ describe("the closing section", () => {
   });
 
   it("does not offer a tier that does not exist", () => {
+    // "no team tier to be upgraded into" went with the absolute claim beside
+    // it; what replaced it names the same absence as features rather than as a
+    // pricing rung, which is the checkable version.
     const { container } = render(<LandingPage />);
 
-    expect(container.textContent).toMatch(/no team tier/i);
+    expect(container.textContent).toMatch(/no team workspace/i);
     expect(container.textContent).not.toMatch(/upgrade to|contact sales|per seat|per user/i);
+  });
+
+  /**
+   * THE THREE CLAIMS THE PRE-LAUNCH AUDIT FOUND, AND WHAT IS WRONG WITH EACH.
+   *
+   * <p>None of them were careless. Each was true of an earlier build, or true
+   * of the part of the system the writer had in mind, and each had grown a
+   * scope the product cannot stand behind.
+   */
+  describe("the claims in the closing section", () => {
+    function text() {
+      const { container } = render(<LandingPage />);
+      return container.textContent ?? "";
+    }
+
+    it("describes the retention dials the product actually has", () => {
+      /*
+       * `RetentionPolicy` has two fields: `audioDays` and `meetingDays`. There
+       * is no transcript schedule -- a transcript goes when its meeting does --
+       * so "how long recordings and transcripts are kept" named a control that
+       * does not exist and implied one could be set without the other.
+       */
+      const copy = text();
+
+      expect(copy).toMatch(/how long a recording is kept/i);
+      expect(copy).toMatch(/how long the whole meeting is kept/i);
+      expect(copy).not.toMatch(/recordings and transcripts are kept/i);
+    });
+
+    it("keeps the no-training claim to what Reverie itself does", () => {
+      /*
+       * "not used to improve any model" was a promise about every model
+       * anywhere, including the transcription and language providers this
+       * product sends audio and text to under their own terms. Reverie does
+       * not control those and cannot promise on their behalf.
+       */
+      const copy = text();
+
+      expect(copy).toMatch(/Reverie does not train or fine-tune models/i);
+      expect(copy).toMatch(/provider's own terms/i);
+      expect(copy).not.toMatch(/not used to improve any model/i);
+    });
+
+    it("does not say a meeting is unreadable by anyone else", () => {
+      // "nobody else can read it" is a claim about who can see a database --
+      // operators, host, backups -- which no product can make. The absence of
+      // sharing features is a fact about the product and is checkable.
+      const copy = text();
+
+      expect(copy).toMatch(/no sharing/i);
+      expect(copy).toMatch(/no admin view/i);
+      expect(copy).not.toMatch(/nobody else can read/i);
+    });
+
+    it("does not promise that deletion is instant everywhere", () => {
+      /*
+       * "permanently, on the spot" is true of the live application and false
+       * of the disaster-recovery backups, which are taken before a deletion
+       * and expire on their own schedule. The claim is scoped and the window
+       * is stated; the Privacy & Demo Notice carries the detail.
+       */
+      const copy = text();
+
+      expect(copy).toMatch(/removed from Reverie straight away/i);
+      expect(copy).toMatch(/backups expire within a week/i);
+      expect(copy).not.toMatch(/permanently, on the spot/i);
+    });
   });
 });
 

@@ -155,13 +155,80 @@ describe("the Privacy & Demo Notice", () => {
      */
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByText(/One record does outlive the account/)).toBeInTheDocument();
+    expect(screen.getByText(/One record is kept deliberately/)).toBeInTheDocument();
+    // "and it is the only one" is gone: a disaster-recovery backup outlives a
+    // deletion too. What makes this record different is that it is kept on
+    // purpose and does not expire, which is the distinction the next test
+    // pins from the other side.
+    expect(document.body.textContent ?? "").not.toMatch(/it is the only one/i);
     expect(screen.getByText(/one-way keyed hash of the email address/)).toBeInTheDocument();
     expect(screen.getByText(/cannot restore a recording/)).toBeInTheDocument();
     // No claim that the retained row is anonymous in the absolute sense, and no
     // claim that it is more than it is.
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/anonymised|anonymized/i);
+  });
+
+  /**
+   * DISASTER-RECOVERY BACKUPS, WHICH THE NOTICE USED NOT TO MENTION.
+   *
+   * <p>The production database is backed up to the Oracle host and to a
+   * Cloudflare R2 bucket, both expiring after seven days. A backup taken
+   * before a deletion therefore holds rows the live database no longer has,
+   * which is not what "deletion is the real thing" on its own implies.
+   *
+   * <p>What is asserted here is the shape of the correction: that the window
+   * is named, that live deletion and backup expiry are described as different
+   * things, and that the backups are said to be out of reach of the product.
+   * Not the exact sentence -- the wording may improve, and a test that pins
+   * prose is a test that gets deleted the first time somebody edits it.
+   */
+  it("says how long a deleted thing can survive in a backup", () => {
+    render(<PrivacyNoticePage />);
+    const text = document.body.textContent ?? "";
+
+    expect(text).toMatch(/backed up/i);
+    expect(text).toMatch(/seven days/i);
+    // The window is what somebody deleting an account actually needs: not that
+    // backups exist, but for how long they can still contain them.
+    expect(text).toMatch(/up to about a week/i);
+  });
+
+  it("keeps live deletion and backup expiry as separate claims", () => {
+    // Collapsing them in either direction is a lie: "deleted everywhere at
+    // once" understates the backups, and "deleted after seven days" overstates
+    // how long the live application keeps anything.
+    render(<PrivacyNoticePage />);
+    const text = document.body.textContent ?? "";
+
+    expect(text).toMatch(/Deletion is the real thing/i);
+    expect(text).toMatch(/gone from the application itself/i);
+    // And the backups are not a second way to read the data.
+    expect(text).toMatch(/not reachable through Reverie/i);
+  });
+
+  it("does not confuse the retained entitlement row with a backup", () => {
+    /*
+     * The two things that outlive an account are different in kind and the
+     * notice has to keep them apart: one is a copy waiting to age out, the
+     * other is a decision that does not expire. Somebody reading this to find
+     * out what is kept of theirs needs both answers, not a merged one.
+     */
+    render(<PrivacyNoticePage />);
+    const text = document.body.textContent ?? "";
+
+    expect(text).toMatch(/kept deliberately, and unlike a backup it does not\s+expire/i);
+    expect(text).toMatch(/one-way keyed hash of the email address/i);
+  });
+
+  it("claims nothing about backups it has not configured", () => {
+    // No certification, no contract, no regulation. This is a portfolio
+    // project's disclosure of an operational fact.
+    render(<PrivacyNoticePage />);
+    const text = document.body.textContent ?? "";
+
+    expect(text).not.toMatch(/GDPR|CCPA|PIPEDA|SOC ?2|ISO ?27001|HIPAA/i);
+    expect(text).not.toMatch(/encrypted backups|guarantee|certified/i);
   });
 
   it("promises no deletion it cannot perform", () => {

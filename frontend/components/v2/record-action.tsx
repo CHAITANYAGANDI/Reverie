@@ -3,11 +3,19 @@
 /**
  * Record, meaning record.
  *
- * <p>This was a link to a page that asked two questions before opening a
- * microphone. Both are gone: the capture mode had one answer left, and the
- * consent tick — a legal requirement in two-party-consent jurisdictions and
- * under GDPR — was removed on request. It now does the thing it is named after,
- * which is the only defensible reading of a button called Record.
+ * <p>IT NAVIGATES. IT DOES NOT OPEN THE MICROPHONE.
+ *
+ * <p>It used to do both — push the route and call `recorder.start()` on the way
+ * — so capture began from a control in the application's chrome, and the page
+ * that carries the responsibility disclosure loaded with the microphone
+ * already live behind it. Whatever that page then said about informing the
+ * room was said too late, and this was the surface that made it too late.
+ *
+ * <p>So this is a destination now. The allowance is still checked here, because
+ * refusing before the journey is kinder than refusing after it, and the folder
+ * is still remembered here, because this is the only moment it is knowable.
+ * Starting belongs to the one button on /record that sits under the
+ * disclosure; see `BeforeRecording` there.
  *
  * <p>One consequence is carried through rather than papered over: nothing is
  * asserted about consent any more, so nothing is claimed about it. See where
@@ -27,7 +35,13 @@ import { recordHref, returnPath } from "@/lib/routes";
 import { useRecording, useRecordingSession } from "@/lib/recording-context";
 
 export interface StartRecording {
-  /** Push /record and open the microphone, or explain why not. */
+  /**
+   * Push /record, or explain why not.
+   *
+   * <p>Named `start` because the control is named Record and the two buttons
+   * calling it read better this way. It starts the *act* of recording, which
+   * now begins with reading a page rather than with a microphone opening.
+   */
   start: () => void;
   /**
    * Why this account cannot record, or null.
@@ -60,26 +74,19 @@ export function useStartRecording(from: string): StartRecording {
       toast.error(refusal);
       return;
     }
-    // The route is pushed before the microphone is asked for, so the page is on
-    // screen behind the browser's permission prompt and it is obvious what is
-    // being asked for and by whom.
-    //
     // /record?r=%2Ffolder%2Fprj_1 — the page this was pressed on, on the URL,
     // so that a reload of /record still knows where the recording came from.
     router.push(recordHref(from));
     if (recorder.state !== "idle") return;
     // And in memory, which is what survives navigating away from /record while
-    // the meeting runs. Before the navigation lands and before the microphone
-    // opens: this is the only moment it is knowable, and it is remembered until
-    // the meeting is created. Set every time, so a recording started from Home
-    // cannot inherit the last one's folder.
+    // the meeting runs. This is the only moment the folder is knowable, and it
+    // is remembered until the meeting is created. Set every time, so a
+    // recording started from Home cannot inherit the last one's folder.
     session.setReturnTo(returnPath(from));
-    // Nothing is reported. There was a fire-and-forget POST here whose only
-    // purpose was a "Recording started" notification for the account's other
-    // devices, and on this device it announced a timer, a waveform and a red
-    // Stop button already on screen -- one more row in a bell that had too
-    // many. See NotificationKind#retired.
-    void recorder.start();
+    // AND NOTHING ELSE. `recorder.start()` was called here; it is not any
+    // more. Capture begins at the button under the disclosure on /record and
+    // nowhere else, which is the whole of the fix -- a second surface that
+    // could open a microphone is a second way to skip what that page says.
   }
 
   return { start, refusal };
