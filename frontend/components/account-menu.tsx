@@ -135,8 +135,12 @@ export function AccountMenu() {
             <SettingsIcon className="mr-2 h-4 w-4" /> Account Settings
           </Link>
         </DropdownMenuItem>
+        {/* "Sign out", because the way in is called Sign in. The action it
+            calls has been `signOut` all along; this was the one place the
+            product said `Logout` instead, and a pair of doors with different
+            words on them is two things to learn for one idea. */}
         <DropdownMenuItem onSelect={() => signOut?.()}>
-          <LogOut className="mr-2 h-4 w-4" /> Logout
+          <LogOut className="mr-2 h-4 w-4" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
