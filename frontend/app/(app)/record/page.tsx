@@ -11,26 +11,32 @@
  * The result goes down the same presigned-upload → create-meeting path the
  * import dialog uses, so processing is identical from there on.
  *
- * Nothing is asked before the microphone opens, and nothing is waited for. The
- * two questions that used to be here — which of two capture modes, and whether
- * the room had been told — were removed, the first because it had one answer
- * left and the second on request. The button that replaced them has gone too:
- * this route is only ever arrived at by pressing Record, and answering that
- * press with a second button asking whether you meant it is a step that exists
- * to be clicked through. Arriving here opens the microphone.
+ * <h2>THE MICROPHONE DOES NOT OPEN ON ARRIVAL, and that is deliberate</h2>
  *
- * That the browser still asks its own permission question is the point at which
- * this is not silent — it is the browser's prompt, it names the site, and it is
- * the only consent gate Reverie relies on.
+ * <p>It used to. Arriving here — from the band's Record button, from a reload,
+ * from a bookmark — opened the microphone, and the line about telling the room
+ * rendered underneath the result. Read in order, that is a product asking
+ * people to inform the room after it has started listening to it, which is the
+ * wrong way round however quiet the line is.
  *
- * The consent tick going means Reverie no longer *asks* about consent, and it
- * still claims nothing about it — the flag it used to set is not set by
- * anything here. What it does now is smaller and does not stand in the way: one
- * line at the foot of the page saying to make sure the room has been told, with
- * the sentence to read out one keystroke behind it. Nothing to tick, nothing to
- * dismiss, and no bearing on when the microphone opens. See
- * `RecordResponsibly`, and where the meeting is created in
- * components/recording-bar.tsx.
+ * <p>So an idle recorder draws {@link BeforeRecording}: the responsibility in
+ * one sentence, the words to say out loud in full rather than behind a
+ * disclosure, and one button. `recorder.start()` is reached from that button
+ * and from nowhere else on this route — the mount effect below now only reads
+ * the folder off the URL. The band and the bottom tabs push the route and stop
+ * there; see components/v2/record-action.
+ *
+ * <p>WHAT IS STILL NOT CLAIMED. Nothing is ticked, nothing is gated, and
+ * pressing Start asserts nothing about anybody except the person pressing it.
+ * Reverie does not know who is in the room, cannot check whether they were
+ * told, and says so rather than treating a click as though it were an answer
+ * from everyone present. The browser's own permission prompt follows, and it
+ * is a decision by the person at the keyboard alone — which is the entire
+ * reason a sentence has to be read out to the others.
+ *
+ * <p>Once recording is under way the same responsibility line becomes the
+ * quiet footnote it always was: see `RecordResponsibly`, and where the meeting
+ * is created in components/recording-bar.tsx.
  *
  * The recorder itself lives in the shell too, so navigating away mid-meeting no
  * longer destroys the recording. This page is a view onto it: mount, unmount,
@@ -147,44 +153,31 @@ export default function RecordPage() {
   allowanceRef.current = allowance;
 
   /**
-   * Open the microphone on arrival.
+   * Read the folder off the URL. Open nothing.
    *
-   * <p>The header's Record button already starts on its way here, so in the
-   * ordinary case this finds a recording underway and does nothing. It exists
-   * for every other way of reaching the route — a reload, the back button, a
-   * bookmark — where the intent is identical and the old answer was a page
-   * asking for the press a second time.
+   * <p>THIS USED TO CALL `onStart()`. That is the disclosure gap: the
+   * microphone opened because the route had mounted, so every word this page
+   * says about informing the room was said over an open microphone. It now
+   * does the one thing that genuinely belongs on arrival and no more.
    *
-   * <p>Once per mount, guarded by a ref rather than by the recorder's state. A
-   * refusal puts the recorder back to idle and sets an error, so an effect that
-   * keyed on idle would ask for the microphone again the instant it was denied,
-   * and keep asking.
+   * <p>`?r=` is where Record was pressed: the folder this files into, and the
+   * way back out. It is set here for the arrivals the band did not make — a
+   * reload, the back button, a bookmark — and only while idle, so returning to
+   * a running recording cannot overwrite the folder it started in. Read from
+   * `location` rather than `useSearchParams()`, which would force the route
+   * into a Suspense boundary at build time; same trade as
+   * app/(app)/search/page.tsx.
    */
-  const opened = React.useRef(false);
+  const readFolder = React.useRef(false);
   React.useEffect(() => {
-    if (opened.current) return;
-    // Wait for the balance before opening the microphone. Asking for it and
-    // then refusing to record is a permission prompt spent on nothing.
-    if (allowance.loading) return;
-    opened.current = true;
-    if (!recorder.supported) return;
-    if (refusal) return;
-    // Anything but idle means there is already a recording to show — running,
-    // paused, or stopped and waiting to be saved. Which also means the header's
-    // Record button started it, and has already said where it came from.
+    if (readFolder.current) return;
+    readFolder.current = true;
     if (recorder.state !== "idle") return;
-    // So this is one of the other arrivals — a reload, the back button, a
-    // bookmark — and the URL is the only thing left that knows. `?r=` is where
-    // Record was pressed: the folder this files into, and the way back out.
-    // Read from location rather than useSearchParams(), which would force the
-    // route into a Suspense boundary at build time; same trade as
-    // app/(app)/search/page.tsx.
     session.setReturnTo(returnPath(new URLSearchParams(window.location.search).get("r")));
-    void onStart();
-    // Runs when the allowance settles, then never again -- `opened` is set on
-    // the first pass that gets past `loading`.
+    // Once per mount. Nothing here depends on the allowance, because nothing
+    // here asks for anything.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowance.loading]);
+  }, []);
 
   // After every hook, and before every notice. See `handingOver` above.
   if (handingOver) return null;
@@ -230,15 +223,17 @@ export default function RecordPage() {
       {started ? (
         <InProgress state={recorder.state} />
       ) : (
-        <Opening
+        <BeforeRecording
           supported={recorder.supported}
           refused={recorder.error !== null}
-          onRetry={() => void onStart()}
+          onStart={() => void onStart()}
         />
       )}
 
-      {/* Last, and only ever a footnote. See `RecordResponsibly`. */}
-      <RecordResponsibly />
+      {/* Only once something is being recorded. Before that the same words are
+          in `BeforeRecording` above, in full and in front of the button, where
+          they are the point rather than a footnote to it. */}
+      {started && <RecordResponsibly />}
     </div>
   );
 }
@@ -532,46 +527,95 @@ function WaitingForPermission() {
 }
 
 /**
- * Arriving, and what happens when arriving does not work.
+ * THE STATE BEFORE ANYTHING IS RECORDED.
  *
- * <p>There is no idle state left to draw. What was here — "Ready to record", a
- * paragraph about what the microphone captures, a Start button and a panel
- * listing the four stages a recording goes through afterwards — was a page
- * standing between a press of Record and a recording. Every part of it either
- * restated the button that had just been pressed or described work that had not
- * started.
+ * <h2>What this replaced, and why</h2>
  *
- * <p>Two things still need drawing, and only because the microphone can refuse.
- * A browser that cannot record says so above, with a link to the page that can,
- * and needs nothing here. A refusal says so above too, and needs a way back:
- * the recording never began, so without this the route is a dead end with a red
- * banner on it, and the browser will not re-prompt without being asked.
+ * <p>An idle recorder drew "Waiting for permission…" here, because arriving on
+ * this route opened the microphone and the browser prompt was already up. The
+ * disclosure — the line about making sure the room has been told, and the
+ * sentence to say to it — sat at the foot of the page, under the result.
+ *
+ * <p>Which meant the words were shown after the microphone was open. That is
+ * the finding this closes, and it is not fixed by moving the paragraph: it is
+ * fixed by there being a moment before capture at all. So this is that moment,
+ * and it holds the only control on the route that reaches `recorder.start()`.
+ *
+ * <h2>What it does not do</h2>
+ *
+ * <p><b>It does not gate.</b> There is no tick box. There was one once, it was
+ * removed on request, and it is not coming back — a box to tick is a click to
+ * get past, and a product that records the tick then behaves as though the
+ * room agreed. Nothing here is collected, stored or sent.
+ *
+ * <p><b>It does not claim consent.</b> Pressing Start says the person at the
+ * keyboard chose to record. It does not say the others agreed, because Reverie
+ * cannot know that: there is no bot in the meeting, no participant list, and no
+ * way to check. The page says so in as many words rather than leaving a button
+ * to imply otherwise.
+ *
+ * <p><b>It does not give legal advice.</b> What the law requires genuinely
+ * varies by where everyone is and what the conversation is, which is worth
+ * saying and is the end of what this page can responsibly say. No jurisdictions
+ * are named and no rule is stated.
+ *
+ * <p>The announcement is open rather than behind "What can I say?". Collapsed
+ * it is one keystroke away, which is the right trade for a footnote beside a
+ * running meeting; it is the wrong trade for the one screen whose whole job is
+ * to be read before anything is captured.
  */
-function Opening({
+function BeforeRecording({
   supported,
   refused,
-  onRetry,
+  onStart,
 }: {
   supported: boolean;
   refused: boolean;
-  onRetry: () => void;
+  /** The only path to `recorder.start()` on this route. */
+  onStart: () => void;
 }) {
+  // A browser that cannot record says so in its own notice above, with a link
+  // to the page that can. Offering Start underneath it would be offering
+  // something already known to fail.
   if (!supported) return null;
 
-  if (refused) {
-    return (
-      <div className="flex flex-col items-center gap-4 rounded-md border border-dashed border-line p-8 text-center">
-        <p className="text-callout text-ink-3">
-          Nothing was recorded. Allow the microphone in your browser, then try again.
+  return (
+    <div className="flex flex-col items-center gap-5 rounded-md border border-dashed border-line p-8 text-center">
+      <div className="max-w-[54ch] space-y-2">
+        <p className="text-callout font-headline text-ink">Before you start</p>
+        <p className="text-callout leading-[1.55] text-ink-3">
+          Make sure everyone who needs to know has been informed. What is
+          required varies with where you all are and what is being discussed,
+          and Reverie cannot check it for you — there is no bot in the meeting
+          and no list of who is in the room.
         </p>
-        <Button className="gap-2" onClick={onRetry}>
-          <Mic className="h-4 w-4" /> Try again
-        </Button>
       </div>
-    );
-  }
 
-  return <WaitingForPermission />;
+      {/* Imported, never retyped. It is tested in lib/privacy.test.ts and it is
+          the one string in this product meant to be read aloud to other
+          people; two copies of that is how one of them comes to be wrong. */}
+      <p
+        className="v2-note max-w-[54ch] text-left text-callout leading-[1.6] text-ink-3"
+        data-tone="quiet"
+      >
+        “{RECORDING_ANNOUNCEMENT}”
+      </p>
+
+      {refused && (
+        <p className="text-callout text-ink-3">
+          Nothing was recorded. Allow the microphone in your browser, then start
+          again.
+        </p>
+      )}
+
+      {/* One action, and the allowance is checked inside it rather than by
+          disabling this. A dead button explains nothing; the refusal above
+          does. */}
+      <Button className="gap-2" onClick={onStart}>
+        <Mic className="h-4 w-4" /> Start recording
+      </Button>
+    </div>
+  );
 }
 
 /**

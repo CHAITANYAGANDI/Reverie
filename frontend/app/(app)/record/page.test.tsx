@@ -167,31 +167,65 @@ beforeEach(() => {
 });
 
 describe("RecordPage on arrival", () => {
-  it("opens the microphone rather than offering to", async () => {
+  /**
+   * THE DISCLOSURE GAP THIS CLOSES.
+   *
+   * <p>Arriving here used to open the microphone, and the line about making
+   * sure the room has been told rendered underneath the result. Read in order
+   * that is a product asking people to inform the room after it has started
+   * listening to it, and no amount of rewording the line fixes it: what was
+   * needed was a moment before capture at all.
+   *
+   * <p>So mounting is inert now, and these are the halves of that -- nothing
+   * starts, one thing is offered, the browser is not asked, and the press does
+   * what the arrival used to.
+   */
+  it("opens no microphone merely because the route mounted", async () => {
     renderPage();
 
-    // The whole change: pressing Record starts a recording. A page in between
-    // is a press to get past.
-    await waitFor(() => expect(start).toHaveBeenCalledWith());
+    // Given time to do it, if it were going to.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument(),
+    );
+    expect(start).not.toHaveBeenCalled();
   });
 
-  it("has nothing left to press", () => {
+  it("offers exactly one thing to press", () => {
     renderPage();
 
-    // "Ready to record", the paragraph under it, the Start button and the panel
-    // listing the four stages afterwards: all gone. Each either restated the
-    // button just pressed or described work that had not begun.
-    expect(screen.queryByRole("button", { name: /Start recording/ })).not.toBeInTheDocument();
-    expect(screen.queryByText("Ready to record")).not.toBeInTheDocument();
-    expect(screen.queryByText("What happens after you stop")).not.toBeInTheDocument();
+    // One action, named after what it does. No tick box: that was removed on
+    // request and is not coming back, because a box to tick is a click to get
+    // past and a product that then behaves as though the room agreed.
+    expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument();
+    expect(document.querySelector("input[type=checkbox]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /I have|confirm|agree/i })).not.toBeInTheDocument();
   });
 
-  it("says what the browser is being asked while it asks", () => {
+  it("does not ask the browser for anything until it is pressed", () => {
     renderPage();
+
+    // "Waiting for permission" belongs to the requesting state and to nothing
+    // else. On an idle recorder it was a page announcing a prompt nobody had
+    // asked for.
+    expect(screen.queryByText(/Waiting for permission/i)).not.toBeInTheDocument();
+  });
+
+  it("says what the browser is being asked once it is asking", () => {
+    renderPage({ state: "requesting" });
 
     // The permission prompt is modal and draws over the page. Nothing behind it
     // gives no clue what is being asked for or by whom.
     expect(screen.getByText(/Waiting for permission/i)).toBeInTheDocument();
+  });
+
+  it("starts the recording when the one button is pressed", async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: /Start recording/ }));
+
+    // The existing start flow, unchanged, reached from the only control on this
+    // route that reaches it.
+    await waitFor(() => expect(start).toHaveBeenCalledWith());
   });
 
   it("asks nothing that has only one answer", () => {
@@ -212,6 +246,7 @@ describe("RecordPage on arrival", () => {
     // button already on screen -- one more row in a bell that had too many. The
     // notification went, so the endpoint went with it.
     renderPage();
+    await userEvent.click(screen.getByRole("button", { name: /Start recording/ }));
 
     await waitFor(() => expect(start).toHaveBeenCalled());
     expect(announceRecording).not.toHaveBeenCalled();
@@ -336,19 +371,19 @@ describe("RecordPage on arrival", () => {
     );
   });
 
-  it("still asks for the microphone when nothing is being saved", () => {
+  it("still offers to record when nothing is being saved", () => {
     // The guard above must not swallow the ordinary arrival.
     renderPage();
 
-    expect(screen.getByText(/Waiting for permission/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument();
   });
 
-  it("asks for the microphone even while an earlier meeting is still processing", () => {
+  it("offers to record even while an earlier meeting is still processing", () => {
     // Nothing stops you recording the next one. Sitting blank behind somebody
     // else's progress bar would be the guard above overreaching.
     renderPage({ state: "idle" }, {}, aJob({ phase: "processing" }));
 
-    expect(screen.getByText(/Waiting for permission/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument();
   });
 
   it("carries no standing explanation before a recording", () => {
@@ -383,22 +418,22 @@ describe("RecordPage on arrival", () => {
 
   it("offers a way back when the microphone is refused", async () => {
     renderPage({ error: "Microphone access was denied. Reverie needs it to record you." });
-    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
 
     // The recording never began, so without this the route is a dead end with a
-    // red banner on it — and the browser will not prompt again unasked.
+    // red banner on it, and the browser will not prompt again unasked.
     expect(screen.getByText(/denied/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Try again/ }));
+    expect(screen.getByText(/Allow the microphone in your browser/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Start recording/ }));
 
-    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
   });
 
   it("does not ask again by itself once it has been refused", async () => {
-    // A denial puts the recorder back to idle with an error. Keyed on idle
-    // rather than on mount, this would re-prompt the instant it was denied and
-    // keep re-prompting for as long as the page stayed open.
+    // A denial puts the recorder back to idle with an error. Nothing on this
+    // route asks by itself any more, so there is nothing to re-prompt -- and
+    // the assertion stays, because an effect that reopened on idle is exactly
+    // what restoring the old arrival would reintroduce.
     const view = renderPage();
-    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
 
     recorder.current = {
       ...(recorder.current as UseRecorder),
@@ -406,7 +441,7 @@ describe("RecordPage on arrival", () => {
     };
     view.rerender(<RecordPage />);
 
-    expect(start).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("carries no heading, name field or date before a recording", () => {
@@ -728,9 +763,27 @@ describe("what is left of the allowance", () => {
     usage = { ...usage, minutesUsed: 99 };
 
     renderPage();
+    await userEvent.click(screen.getByRole("button", { name: /Start recording/ }));
 
     await waitFor(() => expect(start).toHaveBeenCalled());
     expect(screen.queryByText(/nothing left to record with/)).not.toBeInTheDocument();
+  });
+
+  it("refuses to start at all once the allowance is gone", async () => {
+    /*
+     * The check moved with the button. It used to run in the mount effect, and
+     * the one path to `recorder.start()` is now this press, so the refusal has
+     * to hold here or it holds nowhere.
+     */
+    usage = { ...usage, minutesUsed: 100 };
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/There is nothing left to record with/)).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Start recording/ }));
+
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("stops the recording when it reaches the balance", async () => {
@@ -777,28 +830,61 @@ describe("what is left of the allowance", () => {
  * gate, must not need dismissing, and must not be in the way of the microphone.
  */
 describe("RecordPage responsibility notice", () => {
-  it("says to tell the room, without asking anything", () => {
+  it("says to tell the room before anything is captured", () => {
     renderPage();
 
     expect(
-      screen.getByText(/Make sure everyone who needs to know has been informed before recording/i),
+      screen.getByText(/Make sure everyone who needs to know has been informed/i),
     ).toBeInTheDocument();
-    // Not the consent gate that was removed: nothing to tick, nothing to
-    // confirm, and no second button standing between arrival and recording.
+    // Not the consent gate that was removed: nothing to tick and nothing to
+    // confirm. One button, which records.
     expect(document.querySelector("input[type=checkbox]")).toBeNull();
     expect(screen.queryByRole("button", { name: /I have|confirm|agree/i })).not.toBeInTheDocument();
   });
 
-  it("does not delay the microphone by one frame", async () => {
+  it("shows the words to say out loud before recording, not behind a disclosure", () => {
+    /*
+     * Folded away, it is one keystroke from a footnote beside a running
+     * meeting, which is the right trade there. It is the wrong trade on the one
+     * screen whose whole job is to be read before anything is captured -- the
+     * sentence somebody needs is the sentence they have not thought of yet.
+     */
     renderPage();
 
-    // The notice renders in the same pass as everything else and the effect
-    // that opens the microphone is unchanged. Asserted together so a future
-    // "ask first" cannot be introduced quietly.
-    await waitFor(() => expect(start).toHaveBeenCalledWith());
+    expect(screen.getByText(new RegExp(RECORDING_ANNOUNCEMENT.slice(0, 40), "i")))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "What can I say?" })).not.toBeInTheDocument();
+  });
+
+  it("says what it cannot know, rather than letting the button imply it", () => {
+    /*
+     * Pressing Start says the person at the keyboard chose to record. It does
+     * not say the others agreed, and Reverie has no way to find out: no bot in
+     * the meeting, no participant list. A page that stayed quiet about that
+     * would be leaving the button to suggest otherwise.
+     */
+    renderPage();
+    const text = document.body.textContent ?? "";
+
+    expect(text).toMatch(/Reverie cannot check it for you/i);
+    // The principle that requirements vary, without naming a jurisdiction or
+    // stating a rule -- which would be legal advice this page cannot give.
+    expect(text).toMatch(/varies with where you all are/i);
+    expect(text).not.toMatch(/one-party|two-party|GDPR|state law|jurisdiction/i);
+  });
+
+  it("does not let anything else open the microphone first", async () => {
+    // The gap, stated as a test: the disclosure is on screen and the recorder
+    // is untouched until the button under it is pressed.
+    renderPage();
+
     expect(
       screen.getByText(/Make sure everyone who needs to know has been informed/i),
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Start recording/ })).toBeInTheDocument(),
+    );
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("does not call the browser's permission prompt consent", () => {
@@ -812,8 +898,11 @@ describe("RecordPage responsibility notice", () => {
     expect(text).not.toMatch(/everyone has consented|consent (has been )?given/i);
   });
 
-  it("keeps the announcement folded away until it is asked for", async () => {
-    renderPage();
+  it("keeps the announcement folded away once recording is under way", async () => {
+    // The footnote's job, and the state it belongs to. Standing open beside a
+    // running meeting it is a paragraph of somebody else's words on a page
+    // whose whole redesign was about having no standing paragraphs.
+    renderPage({ state: "recording" });
 
     const toggle = screen.getByRole("button", { name: "What can I say?" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -826,7 +915,7 @@ describe("RecordPage responsibility notice", () => {
   });
 
   it("reveals the sentence from lib/privacy, not a second copy of it", async () => {
-    renderPage();
+    renderPage({ state: "recording" });
 
     await userEvent.click(screen.getByRole("button", { name: "What can I say?" }));
 

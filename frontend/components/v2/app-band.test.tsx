@@ -307,7 +307,7 @@ describe("Import and Record", () => {
     expect(screen.queryByRole("button", { name: RECORD })).not.toBeInTheDocument();
   });
 
-  it("goes to /record carrying the page it was pressed on", async () => {
+  it("goes to /record carrying the page it was pressed on, and starts nothing", async () => {
     band({ pathname: "/folder/prj_1" });
 
     await userEvent.click(screen.getByRole("button", { name: RECORD }));
@@ -316,7 +316,14 @@ describe("Import and Record", () => {
     // "which folder am I in" has no answer.
     expect(push).toHaveBeenCalledWith("/record?r=%2Ffolder%2Fprj_1");
     expect(setReturnTo).toHaveBeenCalledWith("/folder/prj_1");
-    expect(start).toHaveBeenCalled();
+    /*
+     * AND THE MICROPHONE IS NOT OPENED FROM HERE. It was: this called
+     * `recorder.start()` on the way to the route, so capture began from a
+     * control in the chrome and /record arrived with it already running. The
+     * page that says to inform the room then said it over an open microphone.
+     * Starting belongs to the one button under that disclosure.
+     */
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("explains a refusal instead of opening the microphone", async () => {

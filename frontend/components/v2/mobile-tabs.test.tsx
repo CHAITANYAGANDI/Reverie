@@ -95,16 +95,23 @@ describe("the destinations", () => {
 });
 
 describe("Record, which is the fourth", () => {
-  it("starts a recording rather than navigating on its own", async () => {
+  it("goes to /record and opens no microphone of its own", async () => {
+    /*
+     * IT USED TO CALL `start()` HERE. That is a microphone opened from the
+     * application's chrome, which meant /record loaded with capture already
+     * running behind the page that carries the responsibility disclosure --
+     * so every word of that disclosure was shown too late.
+     *
+     * <p>Identical to the band's, because both call the same hook. Two copies
+     * of this drift, and the copy that drifts is the one on the phone.
+     */
     tabs({ pathname: "/folder/prj_1" });
 
     await userEvent.click(screen.getByRole("button", { name: "Record" }));
 
-    // Identical to the band's, because both call the same hook. Two copies of
-    // this drift, and the copy that drifts is the one on the phone.
     expect(push).toHaveBeenCalledWith("/record?r=%2Ffolder%2Fprj_1");
     expect(setReturnTo).toHaveBeenCalledWith("/folder/prj_1");
-    expect(start).toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("explains a refusal instead of opening the microphone", async () => {

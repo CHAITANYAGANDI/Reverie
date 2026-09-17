@@ -480,24 +480,45 @@ function Keeping() {
 
 const KEEPING = [
   {
+    // "not used to improve any model" was a claim about every model anywhere,
+    // including the transcription and language providers this product sends
+    // audio and text to. Reverie does not control their terms and cannot
+    // promise on their behalf. What it can say is what it does itself, and
+    // then where the rest is governed -- see the Privacy & Demo Notice, which
+    // carries the provider caveat in full.
     label: "No training on your meetings",
     detail:
-      "Your recordings, transcripts and notes are not used to improve any model, are not reviewed by people here, and are not pooled with anybody else's.",
+      "Reverie does not train or fine-tune models on your recordings, transcripts or notes, and nobody here reviews them. What is sent to a provider is handled under that provider's own terms.",
   },
   {
+    // There is no transcript dial. `RetentionPolicy` has exactly two fields --
+    // `audioDays` ("Delete the recording": the audio goes, the transcript,
+    // summary and action items stay) and `meetingDays` ("Delete the whole
+    // meeting"). A transcript is removed on a schedule only as part of its
+    // meeting, so naming it beside the recording described a control the
+    // product does not offer. See components/settings/retention-tab.
     label: "Retention you set",
     detail:
-      "Choose how long recordings and transcripts are kept. Anything past the window is removed.",
+      "Choose how long a recording is kept, and how long the whole meeting is kept. Anything past the window is removed.",
   },
   {
+    // "permanently, on the spot" is true of the live application and false of
+    // the disaster-recovery backups, which are taken before a deletion and
+    // expire on their own schedule. The claim is scoped to Reverie and the
+    // backup window is stated rather than left for somebody to discover.
     label: "Delete what you like",
     detail:
-      "A recording, a transcript, one meeting, or the whole account — permanently, on the spot.",
+      "A recording, a transcript, one meeting, or the whole account, removed from Reverie straight away. Disaster-recovery backups expire within a week.",
   },
   {
+    // "nobody else can read it" is a claim about who can see a database, which
+    // no product can make of its own operators, its host or its backups. The
+    // checkable version is the one about features: there are none for sharing,
+    // for teams or for administration, so nothing in Reverie puts a meeting in
+    // front of a second account.
     label: "One account, one workspace",
     detail:
-      "Nothing is shared into it and nobody else can read it. There is no team tier to be upgraded into.",
+      "There is no sharing, no team workspace and no admin view — no feature that puts a meeting in front of another account.",
   },
   {
     // Was "Export in four formats", listing Word, Markdown and plain text.

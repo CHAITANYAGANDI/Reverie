@@ -298,7 +298,33 @@ export default function PrivacyNoticePage() {
                 retention is theirs.
               </p>
               {/*
-                THE ONE THING THAT SURVIVES, NAMED.
+                DISASTER-RECOVERY BACKUPS, WHICH THE PAGE USED NOT TO MENTION.
+
+                <p>The database is backed up now -- on the Oracle host and to a
+                Cloudflare R2 bucket -- so a backup taken before a deletion
+                holds rows that the live database no longer has. Both are set
+                to expire after seven days: the R2 bucket carries an enabled
+                lifecycle rule on the `postgres-backups/` prefix, and the local
+                copies are pruned on the same schedule.
+
+                <p>This is the reason the paragraph below no longer says the
+                entitlement record is the only thing that outlives an account.
+                It is the only thing KEPT ON PURPOSE, which is a different
+                claim and the one worth making: a backup is a copy waiting to
+                age out, and an entitlement row is a decision.
+              */}
+              <p className={`mt-4 ${PROSE}`}>
+                The database is backed up so that it can be restored after a
+                failure, and a backup taken before you deleted something still
+                contains it. Those backups are not reachable through Reverie —
+                nothing in the product reads them, and they exist to rebuild the
+                database, not to answer questions about it. They expire after
+                seven days, on the Oracle host and in the storage bucket alike,
+                so deleted data can persist in a backup for up to about a week
+                after it has gone from the application itself.
+              </p>
+              {/*
+                THE ONE THING KEPT ON PURPOSE, NAMED.
 
                 <p>Reverie's free allowance — 100 transcribed minutes and 3
                 imports — is described everywhere as being for the life of the
@@ -317,11 +343,12 @@ export default function PrivacyNoticePage() {
                 `free_tier_identities` in V69.
               */}
               <p className={`mt-4 ${PROSE}`}>
-                One record does outlive the account, and it is the only one: so
-                that the free allowance cannot be reset by closing an account and
-                opening another, Reverie keeps a count of the transcription
-                minutes and imports that allowance has already spent, alongside a
-                one-way keyed hash of the email address it belonged to. There is
+                One record is kept deliberately, and unlike a backup it does not
+                expire: so that the free allowance cannot be reset by closing an
+                account and opening another, Reverie keeps a count of the
+                transcription minutes and imports that allowance has already
+                spent, alongside a one-way keyed hash of the email address it
+                belonged to. There is
                 no email address in it, no name, no meeting, and no way to work
                 backwards to any of them. It cannot restore a recording, a
                 transcript, a summary, a note, an action item, a chat or a folder,
