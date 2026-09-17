@@ -67,7 +67,7 @@ describe("an account that signs in with Google", () => {
 
   it("keeps the generic phrase for a provider it does not know", () => {
     expect(identityPermissions({ ...GOOGLE, provider: "okta" }).ownerLabel).toBe(
-      "your sign-in provider",
+      "whoever you signed in with",
     );
   });
 

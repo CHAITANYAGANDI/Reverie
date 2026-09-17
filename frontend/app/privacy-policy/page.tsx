@@ -148,8 +148,7 @@ export default function PrivacyNoticePage() {
                 not a commercial service: nothing is sold, there is no
                 subscription, and it comes with no availability, support or
                 data-protection commitments. One account is one workspace —
-                nothing is shared into it, and there is no administrator view in
-                the product, because there is no administrator.
+                nothing is shared into it, and nobody else can be added to it.
               </p>
             </Section>
 
@@ -162,19 +161,17 @@ export default function PrivacyNoticePage() {
                 <Item label="Your account">
                   The email address on the sign-in you used, and whatever you
                   fill in on your profile: display name, pronouns, job role,
-                  department, picture and default language. The credential
-                  itself belongs to the sign-in provider — Reverie never sees a
-                  password.
+                  department, picture and default language. Your password belongs to whoever you
+                  signed in with. Reverie never sees it.
                 </Item>
                 <Item label="Recordings and uploads">
-                  Audio you record in the browser, or an audio or video file you
-                  import, stored as an object in the deployment&apos;s own
-                  storage.
+                  Audio you record here, and any audio or video file you bring
+                  in yourself.
                 </Item>
                 <Item label="Transcripts">
-                  The words, the speaker labels, the timing of each segment, and
-                  the passages and embeddings that let a question be answered
-                  from the right part of a meeting.
+                  The words, who said them, and when. Reverie also keeps the
+                  transcript in a form it can search, so that a question can be
+                  answered from the right part of a meeting.
                 </Item>
                 <Item label="What is written from them">
                   The summary, action items, decisions and risks, translations,
@@ -185,49 +182,46 @@ export default function PrivacyNoticePage() {
                   kept as named conversations so you can reopen one.
                 </Item>
                 <Item label="How you have set things up">
-                  Folder names, notification switches, retention windows, and a
-                  log of the privacy actions taken on the account.
+                  Folder names, notification settings, how long you asked
+                  Reverie to keep things, and a record of the privacy choices
+                  made on the account.
                 </Item>
               </ul>
               <p className={`mt-6 ${PROSE}`}>
-                If you switch email notifications on and the deployment has mail
-                configured, your address and the message are sent to an email
-                delivery provider.
+                If you turn email notifications on, your address and the message
+                are passed to an outside email service so that it can send them.
               </p>
             </Section>
 
             <Section heading="AI processing">
               <p className={PROSE}>
-                Reverie does not transcribe or summarise anything itself. Where
-                a deployment is configured with provider keys, three things
-                leave it:
+                Reverie does not do the listening or the writing itself. Some
+                features use outside AI services, and three things are sent to
+                them:
               </p>
               <ul className="mt-5">
-                <Item label="The recording, for transcription">
-                  Sent to a speech-to-text provider, which returns the words,
-                  the timings and the separation of speakers. Depending on
-                  configuration the provider is given a link to the stored
-                  object or the file itself.
+                <Item label="The recording, to be written down">
+                  Your recording goes to a speech-to-text service, which sends
+                  back the words, their timings, and who said what.
                 </Item>
                 <Item label="Live audio, while you are still recording">
-                  Microphone audio streams from your browser directly to
-                  AssemblyAI&apos;s streaming service, which is what puts words
-                  on screen before the meeting has ended. The full transcript is
-                  written from the recording afterwards and replaces them.
+                  So that words can appear on screen as you speak, audio goes
+                  from your browser to AssemblyAI while the meeting is running.
+                  The full transcript is written from the recording afterwards
+                  and replaces those words.
                 </Item>
-                <Item label="Transcript text, for everything written from it">
-                  Sent to a language model to write the summary, extract action
-                  items, decisions and risks, translate, and answer questions.
-                  OpenAI&apos;s API is the only language-model provider
-                  implemented.
+                <Item label="The transcript, for everything written from it">
+                  The text goes to OpenAI to write the summary, pick out action
+                  items, decisions and risks, translate, and answer your
+                  questions.
                 </Item>
               </ul>
               <p className={`mt-6 ${PROSE}`}>
-                With no provider keys set, the pipeline runs its built-in mock
-                adapters instead and none of the above leaves the deployment.
-                What a provider does with a request sent to its API is governed
-                by that provider&apos;s own terms; Reverie cannot make a promise
-                on their behalf.
+                These outside services handle what they are sent according to
+                their own privacy rules. Reverie cannot make promises on their
+                behalf. If this demo is running without those services connected,
+                it uses built-in stand-in results instead and none of this is
+                sent anywhere.
               </p>
             </Section>
 
@@ -236,13 +230,12 @@ export default function PrivacyNoticePage() {
                 <strong className="font-headline text-ink">
                   Reverie does not train on your meetings.
                 </strong>{" "}
-                There is no training, fine-tuning or model-evaluation code in
-                this project at all: your recordings, transcripts and notes are
-                used to produce your own summary, action items and answers, and
-                for nothing else. Nobody reviews them here, and they are not
-                pooled with anybody else&apos;s. What the third-party providers
-                above do with data sent to their APIs is theirs to state, not
-                Reverie&apos;s.
+                Reverie does not use your recordings, transcripts or notes to
+                train its AI. They are used to produce your own summary, action
+                items and answers, and for nothing else. Nobody here reads them,
+                and they are not mixed in with anyone else&apos;s. The outside
+                services named above set their own rules for what they do with
+                what they receive.
               </p>
             </Section>
 
@@ -274,28 +267,26 @@ export default function PrivacyNoticePage() {
                 Nothing is deleted on a schedule until you choose a window.
                 Account Settings offers two — one for the recording, one for the
                 whole meeting — and both start at Never, which means kept until
-                you delete them. A nightly pass at 03:00 UTC removes whatever is
-                past the window you set, counted from when the meeting was
-                created rather than from when you last opened it, and tells you
-                what it took.
+                you delete them. Once a day Reverie removes anything past the
+                window you chose, counted from when the meeting was made rather
+                than from when you last opened it, and tells you what went.
               </p>
               <p className={`mt-4 ${PROSE}`}>
                 You can also delete a recording, a transcript or a whole meeting
-                yourself, at any time. Deletion is the real thing: the stored
-                object is removed and the rows are deleted rather than flagged
-                as hidden, so none of it can be undone. Ask Reverie
+                yourself, at any time. Deleting really deletes: the file and the
+                record of it are removed rather than hidden, and it cannot be
+                undone. Ask Reverie
                 conversations stay until you delete them — they are not covered
                 by the retention windows, though a conversation about one
                 meeting goes when that meeting does.
               </p>
               <p className={`mt-4 ${PROSE}`}>
-                Closing the account erases your meetings and their stored audio,
-                and then asks the sign-in provider to delete the sign-in itself;
-                if its settings refuse that, you are told so rather than told it
-                worked. Deleting something in Reverie does not reach a
-                third-party provider&apos;s own copy of what it was sent —
-                nothing here calls a provider to delete anything, and their
-                retention is theirs.
+                Closing the account erases your meetings and their audio, and
+                then asks whoever you signed in with to delete the sign-in
+                itself; if that is refused, you are told so rather than told it
+                worked. Deleting something here does not reach the outside AI
+                services — Reverie does not ask them to delete anything, and how
+                long they keep what they were sent is up to them.
               </p>
               {/*
                 DISASTER-RECOVERY BACKUPS, WHICH THE PAGE USED NOT TO MENTION.
@@ -314,14 +305,13 @@ export default function PrivacyNoticePage() {
                 age out, and an entitlement row is a decision.
               */}
               <p className={`mt-4 ${PROSE}`}>
-                The database is backed up so that it can be restored after a
-                failure, and a backup taken before you deleted something still
-                contains it. Those backups are not reachable through Reverie —
-                nothing in the product reads them, and they exist to rebuild the
-                database, not to answer questions about it. They expire after
-                seven days, on the Oracle host and in the storage bucket alike,
-                so deleted data can persist in a backup for up to about a week
-                after it has gone from the application itself.
+                Reverie keeps backups so that everything can be restored if
+                something goes badly wrong. A backup made before you deleted
+                something still contains it. Nothing in Reverie can read those
+                backups, and they are not used to answer questions or to bring
+                anything back for you. Every backup is removed automatically
+                after seven days, so some deleted information may remain in one
+                for around a week after it has gone from Reverie itself.
               </p>
               {/*
                 THE ONE THING KEPT ON PURPOSE, NAMED.
@@ -343,17 +333,15 @@ export default function PrivacyNoticePage() {
                 `free_tier_identities` in V69.
               */}
               <p className={`mt-4 ${PROSE}`}>
-                One record is kept deliberately, and unlike a backup it does not
-                expire: so that the free allowance cannot be reset by closing an
-                account and opening another, Reverie keeps a count of the
-                transcription minutes and imports that allowance has already
-                spent, alongside a one-way keyed hash of the email address it
-                belonged to. There is
-                no email address in it, no name, no meeting, and no way to work
-                backwards to any of them. It cannot restore a recording, a
-                transcript, a summary, a note, an action item, a chat or a folder,
-                and nothing in the product reads it except the check that decides
-                how much of the free tier is left.
+                One small record is kept on purpose, and unlike a backup it does
+                not expire. Reverie keeps a note of how much of your free
+                allowance has already been used, so that closing an account and
+                opening another does not reset it. It is scrambled in a way that
+                cannot be reversed, so it holds no readable email address and no
+                name. It contains none of your meetings, recordings,
+                transcripts, notes or chats, it cannot bring any of them back,
+                and the only thing that reads it is the check for how much of
+                your free allowance is left.
               </p>
             </Section>
 

@@ -136,7 +136,8 @@ describe("the Privacy & Demo Notice", () => {
     // Two windows, both starting at Never, and a nightly pass. RETENTION_CHOICES
     // and RetentionJob's cron.
     expect(screen.getByText(/both start at Never/i)).toBeInTheDocument();
-    expect(screen.getByText(/03:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Once a day Reverie removes anything past the window/i))
+      .toBeInTheDocument();
   });
 
   it("names the one record that outlives the account, and what it cannot do", () => {
@@ -155,14 +156,17 @@ describe("the Privacy & Demo Notice", () => {
      */
     render(<PrivacyNoticePage />);
 
-    expect(screen.getByText(/One record is kept deliberately/)).toBeInTheDocument();
+    expect(screen.getByText(/One small record is kept on purpose/)).toBeInTheDocument();
     // "and it is the only one" is gone: a disaster-recovery backup outlives a
     // deletion too. What makes this record different is that it is kept on
     // purpose and does not expire, which is the distinction the next test
     // pins from the other side.
     expect(document.body.textContent ?? "").not.toMatch(/it is the only one/i);
-    expect(screen.getByText(/one-way keyed hash of the email address/)).toBeInTheDocument();
-    expect(screen.getByText(/cannot restore a recording/)).toBeInTheDocument();
+    // Still says it cannot be reversed and still says what it is not, in words
+    // that do not require knowing what a hash is.
+    expect(screen.getByText(/scrambled in a way that cannot be reversed/i)).toBeInTheDocument();
+    expect(screen.getByText(/no readable email address and no/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot bring any of them back/i)).toBeInTheDocument();
     // No claim that the retained row is anonymous in the absolute sense, and no
     // claim that it is more than it is.
     const text = document.body.textContent ?? "";
@@ -187,11 +191,11 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/backed up/i);
-    expect(text).toMatch(/seven days/i);
+    expect(text).toMatch(/Reverie keeps backups/i);
+    expect(text).toMatch(/removed automatically\s+after seven days/i);
     // The window is what somebody deleting an account actually needs: not that
     // backups exist, but for how long they can still contain them.
-    expect(text).toMatch(/up to about a week/i);
+    expect(text).toMatch(/for around a week after it has gone from Reverie/i);
   });
 
   it("keeps live deletion and backup expiry as separate claims", () => {
@@ -201,10 +205,10 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/Deletion is the real thing/i);
-    expect(text).toMatch(/gone from the application itself/i);
+    expect(text).toMatch(/Deleting really deletes/i);
+    expect(text).toMatch(/gone from Reverie itself/i);
     // And the backups are not a second way to read the data.
-    expect(text).toMatch(/not reachable through Reverie/i);
+    expect(text).toMatch(/Nothing in Reverie can read those\s+backups/i);
   });
 
   it("does not confuse the retained entitlement row with a backup", () => {
@@ -217,8 +221,8 @@ describe("the Privacy & Demo Notice", () => {
     render(<PrivacyNoticePage />);
     const text = document.body.textContent ?? "";
 
-    expect(text).toMatch(/kept deliberately, and unlike a backup it does not\s+expire/i);
-    expect(text).toMatch(/one-way keyed hash of the email address/i);
+    expect(text).toMatch(/kept on purpose, and unlike a backup it does\s+not\s+expire/i);
+    expect(text).toMatch(/how much of your free\s+allowance has already been used/i);
   });
 
   it("claims nothing about backups it has not configured", () => {
@@ -244,7 +248,7 @@ describe("the Privacy & Demo Notice", () => {
     const { container } = render(<PrivacyNoticePage />);
     const text = container.textContent ?? "";
 
-    expect(text).toMatch(/does not reach a third-party provider/i);
+    expect(text).toMatch(/does not reach the outside AI\s+services/i);
     expect(text).not.toMatch(/deleted everywhere|erased from (our|all) providers/i);
     expect(text).not.toMatch(/chat history is deleted/i);
   });
@@ -258,7 +262,7 @@ describe("the Privacy & Demo Notice", () => {
     expect(text).toMatch(/does not train on your meetings/i);
     // What is not: anything about what a provider does with an API request.
     // That belongs to the provider's terms and is said to belong there.
-    expect(text).toMatch(/theirs to state, not Reverie/i);
+    expect(text).toMatch(/set their own rules for what they do with/i);
     expect(text).not.toMatch(/never used by (any|our) provider|no provider (ever )?trains/i);
   });
 

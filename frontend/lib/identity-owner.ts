@@ -118,7 +118,7 @@ export function identityOwner({ mode, provider, hasPassword }: Credential): Iden
 
 export function identityPermissions(credential: Credential): IdentityPermissions {
   const owner = identityOwner(credential);
-  const label = NAMES[credential.provider] || "your sign-in provider";
+  const label = NAMES[credential.provider] || "whoever you signed in with";
 
   switch (owner) {
     case "reverie":

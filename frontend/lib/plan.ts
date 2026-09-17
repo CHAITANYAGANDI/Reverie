@@ -41,7 +41,7 @@ export const INCLUDED: FeatureGroup[] = [
       {
         label: "Speakers separated, and yours to name",
         detail:
-          "Diarization tells the voices apart and numbers them by who spoke first. Naming them is a rename you make, not a voice Reverie recognises.",
+          "Reverie tells the voices apart and numbers them in the order they spoke. Naming them is a rename you make, not a voice Reverie recognises.",
       },
       {
         label: "A summary with decisions, risks and action items",

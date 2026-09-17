@@ -393,7 +393,7 @@ const GROUPS = [
       {
         label: "Speakers, separated",
         detail:
-          "Diarization tells the voices apart and numbers them by who spoke first. Naming them is a rename you make.",
+          "Reverie tells the voices apart and numbers them in the order they spoke. Naming them is a rename you make.",
       },
       {
         label: "A brief you can shape",
@@ -488,7 +488,7 @@ const KEEPING = [
     // carries the provider caveat in full.
     label: "No training on your meetings",
     detail:
-      "Reverie does not train or fine-tune models on your recordings, transcripts or notes, and nobody here reviews them. What is sent to a provider is handled under that provider's own terms.",
+      "Reverie does not use your recordings, transcripts or notes to train its AI, and nobody here reads them. Some features use outside AI services, which handle information under their own privacy rules.",
   },
   {
     // There is no transcript dial. `RetentionPolicy` has exactly two fields --
@@ -518,7 +518,7 @@ const KEEPING = [
     // front of a second account.
     label: "One account, one workspace",
     detail:
-      "There is no sharing, no team workspace and no admin view — no feature that puts a meeting in front of another account.",
+      "There is no sharing and no team workspace. Nothing in Reverie puts one of your meetings in front of another account.",
   },
   {
     // Was "Export in four formats", listing Word, Markdown and plain text.

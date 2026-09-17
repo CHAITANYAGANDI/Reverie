@@ -70,10 +70,10 @@ describe("ReassignSpeakerDialog", () => {
 
   it("says nobody else can take the words when the meeting has one speaker", () => {
     // It used to end there. It cannot now: the words may belong to somebody
-    // diarization never separated out, which is exactly the case a
+    // Reverie did not separate out as their own voice, which is exactly the case a
     // single-speaker meeting is most likely to be.
     show({ speakers: [SPEAKERS[1]] });
-    expect(screen.getByText(/diarization never separated out/i)).toBeInTheDocument();
+    expect(screen.getByText(/Reverie did not separate out as their own voice/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New speaker" })).toBeEnabled();
   });
 
@@ -110,7 +110,7 @@ describe("ReassignSpeakerDialog", () => {
  * "This was somebody else entirely."
  *
  * The fourth speaker repair, and the one the list alone cannot express: a voice
- * diarization never separated out has no entry to pick. Picking from a list that
+ * Reverie did not separate out as their own voice has no entry to pick. Picking from a list that
  * does not contain the person is not a thing a user can do, so before this the
  * correction had no shape at all.
  *

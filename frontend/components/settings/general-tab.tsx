@@ -273,15 +273,15 @@ function TrainingSection() {
           <strong className="text-foreground">
             Reverie does not train on your meetings.
           </strong>{" "}
-          Your recordings, transcripts and notes are not used to improve any
-          model, are not reviewed by people here, and are not pooled with anybody
+          Reverie does not use your recordings, transcripts or notes to train
+          its AI. Nobody here reads them, and they are not mixed in with anyone
           else&apos;s.
         </p>
         <p>
-          Producing your notes does mean sending the audio to a speech-to-text
-          provider and the transcript to a language model. There is no switch on
-          this section because there is nothing to switch off — a toggle here
-          would imply a use that does not happen.
+          Making your notes does mean sending the audio and the transcript to
+          outside AI services, which handle them under their own privacy rules.
+          There is no switch in this section because there is nothing to switch
+          off — a toggle here would suggest a use that does not happen.
         </p>
         {/* Said here because it changed, and because it is the one part of
             the path that is not "after you press Save". Somebody reading this
@@ -289,12 +289,12 @@ function TrainingSection() {
             while it is still happening, not only afterwards. */}
         <p>
           <strong className="text-foreground">
-            While you are recording, audio is streamed to that same speech-to-text
-            provider as you speak
+            While you are recording, audio is sent to that same speech-to-text
+            service as you speak
           </strong>{" "}
           — that is what produces the live text on the recording page. It goes
-          from your browser to the provider directly, so the words appear without
-          waiting for the meeting to end. The recording itself is still
+          straight from your browser, so the words appear without waiting for the
+          meeting to end. The recording itself is still
           transcribed in full afterwards, and that fuller transcript is the one
           that is kept.
         </p>
