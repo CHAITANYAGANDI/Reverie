@@ -212,7 +212,7 @@ describe("the menu", () => {
     await openMenu();
 
     const items = screen.getAllByRole("menuitem").map((el) => el.textContent?.trim());
-    expect(items).toEqual(["Account Settings", "Logout"]);
+    expect(items).toEqual(["Account Settings", "Sign out"]);
   });
 
   it("goes to Account Settings", async () => {
@@ -227,7 +227,7 @@ describe("the menu", () => {
   it("logs out", async () => {
     await openMenu();
 
-    await userEvent.click(screen.getByRole("menuitem", { name: "Logout" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
 
     // Not decorative even in a dev build: closing an account calls the same
     // path, and with nothing behind it the browser carried on as the user it
