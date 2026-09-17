@@ -21,6 +21,14 @@
  * about a monthly quota and would be a lie about this one. Nothing arrives on
  * the 1st. What it says instead is what is true: the allowance is the account's
  * whole allowance, and nothing already transcribed is taken away.
+ *
+ * <h2>Three states, and they are not allowed to look alike</h2>
+ *
+ * <p><b>On its way</b> is a skeleton, <b>read</b> is the figure, and
+ * <b>failed</b> now says so in words. The three are decided by the query's own
+ * flags rather than by whether a number happens to be missing, because
+ * `undefined` is what this hook returns for every one of them and a component
+ * that branches on it can only ever draw one.
  */
 
 import * as React from "react";
@@ -48,10 +56,57 @@ export function PlanUsage({
 }) {
   const { data, isError } = useGetUsageQuery();
 
-  // Nothing at all if it cannot be read. A rail footer is not the place to
-  // report that one request failed, and an error card sitting above the account
-  // menu for the whole session is worse than the absence of a figure.
-  if (isError) return null;
+  /*
+   * A FAILURE SAYS SO, WHERE IT USED TO REMOVE THE WIDGET.
+   *
+   * <p>This was `if (isError) return null`, on the argument that a rail footer
+   * is not the place to report one failed request. The argument was about the
+   * wrong cost. An allowance that is simply absent does not read as "we could
+   * not fetch this" — it reads as an account with no limit on it, which is the
+   * opposite of what an unread allowance means, and it is indistinguishable
+   * from the widget having been removed from the product. Silence is not the
+   * neutral option when the thing being hidden is a restriction.
+   *
+   * <p>So it states the one true thing it knows and no more: no figure, no
+   * bar, no ceiling, and nothing about the request. `Usage temporarily
+   * unavailable` is deliberately the whole message — a status code or a host
+   * name here would be an operational detail in a menu, and "temporarily" is
+   * the part that says what to do about it, which is nothing.
+   *
+   * <p>CHECKED BEFORE `data`, exactly as it was. A failed refresh over a
+   * cached body must say so rather than keep drawing the last figure: this
+   * widget's whole job is to be right about how much is left, and a number
+   * that was true a minute ago is presented here as one that is true now.
+   *
+   * <p>AND IT CANNOT FIRE FOR A SIGNED-OUT READER. `PlanUsage` renders only
+   * inside `AccountMenu`, which renders only inside `AppShell`, which
+   * `app/(app)/layout` mounts inside `AuthGate` — and that nesting exists for
+   * this exact reason: the gate opens on `tokenReady && isLoaded` so that the
+   * shell's mount-time requests, the plan allowance named among them, cannot
+   * race the Clerk token. A tokenless request would fail (see `baseQuery` in
+   * lib/api), so without that gate this branch would announce a failure every
+   * time the app started. With it, reaching here means the request genuinely
+   * went and genuinely failed.
+   *
+   * <p>`role="status"` and not `role="alert"`. This codebase keeps `alert` for
+   * a failure standing where the reader was waiting for content -- Home's and
+   * Library's lists -- and this is a footnote in a menu somebody opened for
+   * something else. Polite, so a reader is told when it replaces the skeleton
+   * under them, and not interrupted for it.
+   */
+  if (isError) {
+    return (
+      <p
+        role="status"
+        className={cn(
+          "mx-3 mb-3 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground",
+          className,
+        )}
+      >
+        Usage temporarily unavailable
+      </p>
+    );
+  }
 
   // Held space rather than nothing, because this sits under a `flex-1` folder
   // tree: appearing late would shove the account menu down at the moment
