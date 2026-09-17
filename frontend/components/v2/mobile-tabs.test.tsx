@@ -43,7 +43,7 @@ vi.mock("@/lib/allowance", () => ({
 import { MobileTabs } from "@/components/v2/mobile-tabs";
 
 function tabs(over: Partial<React.ComponentProps<typeof MobileTabs>> = {}) {
-  return render(<MobileTabs pathname="/home" create recording={false} {...over} />);
+  return render(<MobileTabs pathname="/home" create live={false} {...over} />);
 }
 
 beforeEach(() => {
@@ -54,13 +54,20 @@ beforeEach(() => {
 
 describe("the destinations", () => {
   it("are the same three as the band, in the same order", () => {
-    // One navigation with two shapes, not two navigations. A phone that offers
-    // a different set of places is a second information architecture nobody
-    // maintains.
+    /*
+     * One navigation with two shapes, not two navigations. A phone that offers
+     * a different set of places is a second information architecture nobody
+     * maintains.
+     *
+     * <p>This test asserted `Ask` while the band beside it had said `Reverie
+     * AI` since components/v2/places.tsx named the destination -- so the one
+     * check meant to keep the two in step was pinning the drift. The words are
+     * the band's, and PLACES is where the reasoning for them lives.
+     */
     tabs();
 
     const names = screen.getAllByRole("link").map((el) => el.textContent);
-    expect(names).toEqual(["Home", "Library", "Ask"]);
+    expect(names).toEqual(["Home", "Library", "Reverie AI"]);
   });
 
   it("go where the band's do", () => {
@@ -68,13 +75,16 @@ describe("the destinations", () => {
 
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
-    expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
+    expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute("href", "/ask");
   });
 
   it("mark where you are", () => {
     tabs({ pathname: "/ask" });
 
-    expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Reverie AI" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("do not claim to be the page one level down", () => {
@@ -110,7 +120,7 @@ describe("Record, which is the fourth", () => {
   it("says a recording is running rather than disappearing", async () => {
     // The column vanishing would move the other three under a thumb that is
     // already moving. It stands down in place and says why.
-    tabs({ create: false, recording: true });
+    tabs({ create: false, live: true });
 
     const button = screen.getByRole("button", { name: "Recording" });
     expect(button).toBeDisabled();
@@ -120,20 +130,58 @@ describe("Record, which is the fourth", () => {
   it("keeps the three destinations reachable while one is running", () => {
     // The whole reason the recorder survives navigation is so somebody can go
     // and look something up mid-meeting.
-    tabs({ create: false, recording: true });
+    tabs({ create: false, live: true });
 
     expect(screen.getAllByRole("link")).toHaveLength(3);
   });
 });
 
 describe("where it sits", () => {
-  it("lifts above the recording bar rather than under it", () => {
-    // Both are fixed to the bottom. `--recording-bar` is published by the bar
-    // itself and is zero when there is none, so this sits on the bottom edge
-    // normally and lifts by exactly the bar's height while one runs — measured
-    // rather than guessed, because that bar is not one height.
-    const { container } = tabs();
+  it("owns the bottom edge, and does not move when a recording starts", () => {
+    /*
+     * It used to lift by `--recording-bar`, which put the dock below the
+     * navigation and slid the permanent thing up the screen whenever a
+     * recording began. The dock clears the tabs now instead -- see
+     * `bottom-tabbar` in components/recording-bar.tsx -- so this element's
+     * offset is a constant and nothing about it depends on the recorder.
+     */
+    const idle = tabs().container.querySelector("nav")!;
+    expect(idle.className).toContain("bottom-0");
+    expect(idle.getAttribute("style")).toBeNull();
 
-    expect(container.querySelector("nav")).toHaveStyle({ bottom: "var(--recording-bar, 0px)" });
+    const running = tabs({ create: false, live: true }).container.querySelector("nav")!;
+    expect(running.className).toContain("bottom-0");
+    expect(running.getAttribute("style")).toBeNull();
+  });
+});
+
+describe("what the fourth tab says", () => {
+  /*
+   * REPORTED: stop the recording and the tab stays red and reads `Recording`,
+   * over a dock offering `Save & process`.
+   *
+   * <p>The shell was giving it `recorder.state !== "idle"`, which is still true
+   * after Stop -- the audio is held, waiting to be saved or discarded. That
+   * flag has to stay true for the things it governs (Record is withheld, and
+   * the page keeps the room the dock stands in), so what changed is that this
+   * tab is given the narrower claim instead. See `live` in app-shell.
+   */
+  it("says Recording only while audio is actually being captured", () => {
+    expect(
+      tabs({ create: false, live: true }).container.querySelector("button")!.textContent,
+    ).toContain("Recording");
+  });
+
+  it("goes back to Record once the recording has stopped", () => {
+    // `create` is still false -- the audio is in hand and a second recording
+    // cannot start until it is dealt with -- so the tab is disabled. It is not
+    // still claiming to be recording.
+    const { container } = tabs({ create: false, live: false });
+    const button = container.querySelector("button")!;
+
+    expect(button.textContent).toContain("Record");
+    expect(button.textContent).not.toContain("Recording");
+    expect(button).toBeDisabled();
+    expect(button.className).not.toContain("text-danger");
   });
 });

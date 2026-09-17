@@ -105,6 +105,17 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // The band and the docked bar both key off it, so they can never disagree
   // about whether a recording is happening.
   const capturing = recorder.state !== "idle";
+  /*
+   * CAPTURING IS NOT THE SAME AS RECORDING, and the bottom tabs need the
+   * second one. `capturing` is "the recorder is holding something", which
+   * stays true after Stop -- the audio is in memory, waiting to be saved or
+   * discarded -- and it has to, because it is what withholds Record and what
+   * reserves the room the dock is standing in.
+   *
+   * <p>Given to the tab as well, it left the label reading `Recording`, in
+   * red, over a dock offering `Save & process`. This is the narrower claim.
+   */
+  const live = recorder.state === "recording" || recorder.state === "paused";
   const chrome = bandChrome(pathname, capturing);
   /*
    * The pages that lay themselves out.
@@ -387,7 +398,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         </aside>
       </div>
 
-      <MobileTabs pathname={pathname} create={chrome.create} recording={capturing} />
+      <MobileTabs pathname={pathname} create={chrome.create} live={live} />
 
       <SearchCommand
         open={searching.open}
