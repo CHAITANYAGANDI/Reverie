@@ -76,7 +76,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarDays, FolderOpen } from "lucide-react";
+import { AudioLines, CalendarDays, FolderOpen } from "lucide-react";
+import { EmptyPanel } from "@/components/v2/empty-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AmbientCanvas } from "@/components/v2/ambient-canvas";
@@ -383,20 +384,28 @@ function EmptyLibrary({
     );
   }
 
+  /*
+   * CENTRED, ON THE COMPONENT RATHER THAN ON A COPY OF ITS NUMBERS.
+   *
+   * <p>This was a `text-body` line and a `58ch` paragraph ranged top-left,
+   * which put the one sentence on the page in the corner of an otherwise empty
+   * column. `EmptyPanel` is the centred empty state this product already has
+   * -- the folders margin and the folder page both use it -- so this screen is
+   * now the same shape as the rest of them instead of nearly the same.
+   *
+   * <p>The actions are still not repeated. Record and Import are in the band
+   * on every screen in the app, and a second pair here would be two places to
+   * press for one thing; `EmptyPanel` takes `actions` and is deliberately not
+   * given any.
+   */
   return (
-    <div>
-      <p className="text-body font-headline text-ink">Nothing here yet</p>
-      <p className="mt-1.5 max-w-[58ch] text-callout leading-[1.5] text-ink-3">
-        Record a meeting or import audio you already have, and it will be here.{" "}
-        {/* The actions are not repeated. Record and Import are in the band on
-            every screen in the app, and a second pair here would be two places
-            to press for one thing. */}
-        Record and Import are at the top of every page — or start from{" "}
-        <Link href="/home" className="underline underline-offset-2 hover:text-ink-2">
-          Home
-        </Link>
-        .
-      </p>
-    </div>
+    <EmptyPanel icon={AudioLines} heading="Nothing here yet">
+      Record a meeting or import audio you already have, and it will be here.
+      Record and Import are at the top of every page — or start from{" "}
+      <Link href="/home" className="underline underline-offset-2 hover:text-ink-2">
+        Home
+      </Link>
+      .
+    </EmptyPanel>
   );
 }
