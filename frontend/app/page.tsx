@@ -17,7 +17,7 @@ import { PRIVACY_NOTICE } from "@/lib/routes";
  *
  * <h2>The composition, and where it comes from</h2>
  *
- * <p>`design-demo/final/55-landing.html`: the public canvas with its one
+ * <p>The V2 reference: the public canvas with its one
  * ambient wash, a 68px nav that does not out-weigh the hero, a centred claim,
  * and then the product itself at full width. What is added on top of that is
  * <b>pacing</b> — five large moments instead of one, each held until the reader
@@ -56,8 +56,7 @@ import { PRIVACY_NOTICE } from "@/lib/routes";
  *
  * <p>No Memory, no Commitment Ledger, no Decision Drift, no Decision History,
  * no semantic search, no YouTube or PDF import, no integrations, no
- * system-audio or tab capture. `app/page.test.tsx` asserts the absence of each,
- * and the reasoning is in `docs/v2-implementation/final-parity-audit.md` §6.
+ * system-audio or tab capture. `app/page.test.tsx` asserts the absence of each.
  *
  * <p>This file is a server component. The clients are the four motion pieces
  * and `LandingMotion`, which is a context provider with no markup of its own —

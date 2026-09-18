@@ -386,7 +386,7 @@ describe("the search store", () => {
 /**
  * The slot the reference filled with something that does not exist.
  *
- * <p>`design-demo/final/07-now.html` draws the band as Now / Library / Memory.
+ * <p>The V2 reference draws the band as Now / Library / Memory.
  * Memory is not implemented — the migrations dropped the tables it was read
  * from — so the third slot carries the real destination. These pin the absence,
  * because a nav is exactly the place a future feature gets added as a disabled

@@ -74,8 +74,8 @@ import { cn } from "@/lib/utils";
  * time. 400px is the margin column from the design system, which is what the
  * pane is: the same 680 + 40 + 400 the rest of the app is built to.
  *
- * <p>See docs/ui-redesign/v2-design-system.md. `lib/pane-size.ts` and
- * `components/pane-resizer.tsx` still exist and are still tested; they are
+ * <p>`lib/pane-size.ts` and `components/pane-resizer.tsx` still exist and are
+ * still tested; they are
  * retired in the sweep at the end rather than deleted from under a component
  * that might still want them.
  */
@@ -207,7 +207,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        * elements outside this file still read it (`components/recording-bar.tsx`
        * and the meeting page's mini player). Both are rebuilt in later phases,
        * and dropping the variable before then would put them under a rail that
-       * no longer exists. See docs/v2-implementation/implementation-notes.md.
+       * no longer exists.
        */
       style={
         {

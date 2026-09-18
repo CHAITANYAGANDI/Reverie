@@ -11,7 +11,7 @@
  * account with no folders spent about three hundred vertical pixels saying so,
  * above the archive that is the actual reason anybody opens this page.
  *
- * <p>`design-demo/final/14-library.html` puts them in the margin instead:
+ * <p>The V2 reference puts them in the margin instead:
  * `K.group("Folders", …, { aside: "Manage" })`, one line per folder, no
  * surfaces. A folder list is the smaller, slower-moving thing you glance at;
  * the archive is what you scroll. Giving it half the page above the archive is

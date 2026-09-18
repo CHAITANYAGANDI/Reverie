@@ -10,7 +10,7 @@ import type { Project } from "@/lib/types";
  * <p>The route was `redirect(LIBRARY)`. It is a real page now — folders came
  * out of the document and into the Library margin, and the margin is a glance
  * with a door rather than a management surface, so the full list needs
- * somewhere to be: `design-demo/final/16-folders.html`.
+ * somewhere to be.
  *
  * <p>Everything the list does is pinned in `components/folder-list.test.tsx` —
  * the count in the title, the two groups, the sort, rename, delete and the

@@ -7,9 +7,7 @@
  * ============================================================================
  *
  * Cool midnight surfaces, one spectral accent, and a hard border between three
- * typefaces. The design and the reasoning behind every number are in
- * docs/ui-redesign/ (the V2 review PDF, section 07); what follows is the
- * production implementation of it.
+ * typefaces. What follows is the production implementation of the V2 design.
  *
  * TWO NAMING SYSTEMS, ON PURPOSE, AND THIS IS THE MIGRATION STRATEGY
  *
@@ -933,7 +931,7 @@
      In production it carries only anchored data that actually exists — a
      moment (highlight, bookmark, note) at its timestamp, or an action item at
      its source second. The cross-meeting relationships the V2 concept put here
-     are not implemented; see docs/v2-implementation/feature-parity.md. */
+     are not implemented. */
   .v2-note {
     padding: 1px 0 1px 0.75rem;
     border-left: 1px solid hsl(var(--brand-text) / 0.34);

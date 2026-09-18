@@ -1796,7 +1796,7 @@ describe("the summary", () => {
 describe("the summary's opening paragraph", () => {
   it("leads with it, even when the summary has sections", () => {
     /*
-     * `18-meeting-brief.html` opens with one paragraph set larger than the
+     * The V2 reference opens with one paragraph set larger than the
      * rest. `shortSummary` is that paragraph, and it was rendered only when
      * there were NO sections -- so the richer the summary got, the more
      * certain it was to lose its opening.
@@ -2399,7 +2399,7 @@ describe("the transcript", () => {
 describe("correcting the transcript", () => {
   it("says which mode it is in, rather than leaving it to be inferred", async () => {
     /*
-     * `21-transcript-editing.html` heads the document "Correcting the
+     * The V2 reference heads the document "Correcting the
      * transcript" with one Done beside it. This row carried two unlabelled
      * buttons and nothing naming the state, so the only thing telling a reader
      * the transcript had become editable was that the paragraphs had.

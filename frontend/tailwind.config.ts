@@ -8,9 +8,6 @@ import type { Config } from "tailwindcss";
  * border, primary…) and the V2 names (surface-*, ink-*, brand-*) are two sets
  * of aliases over one set of values, which is what lets a screen that has not
  * been rebuilt yet still look like it belongs.
- *
- * See docs/v2-implementation/feature-parity.md for what is being migrated and
- * in what order.
  */
 const config: Config = {
   // No dark variant, because there is no light one to vary from. The palette is
