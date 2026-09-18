@@ -119,42 +119,15 @@ Everything below is reachable in the product today.
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    User(["Browser"])
-    subgraph Vercel
-        FE["Next.js frontend"]
-    end
-    subgraph Oracle["Oracle Cloud VM — Docker Compose"]
-        Caddy["Caddy<br/>TLS + reverse proxy"]
-        API["Spring Boot API<br/>system of record"]
-        AI["FastAPI AI worker"]
-        DB[("PostgreSQL 16<br/>+ pgvector")]
-    end
-    Clerk["Clerk"]
-    R2["Cloudflare R2"]
-    Kafka["Kafka<br/>meeting_uploaded"]
-    Providers["AssemblyAI / OpenAI"]
+The diagram below shows the current production architecture.
 
-    User --> FE
-    User -->|"REST + WebSocket"| Caddy
-    User -.->|"presigned upload"| R2
-    FE --> Clerk
-    Caddy --> API
-    API --> DB
-    API --> R2
-    API -->|"outbox"| Kafka
-    Kafka --> AI
-    AI --> DB
-    AI --> R2
-    AI --> Providers
-    AI -->|"result callback"| API
-```
+![Reverie AI High-Level Architecture](docs/assets/reverie-hld.png)
 
-The **Spring Boot API** is the system of record: it owns every row, checks who
-you are, enforces the allowance, and never calls a model itself. The **FastAPI
-worker** is stateless compute — transcribe, summarise, extract, index, post the
-result back.
+**Spring Boot** is the system of record and the only public application entry
+point: it owns the data, checks who you are, and never calls a model itself.
+**FastAPI** does the AI work, **PostgreSQL + pgvector** holds both application
+data and search vectors, and **Cloudflare R2** holds recordings and generated
+media.
 
 ## Technology Stack
 
@@ -380,15 +353,30 @@ in-process counter cannot be unavailable.
 - Deployment and monitoring are partly manual — no automated alerting.
 - Dark theme only.
 
-## Project Status
+## How Reverie Can Be Improved
 
-Live and in active development, at release **v1.0.0**. Work merges through
-`dev` and then `main`, which is what ships the frontend; the server host is
-updated separately. CI must be green to merge.
+- **Automated alerting** — add proactive alerts for production failures instead
+  of relying mainly on manual checks.
+- **Release automation** — script or pipeline the host update so a deploy is not
+  an operator running commands on the VM.
+- **Live-provider integration testing** — add controlled tests against the real
+  speech and language providers, outside the offline CI path.
+- **Multi-instance readiness** — move the per-instance rate limiter to a shared
+  store before running more than one backend instance.
+- **Surface or retire unexposed capabilities** — decide whether the backend-only
+  features belong in the interface or should be removed.
+- **A light theme** — the interface is dark-only today.
 
-## About the Developer
+## Acknowledgements
 
-Built by **Chaitanya Sai Gandi** — [GitHub](https://github.com/CHAITANYAGANDI).
+Reverie was designed and developed with the assistance of AI development tools,
+including Claude and ChatGPT, for areas such as implementation, debugging,
+architecture review, and documentation.
 
-Reverie is a portfolio project built end to end: product design, three
-services, the schema and migrations, the deployment and the runbooks.
+Some product and interaction ideas were informed by existing meeting-assistant
+products such as Otter.ai. Reverie's implementation, architecture, backend
+services, data model, deployment, and application code were developed separately
+for this project.
+
+Open-source libraries and components used by the project remain subject to their
+respective licenses.
