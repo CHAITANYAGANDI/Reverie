@@ -5,7 +5,7 @@
  *
  * <h2>The composition</h2>
  *
- * <p>`design-demo/final/17-folder.html`: a breadcrumb up to the folders, the
+ * <p>The V2 reference: a breadcrumb up to the folders, the
  * eyebrow, the folder's name at title scale, the facts about it in a dotted
  * row, then the meetings in date groups as flat rows with hairlines between
  * them.

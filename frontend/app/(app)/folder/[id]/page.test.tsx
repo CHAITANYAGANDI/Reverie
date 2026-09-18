@@ -13,7 +13,7 @@ import type { ChatConversation, ChatMessage, MeetingResponse, Project } from "@/
  *
  * <h2>And now two more absences, from the V2 reference itself</h2>
  *
- * <p>`design-demo/final/17-folder.html` offers "Ask this folder" in the
+ * <p>The V2 reference offers "Ask this folder" in the
  * masthead and a margin headed "Tracked in this folder": a topic in four
  * instalments, a risk open thirteen days, a promise due tomorrow. The first was
  * deliberately removed from this page and a visual migration is not permission
@@ -169,7 +169,7 @@ describe("ProjectPage", () => {
   it("reads as a document rather than a table", () => {
     /*
      * The column header was the single word "Conversation" over one column.
-     * `17-folder.html` groups by date instead, which is what people navigate a
+     * The V2 reference groups by date instead, which is what people navigate a
      * folder by.
      */
     render(<ProjectPage />);
@@ -298,7 +298,7 @@ describe("ProjectPage", () => {
 
   it("did not get its chat back from the V2 reference", () => {
     /*
-     * `17-folder.html` puts "Ask this folder" in the masthead. A visual
+     * The V2 reference puts "Ask this folder" in the masthead. A visual
      * migration is not permission to restore a product decision, and an
      * endpoint existing is not the same as a feature existing.
      */

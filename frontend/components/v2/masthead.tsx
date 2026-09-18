@@ -12,8 +12,7 @@
  *
  * <p>Shared rather than written three times, because Library, the folders index
  * and a folder all open with one and the differences between them are the four
- * strings. See `design-demo/final/14-library.html`, `16-folders.html` and
- * `17-folder.html`.
+ * strings.
  *
  * <h2>Why the eyebrow is not a breadcrumb trail</h2>
  *

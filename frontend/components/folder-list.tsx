@@ -8,11 +8,10 @@
  * <p>It was `/folders`, its own page, reached from a section in the navigation
  * rail. The rail went, so it moved to the top of Library as a table. That put a
  * filing system most people touch twice a week in front of the archive
- * everybody opens Library for, which is the shape
- * `design-demo/final/14-library.html` rejects: folders belong in the margin,
- * one click from the archive.
+ * everybody opens Library for, which is the shape the V2 reference rejects:
+ * folders belong in the margin, one click from the archive.
  *
- * <p>So it is a page again — `16-folders.html` — but not a navigation
+ * <p>So it is a page again — but not a navigation
  * destination. The band still has three places in it and Library is the one
  * that stays lit here; the way in is "Manage" in the Library margin, which is
  * also what makes the old bookmarks work again.

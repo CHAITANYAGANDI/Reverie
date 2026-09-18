@@ -22,9 +22,7 @@
  * is for the one place that needs a single inherited colour — see `Lockup`'s
  * muted variant, where the mark sits in a line of `--ink-3` type and a blue one
  * would be the loudest thing in a footer.
- *
- * The seam study, including the four directions that lost, is in
- * docs/ui-redesign/ (V2 review PDF, sections 05-06).
+
  */
 
 import * as React from "react";

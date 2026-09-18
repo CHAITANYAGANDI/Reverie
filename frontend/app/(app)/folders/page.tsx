@@ -4,7 +4,7 @@
  * THE FOLDER LIST, A PAGE AGAIN.
  *
  * <p>It was this route, then a section at the top of Library, and now this
- * route once more — `design-demo/final/16-folders.html`. The middle version put
+ * route once more, as the V2 reference has it. The middle version put
  * a filing system most people touch twice a week in front of the archive
  * everybody opens Library for; the fix is a quiet list in the Library margin
  * with a door to the full thing, which is this.

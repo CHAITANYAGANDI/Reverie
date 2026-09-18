@@ -70,7 +70,7 @@ export function placeFor(pathname: string | null | undefined): Place {
   // Inside Library: the folder list, one folder, one meeting. /folders is here
   // rather than being its own place because Library is where folders live now;
   // it is kept as a URL so existing links and bookmarks still land somewhere
-  // sensible. See docs/v2-implementation/feature-parity.md.
+  // sensible.
   if (isFolderListPath(path) || folderIdFrom(path) !== null || isMeetingPath(path)) {
     return { id: "library", nested: true };
   }

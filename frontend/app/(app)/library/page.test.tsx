@@ -20,8 +20,8 @@ import type { MeetingResponse, MeetingListQuery, Page, Project } from "@/lib/typ
  * see, and `data?.content ?? []` is the single line that produces it.
  *
  * <p><b>The folders must not be a table above the archive.</b> That was the
- * shipped composition and the reason this page looked nothing like
- * `design-demo/final/14-library.html`: a heading, a New folder button, a
+ * shipped composition and the reason this page looked nothing like the V2
+ * reference: a heading, a New folder button, a
  * two-column sort header and either the folders or a centred empty state, all
  * of it above the list anybody opens Library for. They are a quiet margin now.
  *
@@ -30,8 +30,8 @@ import type { MeetingResponse, MeetingListQuery, Page, Project } from "@/lib/typ
  * dates and nothing else of theirs. Four convincing controls that narrow
  * nothing is worse than one that works.
  *
- * <p><b>The two empty states are different screens.</b> `15-library-empty.html`
- * is single-column, and reading that as "no rows, no margin" dropped the
+ * <p><b>The two empty states are different screens.</b> The reference's empty
+ * state is single-column, and reading that as "no rows, no margin" dropped the
  * folders on a brand new account — the one account that cannot reach them any
  * other way, since `/folders` is linked from that margin and nowhere else. The
  * reference is the *filtered* state, which has something to say about a filter

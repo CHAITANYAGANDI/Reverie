@@ -16,7 +16,7 @@ import { Lockup } from "@/components/v2/lockup";
  *
  * <h2>The composition</h2>
  *
- * <p>`design-demo/final/56-signin.html`. One column, 400px, centred on both
+ * <p>The V2 reference: one column, 400px, centred on both
  * axes, on the same ground the app uses. No card: a bordered box floating on a
  * dark ground is the shape of a dialog, and this is not interrupting anything.
  * No split-screen marketing panel, no illustration, no testimonial. A mark, a
