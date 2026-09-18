@@ -1232,7 +1232,7 @@ export default function MeetingDetailPage() {
           </div>
           {/*
             THE FACTS, AND THEN THE CONTROLS — two lines rather than one.
-            <p>`design-demo/final/18-meeting-brief.html` sets the masthead as
+            <p>The V2 reference sets the masthead as
             `date · duration · the people named`, and its own comment says why:
             the shipped masthead carried the title, date, duration, folder,
             source, status, four speaker chips WITH talk-time percentages and up
@@ -2436,7 +2436,7 @@ function SummaryPanel({
               <div className="space-y-6">
                 {/*
                   THE LEAD, which the sectioned summary used to drop.
-                  <p>`design-demo/final/18-meeting-brief.html` opens with one
+                  <p>The V2 reference opens with one
                   paragraph set larger than the rest, before anything else:
                   what happened, in a form somebody can paste into a reply.
                   `shortSummary` is exactly that paragraph and it was rendered

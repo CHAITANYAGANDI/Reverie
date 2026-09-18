@@ -65,7 +65,3 @@ miniodata/
 # here locally; see docs/transcription-benchmark.md.
 benchmark-audio/*
 !benchmark-audio/README.md
-
-
-design-demo
-docs/ui-redesign

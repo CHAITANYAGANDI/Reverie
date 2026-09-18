@@ -54,8 +54,7 @@ but does not count as an import. No paid tier, and no demo credentials here.
   SCREENSHOTS TO BE ADDED from https://reverieai.in: landing page; Home with the
   ask panel; a summary with decisions, risks and action items; the transcript
   with speakers and timestamps; Ask Reverie with a citation resolved into the
-  transcript. Note that docs/ui-redesign/ holds design renders, not the shipped
-  app, and some show surfaces the product does not have.
+  transcript.
 -->
 
 _No screenshots in the repository yet — see [reverieai.in](https://reverieai.in)._
@@ -317,7 +316,6 @@ baked in at build time.
 | [docs/ci-and-branch-protection.md](docs/ci-and-branch-protection.md) | What CI checks before a merge |
 | [docs/diarization.md](docs/diarization.md) | How speakers are separated |
 | [docs/load-testing-report.md](docs/load-testing-report.md) | Measured load-test results |
-| [docs/ui-redesign/](docs/ui-redesign/) | The design study behind the interface |
 
 ## Engineering Decisions and Trade-offs
 

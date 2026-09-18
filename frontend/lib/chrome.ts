@@ -22,10 +22,8 @@ import { folderIdFrom, isRecordPath } from "@/lib/routes";
  *
  * <p>So Find, Record and Import are on every page now. What is left here is the
  * single rule with a consequence rather than an opinion, plus the folder that
- * page actions need. The rules that were dropped, with the reasoning they were
- * dropped against, are written down in
- * docs/v2-implementation/feature-parity.md §8 — they were argued for at length
- * in the file this replaced and should not be re-litigated from silence.
+ * page actions need. The rules that were dropped were argued for at length
+ * before they were removed, and should not be re-litigated from silence.
  */
 export interface BandChrome {
   /**

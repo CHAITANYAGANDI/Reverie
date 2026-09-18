@@ -45,7 +45,6 @@ const serif = Literata({
 // specified Geist Mono, which is narrower and reads less like a code editor
 // beside a name — but it is not in Next 14's Google Fonts data, and a
 // self-hosted family for that much of a gain is not worth the first-paint cost.
-// See docs/v2-implementation/implementation-notes.md.
 const mono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",

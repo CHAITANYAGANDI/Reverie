@@ -638,7 +638,7 @@ describe("when there is nothing to show", () => {
     render(<HomePage />);
 
     /*
-     * The first minute, from `09-now-first.html`: the heading carries it rather
+     * The first minute, from the V2 reference: the heading carries it rather
      * than a bordered box in the middle of the page. `find`, because the
      * greeting waits for a clock the server does not have.
      */

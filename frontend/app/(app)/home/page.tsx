@@ -64,8 +64,7 @@
  * cross-meeting memory: decisions reversed, promises slipped twice, risks open
  * thirteen days. None of it exists — the migrations dropped
  * `meeting_decisions`, `decision_links`, `commitments` and
- * `commitment_evidence`, and nothing replaced them. See
- * docs/v2-implementation/feature-parity.md §2.
+ * `commitment_evidence`, and nothing replaced them.
  *
  * <p>What survives is the <em>rhythm</em> of that region, filled from the rows
  * already on screen: a conversation that failed needs a person, a conversation
@@ -144,7 +143,7 @@ export default function HomePage() {
       // only ever subtract from it -- it cannot surface anything the
       // unfiltered list does not already show. Narrowing by date is Library's,
       // where it is narrowing the whole archive and can therefore find
-      // something. See docs/v2-implementation/feature-parity.md.
+      // something.
     },
     {
       /*
@@ -645,7 +644,7 @@ function HomeLoadError({ onRetry }: { onRetry: () => void }) {
  *
  * <h2>The first minute</h2>
  *
- * <p>`09-now-first.html`: two buttons, the allowance, and an honest account of
+ * <p>The V2 reference: two buttons, the allowance, and an honest account of
  * what happens to a recording. The reference's third step is "it is compared
  * against every meeting before it", which is the memory layer and does not
  * exist. The third step here is what the product actually gives you afterwards,
