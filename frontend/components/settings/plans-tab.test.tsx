@@ -147,6 +147,17 @@ describe("PlansTab, what it includes", () => {
     expect(screen.queryByText(/Up to 500 names/i)).toBeNull();
   });
 
+  it("names only the export formats that exist", () => {
+    render(<PlansTab />);
+
+    // `ExportService` renders `application/pdf` and the MP3 conversion, and
+    // nothing else. This line used to advertise Word, Markdown and plain text
+    // -- the four-format picker the export dialog dropped -- so it is asserted
+    // rather than just corrected, the same way the withdrawn limits above are.
+    expect(screen.getByText(/Exporting the summary and the transcript as PDF/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Word, Markdown or plain text/i)).toBeNull();
+  });
+
   it("no longer carries the list of what Reverie does not do", () => {
     render(<PlansTab />);
 

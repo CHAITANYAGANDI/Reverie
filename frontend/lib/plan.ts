@@ -106,10 +106,25 @@ export const INCLUDED: FeatureGroup[] = [
   {
     heading: "Getting things out",
     features: [
-      { label: "Exporting a meeting as PDF, Word, Markdown or plain text" },
+      /*
+       * PDF, and only PDF.
+       *
+       * This line used to read "as PDF, Word, Markdown or plain text". Those
+       * were the four formats the old export dialog offered per document;
+       * `ExportService` now renders `application/pdf` and nothing else, and the
+       * dialog asks no format question at all. A plans page is the last place a
+       * withdrawn format should still be advertised, and this one was the only
+       * claim on it that the code could not back.
+       */
       {
-        label: "Downloading the original recording",
-        detail: "The file you recorded or imported, as it was stored.",
+        label: "Exporting the summary and the transcript as PDF",
+        detail:
+          "The summary complete, the transcript with who spoke and when. Pick one and it downloads on its own; pick more and they arrive as a single ZIP.",
+      },
+      {
+        label: "Downloading the recording as an MP3",
+        detail:
+          "The file you recorded or imported when that is already an MP3, and a converted copy when it is not.",
       },
     ],
   },
