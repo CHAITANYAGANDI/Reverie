@@ -1,9 +1,10 @@
 # What has to pass before anything reaches a deployment branch.
 #
 # Until this existed, nothing ran the backend or ai-service suites before a
-# deploy -- render.yaml shipped whatever was on the branch, and the backend's
-# own Dockerfile packages with `-DskipTests`, which is correct in an image build
-# and only correct if something else ran them first. This is that something.
+# deploy -- the deployment of the day shipped whatever was on the branch, and
+# the backend's own Dockerfile packages with `-DskipTests`, which is correct in
+# an image build and only correct if something else ran them first. This is
+# that something.
 #
 # Three suites, one per service, in parallel: they share no state and a Java
 # compile has no business delaying a Vitest run. `migrations` is separate
@@ -127,8 +128,9 @@ jobs:
     name: Migrations from empty
     runs-on: ubuntu-latest
     # A real PostgreSQL, because that is what the migrations are written
-    # against: H2 accepts a different dialect and would pass on SQL that Neon
-    # refuses. pgvector, because the RAG tables need the extension.
+    # against: H2 accepts a different dialect and would pass on SQL that a real
+    # PostgreSQL refuses. pgvector, because the RAG tables need the extension,
+    # and pg16 because that is what production runs.
     services:
       postgres:
         image: pgvector/pgvector:pg16

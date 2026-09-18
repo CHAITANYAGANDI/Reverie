@@ -38,7 +38,9 @@ frontend build takes placeholder `NEXT_PUBLIC_*` values. A pipeline that needed
 live credentials could not run on a fork and could fail for reasons that have
 nothing to do with the change under review.
 
-It also does not deploy. Render and Vercel watch the branches themselves.
+It also does not deploy. Vercel watches the branches itself — Production
+tracks `main` — and the Oracle host is updated by an operator. See
+[`docs/deploy.md`](deploy.md).
 
 ---
 

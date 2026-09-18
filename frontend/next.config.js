@@ -88,8 +88,8 @@ const nextConfig = {
         headers: [
           {
             /*
-             * Tell the browser never to come back over http. Render already
-             * redirects, but a redirect is one round trip on a network where
+             * Tell the browser never to come back over http. The edge proxy
+             * already redirects, but that is one round trip on a network where
              * somebody may be listening; HSTS removes the trip entirely.
              *
              * No `preload`. That submits the domain to a list baked into every

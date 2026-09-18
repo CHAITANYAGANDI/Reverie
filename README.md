@@ -28,7 +28,7 @@ Next.js Frontend ──Clerk JWT──▶ Spring Boot API ──┬── Postgr
 | `frontend/` | Next.js 14, React, TypeScript, Redux Toolkit, Tailwind, shadcn/ui | 3000 |
 | `backend-spring/` | Java 21, Spring Boot 3, Spring Security, Spring Kafka, JPA, Flyway | 8080 |
 | `ai-service/` | Python 3.12, FastAPI, OpenAI, aiokafka | 8000 |
-| infra | Neon (Postgres 18 + pgvector), Confluent Cloud (Kafka), Cloudflare R2 | — |
+| infra | PostgreSQL 16 + pgvector, Confluent Cloud (Kafka), Cloudflare R2 | — |
 
 Transcription is chosen separately from the LLM, because the two are not the
 same decision: AssemblyAI diarizes, Whisper does not. `auto` follows whatever
@@ -71,12 +71,36 @@ Files without a digit are hashed to a week, so reprocessing the same audio is
 stable. `DROPPED` needs a promise to go unmentioned across three later meetings,
 so it takes a fourth upload to see.
 
+## Production
+
+Live at **[reverieai.in](https://reverieai.in)**, release **v1.0.0**.
+
+| | |
+|---|---|
+| Frontend | Vercel, tracking `main` |
+| API / AI / database | one Oracle Cloud VM, Docker Compose |
+| Reverse proxy / TLS | Caddy |
+| Database | self-hosted PostgreSQL 16 + pgvector |
+| Object storage | Cloudflare R2 |
+| Authentication | Clerk |
+| Monitoring | Sentry |
+| Messaging | Confluent Cloud (one topic, `meeting_uploaded`) |
+
+Branches: `feature/*` → `dev` (integration) → `main` (production). Vercel
+Production tracks `main`; releases are tagged.
+
+**[docs/deploy.md](docs/deploy.md) is the canonical deployment document** —
+architecture, branch model, host commands, backups and restore, monitoring and
+the production smoke test. The host-level runbook is
+[deploy/oracle/README.md](deploy/oracle/README.md).
+
 ## Docs
 
 - [Architecture](docs/architecture.md)
 - [API contracts](docs/api-contracts.md) — REST, Kafka, WebSocket, JSON shapes (source of truth)
 - [Database schema](docs/database-schema.sql) — 53 Flyway migrations
-- [Deployment](docs/deploy.md)
+- [Deployment](docs/deploy.md) — **the canonical production deployment document**
+- [Oracle host runbook](deploy/oracle/README.md) — provisioning, first boot, sizing
 - [Demo script](docs/demo-script.md)
 - [Speaker identification](docs/speaker-identification.md) — how a voice named in
   one meeting is recognised in another, and the biometric-adjacent data that needs
@@ -152,10 +176,14 @@ so it takes a fourth upload to see.
 
 The ai-service has its own README with local (non-Docker) run instructions:
 [ai-service](ai-service/README.md). The other two run with `npm run dev` and
-`mvn spring-boot:run`, against the infra services from
-nothing -- there are no infrastructure containers left. Postgres, Kafka and
-object storage are Neon, Confluent Cloud and Cloudflare R2, all configured from
-`.env`.
+`mvn spring-boot:run`.
+
+`docker compose up` here builds the three application containers and nothing
+else — there are no local infrastructure containers. The Postgres, Kafka and
+object-storage endpoints a development stack talks to are whatever `.env`
+points at, reached over the internet. That is a local-development choice and
+says nothing about production, which self-hosts its database on the Oracle VM;
+see [docs/deploy.md](docs/deploy.md).
 
 ### Tests
 

@@ -1,8 +1,9 @@
 # Settings that apply only when SPRING_PROFILES_ACTIVE=production.
 #
-# render.yaml sets that profile and nothing else does, so everything here is
-# inert locally -- which is the point. The local stack keeps its API browser and
-# its metrics; the deployment does not hand either to the internet.
+# The production deployment sets that profile (deploy/oracle/.env) and nothing
+# else does, so everything here is inert locally -- which is the point. The
+# local stack keeps its API browser and its metrics; the deployment does not
+# hand either to the internet.
 #
 # See also DeploymentCheck, which runs under the same profile and refuses to
 # start when a development setting survived into a deployment.
@@ -32,7 +33,7 @@ springdoc:
 # request volume, error rates and latency readable by anyone, which is a free
 # progress bar for someone testing whether an attack is working.
 #
-# health stays because Render's healthCheckPath needs it. show-details is
+# health stays because the container healthcheck needs it. show-details is
 # already `never` in application.yml, so it answers UP or DOWN and nothing about
 # which dependency is unhappy.
 management:
@@ -43,7 +44,7 @@ management:
 
 # Trust the proxy's forwarded headers.
 #
-# Render terminates TLS and forwards over plain HTTP, so without this Tomcat
+# Caddy terminates TLS and forwards over plain HTTP, so without this Tomcat
 # believes every request arrived insecure. Two things follow: Spring Security
 # omits Strict-Transport-Security entirely (it only sets HSTS when
 # request.isSecure()), and anything building an absolute URL from the request
