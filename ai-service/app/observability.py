@@ -144,8 +144,9 @@ def init_sentry(settings: Settings) -> bool:
             # Nothing writes breadcrumbs; a zero ceiling means nothing can start
             # to without this being reconsidered.
             max_breadcrumbs=0,
-            # Hostnames are infrastructure detail; on Render they are container
-            # identifiers. Fixed, so nothing is auto-detected and sent.
+            # Hostnames are infrastructure detail; in a container they are
+            # container identifiers. Fixed, so nothing is auto-detected and
+            # sent.
             server_name=SERVICE,
         )
     except Exception:  # noqa: BLE001 - monitoring must never block startup

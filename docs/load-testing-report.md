@@ -1,10 +1,16 @@
 # Reverie AI — Load Testing
 
 > **Status: harness implemented and run. Every number below is measured.** They
-> come from a local 512 MB / 0.5 CPU container against a disposable PostgreSQL,
-> which is the same shape as the Render `starter` instance but not the same
-> machine. Treat them as capacity *shape* and as relative comparisons; absolute
-> numbers on Render will differ.
+> come from a local 512 MB / 0.5 CPU container against a disposable PostgreSQL.
+> Treat them as capacity *shape* and as relative comparisons, not as absolute
+> numbers for any particular host.
+>
+> **This report predates the move to Oracle Cloud**, and the 512 MB shape it
+> measures is the Render `starter` instance that production used to run on. It
+> is kept because it is the investigation that produced the current JVM sizing
+> and container limits — see the JVM sizing and Resource limits sections of
+> [`deploy/oracle/README.md`](../deploy/oracle/README.md). For how Reverie is
+> deployed today, see [`docs/deploy.md`](deploy.md).
 
 | Script | Purpose | Gates? |
 |---|---|---|
@@ -331,7 +337,8 @@ limit**, on the same `55/20` that "passed".
 
 ### What changed
 
-`render.yaml`: `MaxRAMPercentage=31 / InitialRAMPercentage=25` (159/128 MiB
+`render.yaml` (the Render blueprint, since removed):
+`MaxRAMPercentage=31 / InitialRAMPercentage=25` (159/128 MiB
 here). Not a squeeze — **the live set after a full collection is 68 MiB**, and a
 160 MiB heap ran the 50-VU load with **zero major collections** and the whole
 35-minute soak with **one**. Percentages rather than `-Xmx` so the sizing stays
@@ -442,5 +449,6 @@ container.
   token stub here is deliberately not that.
 - **Concurrency against the free-tier ledger**, which is a correctness test
   driven by load rather than a throughput test.
-- **Render itself.** Everything here is local. Production validation is by
-  observation of real traffic, not synthetic load against the live service.
+- **The production host itself.** Everything here is local. Production
+  validation is by observation of real traffic, not synthetic load against the
+  live service.

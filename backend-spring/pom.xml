@@ -35,10 +35,13 @@
         <sentry.version>8.16.0</sentry.version>
         <!--
           Overrides the Flyway release Spring Boot 3.5.3 manages, whose
-          PostgreSQL support stops at 17. Reverie's production database is Neon,
-          which runs PostgreSQL 18, so every boot logs a warning that the
-          database version is newer than Flyway has been tested against.
-          11.20.3 knows about 18 and the warning goes away.
+          PostgreSQL support stops at 17. This was raised when the production
+          database was a managed PostgreSQL 18, which made every boot log a
+          warning that the database version was newer than Flyway had been
+          tested against. Production now self-hosts PostgreSQL 16 (see
+          docs/deploy.md), so the warning is gone either way; the pin is kept
+          rather than reverted, because 11.20.3 covers 16 and 18 both and
+          moving it back would be a dependency change with nothing to gain.
 
           The property alone is the whole change: spring-boot-dependencies
           declares the Flyway versions through this property, so raising it

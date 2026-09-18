@@ -1,375 +1,641 @@
 # Deploying Reverie
 
-Two hosts, not one.
+**This is the canonical description of how Reverie is deployed today.** It
+describes the system that is actually running, at release **v1.0.0**. Anything
+elsewhere in the repository that contradicts it is out of date.
 
-- **Vercel** runs the Next.js frontend.
-- **Render** runs the Spring backend (`reverie-backend`) and the FastAPI AI worker
-  (`reverie-ai`).
-
-Backing it: **Neon** (Postgres), **Confluent Cloud** (Kafka), **Cloudflare R2**
-(object storage), **Clerk** (identity), **AssemblyAI** (speech-to-text) and
-**OpenAI** (summaries, chat, embeddings).
-
-```
-                    Internet
-                       |
-                       v
-          Vercel  --  Reverie frontend (Next.js)
-                       |
-                  HTTPS / WSS
-                       |
-                       v
-          Render  --  reverie-backend (Spring, public web service)
-                       |
-                       +--> Neon              Postgres + RLS
-                       +--> Cloudflare R2     recordings, exports
-                       +--> Confluent Cloud   meeting_uploaded
-                       |
-                       v
-          Render  --  reverie-ai (FastAPI, PRIVATE service)
-                       |
-                       +--> AssemblyAI        transcription + diarization
-                       +--> OpenAI            summary, chat, embeddings
-```
-
-`reverie-ai` is a Render **private service**: it has no public URL, and is reached
-only by the backend and by Kafka. The browser never talks to it.
-
-[`render.yaml`](../render.yaml) declares the two Render services and nothing
-else — the frontend's configuration lives in Vercel's project settings, not in
-that file. Neither can do the one-time provisioning below, and several steps
-here are the difference between a deployment that works and one that comes up
-healthy while being silently wrong.
-
----
-
-## 0. Before anything: the failure modes that do not announce themselves
-
-Every item in this section fails by *working*. The service starts, the health
-check passes, pages render — and something is wrong that no log line mentions.
-That is what makes them worth a section of their own.
-
-**The production profile catches most of them now.** `render.yaml` sets
-`SPRING_PROFILES_ACTIVE=production`, which switches on `DeploymentCheck`: the
-backend refuses to start if any setting below is still the development one, and
-names all of them at once rather than one per restart. Nothing else sets that
-profile — `docker-compose` deliberately does not, because the local stack *is*
-the development configuration.
-
-**Auth mode.** `REVERIE_AUTH_MODE` defaults to `clerk`, in `application.yml`
-and on every `@Value` that reads it. In dev mode `AuthenticationFilter` and
-`StompAuthInterceptor` trust an `X-Dev-User` header, so *any* request — and any
-websocket — can impersonate *any* user. The blueprint hardcodes `clerk`; do not
-override it.
-
-> It defaulted to `dev` until recently, and the fail-closed default written on
-> the `@Value` was cancelled by `application.yml` supplying `dev` explicitly — a
-> `@Value` default applies only when a property is *absent*. Two defaults for
-> one decision, and the weaker one won silently. `ApplicationDefaultsTest` now
-> resolves the real YAML with an empty environment and pins the answer.
-
-**The internal callback token.** `REVERIE_INTERNAL_TOKEN` has **no default**.
-It used to fall back to `dev-internal-token`, which is committed to this
-repository and printed further down this page, so a deployment that never set it
-looked exactly like one that did — while accepting result callbacks from anybody
-who had read the source. Those callbacks write transcripts and mark meetings
-READY. Unset now means `InternalTokenFilter` refuses every `/internal/**`
-request: meetings pile up in PROCESSING and the ai-service logs 401s, which is
-loud and traceable in a way that silent acceptance is not.
-
-**URLs that have no scheme.** Render's blueprint cannot produce a URL.
-`fromService` with `property: host` yields a bare `reverie-backend.onrender.com`,
-and a bare host is not an origin — CORS compares it against the browser's
-`https://…` and never matches, so every request fails and it reads as "the API
-is down". `APP_FRONTEND_URL`, `APP_PUBLIC_URL` and `SPRING_CALLBACK_URL` are
-therefore `sync: false` and filled in by hand, with the scheme. `AI_SERVICE_URL`
-is the one exception: it names a private service, where `http` is the only
-possibility, so `AiClient` supplies it.
-
-The same trap exists on the Vercel side for `NEXT_PUBLIC_API_URL`, which is not
-in `render.yaml` at all — see [section 7](#7-vercel--the-frontend). A
-scheme-less value there is worse, because it becomes a *relative* path and the
-app calls itself instead of the API.
-
-**`APP_PUBLIC_URL` is not the frontend URL.** It is where *this API* is
-reachable from the public internet, and only the calendar feed uses it — fetched
-by Google's and Apple's servers rather than by the user's browser. It was
-missing from the blueprint entirely, so it fell back to `http://localhost:8080`
-and every subscribed calendar quietly stopped updating. Nothing in the app shows
-this; the feed simply never refreshes.
-
-**`APP_FRONTEND_URL` is the Vercel origin.** Not a Render host — the frontend is
-not on Render. It is the public origin Vercel serves the app from, e.g.
-`https://<your-project>.vercel.app`, with the scheme and no trailing slash. It is
-the *only* allowed CORS origin and the *only* allowed STOMP origin, so a wrong
-value blocks every browser request and every socket while the backend stays
-perfectly healthy — which reads as "the API is down" rather than as a
-misconfiguration.
-
-**Frontend build-time values.** `NEXT_PUBLIC_*` are inlined into the client
-bundle by `next build`, not read at runtime — and they are set in **Vercel**, not
-in `render.yaml`. Change one and you must trigger a new *build*, not a restart: a
-redeploy of the existing build silently keeps serving the old bundle pointing at
-the old API URL.
-
-**`CLERK_SECRET_KEY` is the one that takes the whole site down.** It is the only
-non-`NEXT_PUBLIC_` variable the frontend needs — set it **in Vercel**, and the
-backend needs the same value on Render as well, where its absence refuses the
-deploy outright (section 4) — and
-`clerkMiddleware` reads it from the environment *implicitly*: there is no
-`process.env.CLERK_SECRET_KEY` anywhere in the source to grep for. Without it the
-middleware throws on every request that matches, including the public marketing
-page, and the site answers 500 rather than degrading. It must never gain a
-`NEXT_PUBLIC_` prefix, which would inline your Clerk backend credential into the
-browser bundle.
-
-**Things that are off unless you switch them on.** Neither of these fails; both
-just quietly do less.
-
-| Unset | What silently happens |
+| | |
 |---|---|
-| `S3_PUBLIC_ENDPOINT` (ai-service) | AssemblyAI stops fetching recordings from R2 itself, so every file is downloaded into the container and uploaded again instead of never touching it. |
+| Repository | `CHAITANYAGANDI/Reverie` |
+| Production release | **v1.0.0** |
+| Frozen release commit | `69bbf07770ba535371de39d688dde652f85fb1d1` |
+| Public frontend | Vercel — **https://reverieai.in** |
+| API, AI worker, database | one Oracle Cloud Ubuntu VM, Docker Compose |
+| Reverse proxy / TLS | Caddy, on the same VM |
+
+Two companion documents, and neither replaces this one:
+
+- [`deploy/oracle/README.md`](../deploy/oracle/README.md) — the host runbook:
+  provisioning the VM, first-boot order, JVM sizing, resource limits, and the
+  reasoning behind each. Read it when you are working *on* the host.
+- [`docs/ci-and-branch-protection.md`](ci-and-branch-protection.md) — what CI
+  checks before a merge.
+
+No secret value appears in this document, and none should ever be added to it.
+See [10. Secrets and environment variables](#10-secrets-and-environment-variables).
 
 ---
 
-## 0b. What the `production` profile changes
+## 1. Production architecture
 
-`render.yaml` sets `SPRING_PROFILES_ACTIVE=production` and nothing else does, so
-none of this affects local development.
+```
+                         Browser
+                            │
+                            │  HTTPS
+                            ▼
+                ┌───────────────────────┐
+                │  Vercel               │   Next.js frontend
+                │  reverieai.in         │   tracks `main`
+                └───────────┬───────────┘
+                            │  HTTPS / SockJS
+                            ▼
+  ═══════════════════ Oracle Cloud Ubuntu VM ══════════════════
+                            │  :80 :443  (the only published ports)
+                            ▼
+                     ┌──────────────┐
+                     │    Caddy     │  TLS, reverse proxy
+                     └──────┬───────┘
+                            │  edge network
+                            ▼
+                  ┌────────────────────┐
+                  │  reverie-backend   │  Spring Boot, :8080 internal
+                  └─────┬────────┬─────┘
+                        │        │  internal network
+                        │        ▼
+                        │  ┌──────────────┐   ┌──────────────────┐
+                        │  │  reverie-ai  │──▶│ reverie-postgres │
+                        │  │  FastAPI     │   │ PostgreSQL 16    │
+                        │  │  :8000 int.  │   │ + pgvector       │
+                        │  └──────┬───────┘   │ :5432 internal   │
+                        │         │           └────────┬─────────┘
+                        │         │                    ▼
+                        │         │             postgres_data volume
+  ═════════════════════════════════════════════════════════════
+                        │         │
+                        ▼         ▼
+            Clerk · Cloudflare R2 · Confluent Cloud · Sentry
+            (+ AssemblyAI / OpenAI, from the AI worker only)
+```
 
-| | Local | Production |
+| Piece | Where it runs | Reached how |
 |---|---|---|
-| `DeploymentCheck` | off | refuses to start on any development-shaped setting |
-| `/swagger-ui`, `/v3/api-docs` | 200 | **404** — the full API surface is not published |
-| `/actuator/metrics` | 200 | **404** — pool pressure, disk, and every served URI template |
-| `/actuator/health` | 200 | 200 — Render's health check needs it |
-| `forward-headers-strategy` | off | `framework` — so HSTS is emitted and `isSecure()` is true behind Render's TLS |
+| Frontend | Vercel | `https://reverieai.in` |
+| `reverie-backend` | Oracle VM container | through Caddy; container port 8080 is **not** published |
+| `reverie-ai` | Oracle VM container | Docker network only; port 8000 is **not** published |
+| `reverie-postgres` | Oracle VM container | Docker network only; port 5432 is **not** published |
+| Caddy | Oracle VM container | the only container with `ports:` — 80 and 443 |
 
-Verified by running both profiles side by side, not by reading the config.
+External services, and what each is for:
 
----
+| Service | Used for |
+|---|---|
+| **Clerk** | authentication — production configuration |
+| **Cloudflare R2** | recordings, exports, and the database backup destination |
+| **Confluent Cloud** | the single Kafka topic `meeting_uploaded`, backend → AI worker |
+| **Sentry** | error monitoring, one project per service |
+| **Resend** | the messages written to `mail_outbox` and delivered by the relay |
+| **AssemblyAI / OpenAI** | transcription and LLM work, called by `reverie-ai` only |
 
-## 1. Neon
-
-The database is `neondb`, owned by `neondb_owner`. That role is not a superuser
-but does hold `CREATEROLE` **and** `BYPASSRLS`, which is what makes the security
-model portable: Postgres only lets a role grant attributes it holds itself, so
-`neondb_owner` can create the privileged system role. (Verified against the
-instance — if you move to a provider whose owner lacks `BYPASSRLS`, the split
-in `TenantDataSourceConfig` cannot be reproduced and needs rethinking.)
-
-### 1.1 Get both URLs
-
-Neon's dashboard gives a **pooled** host (contains `-pooler`) and a **direct**
-host (the same name with `-pooler` removed). You need both:
-
-| Use | Endpoint | Why |
-|---|---|---|
-| Runtime (`SPRING_DATASOURCE_URL`, `PG_HOST`) | **direct** | Row-level security is armed with a session-level setting on each connection, and a transaction-mode pooler gives the next transaction a different server connection. Hikari is already the pool this process needs |
-| Migrations (`FLYWAY_URL`) | **direct** | Flyway holds an advisory lock across several transactions; a transaction-mode pooler will not keep it |
-
-> **Both are the direct host.** This table used to say `pooled` for the runtime,
-> and that shipped. The result is not an error: RLS matches nothing on a
-> connection that never received the tenant, so the API answers 200 with an
-> empty list and a straight-faced 404 — an intact account showing "No
-> conversations", an empty folder rail, "Meeting not found", "Transcript
-> unavailable" — intermittently, per request, because it depends on which
-> backend the pooler handed that transaction. Reloading re-rolls it, which is
-> why reloading looks like a fix. The same mechanism can hand one tenant's rows
-> to another. `DeploymentCheck` now refuses to start on a `-pooler` runtime URL.
-
-> `.env` currently has `DEPLOY_DATABASE_URL_POOLED` set and
-> `DEPLOY_DATABASE_URL_DIRECT` **empty**. Fill the direct one in before
-> deploying, or migrations will run through the pooler and can deadlock or
-> half-apply.
-
-### 1.2 Convert to JDBC
-
-Neon hands you a libpq URL:
-
-```
-postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-```
-
-Spring needs the `jdbc:` form, with credentials supplied separately and
-**`channel_binding` removed** — it is a libpq parameter the JDBC driver does not
-understand:
-
-```
-SPRING_DATASOURCE_URL=jdbc:postgresql://ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require
-FLYWAY_URL=jdbc:postgresql://ep-xxx.region.aws.neon.tech/neondb?sslmode=require
-```
-
-### 1.3 Create the two runtime roles
-
-`infra/postgres-init/01-app-role.sql` runs automatically only on a fresh Docker
-volume. On Neon, run it **once by hand as `neondb_owner`**, against the direct
-endpoint. It creates `reverie_app` (no bypass — every user request) and
-`reverie_sys` (`BYPASSRLS` — outbox relay, worker callbacks,
-share links, provisioning).
-
-Change the two passwords from the development defaults first; they are what
-`SPRING_DATASOURCE_PASSWORD` and `REVERIE_DATASOURCE_SYSTEM_PASSWORD` must be
-set to.
-
-### 1.4 Migrate
-
-The backend runs Flyway on boot, so the first deploy migrates. `V2` issues
-`CREATE EXTENSION IF NOT EXISTS vector` — `vector` 0.8.1 is available on the
-instance but not yet installed, and `neondb_owner` may create it.
-
-Note the version gap: local development runs Postgres **16**, Neon serves
-**18.4**. The migrations use nothing version-specific, but this is the first
-place to look if one behaves differently than it did locally.
-
-### 1.5 Verify isolation actually survived the move
-
-Do not skip this. Connect as `reverie_app` and confirm the tenant boundary
-holds on the real database:
-
-```sql
-SET app.user_id = '<some real user id>';
-SELECT count(*) FROM meetings;          -- only that user's rows
-SELECT set_config('app.bypass','on',false);
-SELECT count(*) FROM meetings;          -- MUST be unchanged
-SELECT count(*) FROM outbox_events;     -- MUST be 0
-ALTER ROLE reverie_app BYPASSRLS;      -- MUST be denied
-```
+The request path is worth stating plainly, because the container boundaries are
+the security model: the browser talks to Vercel, and to the backend through
+Caddy, and to nothing else on the VM. It never reaches `reverie-ai` or
+PostgreSQL, and there is no published port that would let it.
 
 ---
 
-## 2. Confluent Cloud
-
-One topic, and it is load-bearing. `meeting_uploaded` carries job dispatch from
-the backend's outbox to the ai-service worker; break it and nothing transcribes.
-Everything the UI shows — each stage, the transcript, the summary and a failure
-— travels over the internal HTTP callbacks instead, so Kafka volume here is one
-message per meeting.
-
-### Create the cluster
-
-A **Basic** cluster in the region nearest the Render services. Basic bills on
-consumption and costs nothing at rest, which for one message per meeting is the
-right shape.
-
-### Create the topic
-
-One topic, **1 partition**, replication factor left at the default:
+## 2. Repository and branch model
 
 ```
-meeting_uploaded
+feature/* · fix/* · harden/* branches
+                │
+                ▼
+              dev          integration
+                │
+                ▼
+              main         production
+                │
+                ▼
+        Vercel Production
 ```
 
-An older build created eight. The other seven carried stage and billing events
-that nothing consumed except a logger, and they were removed — if your cluster
-still has them, they are inert and can be deleted at your convenience.
+- **`dev` is the integration branch.** Work merges here first, by pull request,
+  with CI green.
+- **`main` is the production branch.** It receives `dev` as a release. Nothing
+  is committed to `main` directly.
+- **Vercel Production tracks `main`.** A merge into `main` is what puts a new
+  frontend in front of users.
+- **Production releases are tagged.** `v1.0.0` is the first frozen production
+  release and points at `69bbf07770ba535371de39d688dde652f85fb1d1`.
+- **Do not deploy production from a feature branch.** The Oracle host is
+  checked out at a reviewed commit or tag — see
+  [4. Oracle production host](#4-oracle-production-host).
 
-Confluent Cloud enforces a replication factor of **3** and rejects an explicit 1
-with `POLICY_VIOLATION`, so `KafkaTopicsConfig` asks for `replicas(-1)` — Kafka's
-sentinel for "broker default", which resolves to 1 on the local single-node
-broker and 3 here. Do not change it back to a literal.
+The tag is a record, not a trigger. Creating one deploys nothing: Vercel
+responds to `main`, and the Oracle host is updated by an operator on the VM.
 
-Creating them by hand is still worth doing: `KafkaAdmin` only *logs* a failed
-topic creation, and `spring.kafka.listener.missing-topics-fatal` is `false`, so a
-topic that never got created produces a healthy-looking backend whose uploads
-never reach the worker.
+---
 
-### Create the API key
+## 3. Frontend deployment
 
-One key scoped to the cluster (**Global access** is fine for a single-tenant
-deployment; granular access needs ACLs for both service accounts on all eight
-topics plus the `reverie-backend` and `ai-service` consumer groups). **The
-secret is shown once** — copy both halves before closing the dialog.
+The Next.js app is deployed on **Vercel**, from Git. There is no deploy command
+to run — merging `dev` into `main` is the deployment.
 
-Confluent's own docs note it can take ~90 seconds for a new key to propagate; an
-immediate deploy can fail authentication and then succeed on retry.
+| | |
+|---|---|
+| Production domain | `reverieai.in` |
+| Production branch | `main` |
+| Preview deployments | other branches, including `dev` |
 
-### Wire the credentials
+Frontend environment variables live in the **Vercel project's Environment
+Variables**, per environment. They are not in this repository and not in
+`deploy/oracle/.env`.
 
-The bootstrap server is on the cluster's *Cluster settings* page and looks like
-`pkc-xxxxx.<region>.aws.confluent.cloud:9092` — port **9092**, same as plaintext
-Kafka, so the port is not a hint that TLS is off.
+| Variable | Notes |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | the backend origin, with scheme, no path and no trailing slash — `lib/api.ts` appends `/api/v1` itself |
+| `NEXT_PUBLIC_WS_URL` | the same origin plus `/ws`, and **`https://`, not `wss://`** — `lib/ws.ts` uses SockJS, whose handshake is an ordinary HTTP GET |
+| `NEXT_PUBLIC_AUTH_MODE` | `clerk`. Never `dev` — that mode trusts an `X-Dev-User` header |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | from the Clerk production instance |
+| `CLERK_SECRET_KEY` | server-side only, read at runtime by `middleware.ts`. **Never** give it a `NEXT_PUBLIC_` prefix |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` — without it Clerk links to its own hosted pages on another domain |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` |
 
-The two services take the same secret in different shapes — the backend as a JAAS
-string, the ai-service as a username/password pair:
+Optional, and harmless when unset: `NEXT_PUBLIC_APP_VERSION`,
+`NEXT_PUBLIC_BUILD_SHA`, `NEXT_PUBLIC_TERMS_URL`, `NEXT_PUBLIC_PRIVACY_URL`,
+`NEXT_PUBLIC_SENTRY_DSN`.
+
+**Every `NEXT_PUBLIC_*` is a build-time value.** `next build` inlines them into
+the client bundle; they are not read at runtime. Changing one in the Vercel
+dashboard and redeploying the *existing* build changes nothing — the old value
+keeps being served. Trigger a new build. `CLERK_SECRET_KEY` is the exception:
+it is read at runtime, on the server.
+
+Secrets must never be committed. The Vercel dashboard is where the frontend's
+values live, and the only place.
+
+---
+
+## 4. Oracle production host
+
+An **Ubuntu** VM on Oracle Cloud. Everything that is not the frontend runs here,
+in containers, under one Docker Compose project.
+
+| | |
+|---|---|
+| Repository checkout | `~/reverie` |
+| Production compose directory | `~/reverie/deploy/oracle` |
+| Compose project name | `reverie` |
+| Containers | `reverie-backend`, `reverie-ai`, `reverie-postgres`, Caddy |
+| Published ports | **80 and 443 only**, both on Caddy |
+
+Caddy terminates TLS, obtains and renews the Let's Encrypt certificate, and
+proxies to the backend. It is the only container with a `ports:` entry. The
+backend, the AI service and PostgreSQL stay on the Docker networks: reachable
+by service name, and by nothing from outside the host.
+
+Inspecting a running host:
 
 ```bash
-# backend  (note the SPRING_ prefix on the bootstrap var — the ai-service has none)
-SPRING_KAFKA_BOOTSTRAP_SERVERS=pkc-xxxxx.<region>.aws.confluent.cloud:9092
-KAFKA_SECURITY_PROTOCOL=SASL_SSL
-KAFKA_SASL_MECHANISM=PLAIN
-KAFKA_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="API_KEY" password="API_SECRET";
+cd ~/reverie/deploy/oracle
 
-# ai-service
-KAFKA_BOOTSTRAP_SERVERS=pkc-xxxxx.<region>.aws.confluent.cloud:9092
-KAFKA_SECURITY_PROTOCOL=SASL_SSL
-KAFKA_SASL_MECHANISM=PLAIN
-KAFKA_SASL_USERNAME=API_KEY
-KAFKA_SASL_PASSWORD=API_SECRET
+docker compose ps                     # what is up, and healthy
+docker stats --no-stream              # memory and CPU against the configured limits
+docker compose logs -f --tail=100     # follow (log rotation is bounded, 10 MB x 3)
+docker compose logs reverie-backend
 ```
 
-Two things bite here. The **trailing semicolon** in the JAAS string is required —
-without it the client fails to parse the login module and reports it as an
-authentication failure, which sends you looking at the wrong thing. And the
-bootstrap variable is `SPRING_KAFKA_BOOTSTRAP_SERVERS` on the backend but plain
-`KAFKA_BOOTSTRAP_SERVERS` on the ai-service; setting the wrong one leaves that
-service quietly pointed at `localhost:9092`.
+Updating to a new reviewed commit or tag:
 
-### Verify
+```bash
+cd ~/reverie
+git fetch --tags
+git checkout <tag-or-reviewed-commit>
 
-Do not trust green service badges — both services degrade rather than crash when
-Kafka is unreachable. Check the logs for the positive signal:
+cd deploy/oracle
+docker compose config --quiet         # validate; prints NOTHING on success
+docker compose build
+docker compose up -d
+```
 
-- ai-service: `Kafka worker connected to pkc-… ; consuming 'meeting_uploaded'.`
-  Its absence, or a repeating `Kafka unavailable (…); retrying in Ns.`, is the
-  failure.
-- backend: no `Failed to create topics` warnings from `KafkaAdmin` at startup.
+> **`--quiet`, always, against a real `.env`.** Plain `docker compose config`
+> renders the *resolved* file to stdout — every database password, the
+> Confluent secret, the R2 keys, Clerk's secret key. That lands in scrollback,
+> in a pasted snippet, in a screenshot. `--quiet` runs the same validation and
+> prints nothing on success.
 
-Then upload one meeting end to end. If it sticks at `QUEUED`, dispatch is broken —
-confirm with `SELECT count(*) FROM outbox_events WHERE published = FALSE;`. That is
-the designed behaviour — `OutboxPublisher` retries and preserves order, so a
-Kafka outage queues meetings rather than losing them, and they drain once the
-credentials are right.
+Recovery after a VM reboot is automatic: every service is
+`restart: unless-stopped` and Docker is enabled at boot.
+
+The host runbook — provisioning, the Oracle security list, DNS and the ACME
+prerequisite, the first-boot ordering that only happens once, JVM sizing and
+the measured resource limits — is
+[`deploy/oracle/README.md`](../deploy/oracle/README.md).
 
 ---
 
-## 3. Cloudflare R2
+## 5. Backend and AI deployment
 
-Create a bucket named `reverie` and an API token with object read/write.
+Both services are built from this repository's own Dockerfiles by Compose on
+the VM, and run as long-lived containers. There is no separate build server and
+no registry in the path.
 
-- `S3_BUCKET` — **`reverie`**, on **both** `reverie-backend` and `reverie-ai`. They
-  read and write the same objects; a mismatch is not an error, it is one service
-  quietly writing somewhere the other never looks.
-- `S3_ENDPOINT` — `https://<account-id>.r2.cloudflarestorage.com`
-- `S3_REGION` — `auto` (R2 accepts nothing else)
-- `S3_PUBLIC_ENDPOINT` — the same, unless a custom domain fronts the bucket.
-  Needed on **both** services. Blank on `reverie-ai` does not fail; it silently
-  disables AssemblyAI fetching the recording from R2 itself, so every file is
-  pulled into the container and pushed out again.
-- `S3_ACCESS_KEY` / `S3_SECRET_KEY` — the same token on both, and it must have
-  **write**. `reverie-ai` used to only read, so a token scoped to "Object Read
-  only" worked there; MP3 export writes the converted copy back to the bucket,
-  and a read-only token turns that into a conversion that runs, succeeds, and
-  fails on the very last step, every time.
+| | `reverie-backend` | `reverie-ai` |
+|---|---|---|
+| Stack | Java 21, Spring Boot 3 | Python 3.12, FastAPI |
+| Internal port | 8080 | 8000 |
+| Published | no | no |
+| Profile / env | `SPRING_PROFILES_ACTIVE=production` | `REVERIE_ENV=production` |
+| Also does | Flyway migrations on boot | consumes `meeting_uploaded`, calls back over `/internal/**` |
 
-### The bucket must allow the app's origin to GET
+The `production` profile is what makes the backend fail loudly rather than come
+up misconfigured. It switches on `DeploymentCheck`, which refuses to start if
+any setting is still a development one and names all of them at once; it
+returns 404 for `/swagger-ui`, `/v3/api-docs` and `/actuator/metrics`; and it
+sets `forward-headers-strategy: framework` so the app sees Caddy's TLS
+correctly. `/actuator/health` stays public and says only `UP` or `DOWN`.
 
-**Required, or MP3 export silently produces nothing.** The browser now fetches
-the converted recording straight from R2 with a presigned URL, so that it can go
-into the same archive as the summary and the transcript. That is a cross-origin
-request from the Vercel app to `*.r2.cloudflarestorage.com`, and without a CORS
-rule the browser refuses it before it is sent — the API sees nothing, R2 sees
-nothing, and the only evidence is a console message.
+`reverie-ai` **degrades rather than crashing** when Kafka or PostgreSQL is
+unreachable. Its container status is therefore not evidence that it is working
+— check the log line, not the badge:
 
-It is deliberately not proxied through Spring: an hour of audio through a
-request thread is a denial-of-service tool with a login.
+```bash
+cd ~/reverie/deploy/oracle
 
-In the Cloudflare dashboard, **R2 → `reverie` → Settings → CORS policy**:
+# public, through Caddy
+curl -s https://<backend hostname>/actuator/health      # {"status":"UP"}
+
+# private — from the host, never from the internet
+docker compose exec reverie-ai \
+  python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:8000/health').read())"
+
+# the line that proves the worker is really wired up
+docker compose logs reverie-ai | grep "RAG connected to Postgres"
+```
+
+Restarting one service:
+
+```bash
+cd ~/reverie/deploy/oracle
+docker compose restart reverie-backend
+```
+
+Let the backend reach `UP` before judging the worker: the backend runs the
+migrations, and the worker is held until PostgreSQL is healthy anyway.
+
+**Do not publish a container port to debug.** `expose:` without `ports:` is
+what keeps 8080, 8000 and 5432 off the internet, and Docker's own iptables
+rules bypass UFW, so a "temporary" `ports:` entry is a real exposure. Use
+`docker compose exec`.
+
+---
+
+## 6. PostgreSQL + pgvector
+
+The database is **self-hosted on the Oracle VM**. Production does not use Neon.
+
+| | |
+|---|---|
+| Image | `pgvector/pgvector:pg16` |
+| Container | `reverie-postgres` |
+| Compose service | `postgres` — this is the name `docker compose exec` takes |
+| Data | the `postgres_data` named volume |
+| Port 5432 | **Docker-internal only** — there is no `ports:` entry, deliberately |
+| Extension | `pgvector`, created by migration `V2` |
+
+`pgvector/pgvector:pg16` rather than plain `postgres:16` because `V2` issues
+`CREATE EXTENSION vector` and the RAG tables do not exist without it. It is the
+same image family the "Migrations from empty" CI job runs every migration
+against, so what boots here is what CI proves.
+
+**`postgres_data` is the only copy of every meeting, transcript, summary and
+account.** That is the fact the whole of section 7 exists for.
+
+### Roles
+
+The role separation is set up once, on an empty volume, by
+`deploy/oracle/postgres-init/01-roles.sh`. It is load-bearing — this document
+describes it and does not change it:
+
+| Role | Attribute | Used by |
+|---|---|---|
+| `reverie` | owner / superuser | Flyway migrations; also the container's `POSTGRES_USER` |
+| `reverie_app` | `NOBYPASSRLS` | Spring's tenant traffic and the worker's RAG traffic, so the row-level-security policies bind |
+| `reverie_sys` | `BYPASSRLS` | the paths with no user behind them: worker callbacks, the outbox relay, provisioning |
+
+The init script also sets `ALTER DEFAULT PRIVILEGES`, so tables Flyway has not
+created yet are usable the moment it creates them. It runs **only** on a fresh
+volume — changing a password in `.env` afterwards changes what the applications
+present, not what the database expects. Rotating one is documented in
+[`deploy/oracle/README.md`](../deploy/oracle/README.md#rotating-a-database-password).
+
+No username or password belongs in this file, and none is here. The names above
+are role names, which are structure; the values live only in the host's `.env`.
+
+---
+
+## 7. Backups and restore
+
+The database is backed up by a **systemd timer on the Oracle host**.
+
+| | |
+|---|---|
+| Script | `/usr/local/sbin/reverie-db-backup` |
+| Timer | `reverie-db-backup.timer` — enabled and active |
+| Service | `reverie-db-backup.service` |
+| Destination | the dedicated Cloudflare R2 backup location |
+
+> **These live on the host, not in this repository.** The script and the two
+> unit files are installed on the VM and are not tracked here, so cloning the
+> repository does not give you a backup system — provisioning one is a host
+> step. This section documents what the running host does.
+
+### What one run does
+
+1. **Dump** the PostgreSQL database.
+2. **Validate the archive** before it is trusted.
+3. **Upload** it to the dedicated Cloudflare R2 backup location.
+4. **Read the uploaded object back.**
+5. **Verify the checksum** of what came back against what was sent.
+
+The upload is not the end of the run. A backup that was written but cannot be
+read is the failure this sequence exists to catch, which is why step 4 is a
+separate step from step 3.
+
+The most recent observed run completed successfully and passed checksum
+verification.
+
+### Checking it
+
+```bash
+systemctl status reverie-db-backup.timer --no-pager
+
+journalctl -u reverie-db-backup.service -n 50 --no-pager
+```
+
+`systemctl list-timers reverie-db-backup.timer --no-pager` shows when it last
+ran and when it is next due.
+
+### Retention
+
+Two cleanups, configured separately, and they are not the same mechanism:
+
+- **Local copies on the VM** are pruned by the configured local cleanup.
+- **Remote copies in R2** expire under a bucket lifecycle rule on the backup
+  prefix.
+
+Both are configured for roughly a **week**. A lifecycle rule is a policy rather
+than a scheduled job: it sets the age at which an object becomes eligible for
+deletion, and the provider executes it on its own cadence. Say it that way and
+do not promise an exact deletion moment — the user-facing privacy copy is
+deliberately worded as "about a week", and that wording should not be
+tightened.
+
+`FREE_TIER_IDENTITY_HMAC_SECRET` must be backed up **with** the database.
+Restoring one without the other resets every account's lifetime free allowance,
+silently.
+
+### Restore
+
+Restoring a dump into the running stack, from a file already on the host:
+
+```bash
+cd ~/reverie/deploy/oracle
+
+docker compose exec -T postgres \
+  pg_restore -U <owner-role> -d <database> --clean --if-exists < <dump-file>
+```
+
+`-T` matters: without it Compose allocates a TTY and carriage returns corrupt
+the stream.
+
+Taking an ad-hoc dump by hand, for a scratch restore or before a risky change:
+
+```bash
+cd ~/reverie/deploy/oracle
+
+docker compose exec -T postgres \
+  pg_dump -U <owner-role> -d <database> --format=custom \
+  > "reverie-$(date -u +%Y%m%dT%H%M%SZ).dump"
+```
+
+`--format=custom` so it restores selectively with `pg_restore`.
+
+**What this repository cannot tell you, and you must get from the host:** the
+name of the R2 backup bucket and prefix, the credentials and the client the
+host uses to reach them, and therefore the exact command that pulls a specific
+backup object down before the `pg_restore` above. Those are operator-specific
+and are not invented here. Read them from the installed
+`/usr/local/sbin/reverie-db-backup`, which is the authority on where its own
+output went.
+
+An untested dump is a belief rather than a backup. Restore one into a scratch
+database and count rows before you need to rely on it.
+
+---
+
+## 8. Monitoring and production checks
+
+There is **no automated alerting**. Everything below is somebody looking, and
+that is worth being honest about rather than implying a pager that does not
+exist.
+
+On the host:
+
+```bash
+cd ~/reverie/deploy/oracle
+docker compose ps
+docker stats --no-stream
+systemctl status reverie-db-backup.timer --no-pager
+journalctl -u reverie-db-backup.service -n 30 --no-pager
+```
+
+Off the host:
+
+- **Vercel** — the latest Production deployment succeeded and is the commit you
+  expect.
+- **Sentry** — new production errors, in the three projects below.
+- **reverieai.in** — load it. The [smoke test](#9-production-smoke-test) is the
+  longer version; loading the landing page and signing in is the short one.
+
+What to look at first when something is wrong: `docker compose ps` for a
+container that is restarting, `docker stats --no-stream` for one sitting near
+its memory limit, and
+`docker compose logs reverie-ai | grep "RAG connected to Postgres"` for a
+worker that is up but not wired up.
+
+### Sentry
+
+Three projects, because three services fail for unrelated reasons:
+
+| Project | Configured in | Variable |
+|---|---|---|
+| `reverie-frontend` | Vercel | `NEXT_PUBLIC_SENTRY_DSN` |
+| `reverie-backend` | the host's `.env` | `SENTRY_DSN_BACKEND` → `SENTRY_DSN` in the container |
+| `reverie-ai` | the host's `.env` | `SENTRY_DSN_AI` → `SENTRY_DSN` in the container |
+
+Both services read a variable literally called `SENTRY_DSN`, which is why the
+`.env` names them apart and `docker-compose.yml` maps each to the right
+container. They **must not** share a value: both would report, nothing would
+error, and the alerts would merge into a stream nobody can attribute.
+
+Leaving any DSN unset is supported. Monitoring off changes nothing else, and a
+missing or malformed DSN never prevents startup — observability is not allowed
+to be the reason a deployment will not boot.
+
+Nothing sent to Sentry carries transcripts, recordings, questions, prompts,
+model output, summaries, action items, request or response bodies, headers,
+cookies, tokens, email addresses, names, IP addresses, or
+meeting/folder/user identifiers. No exception object is handed to Sentry by any
+of the three services; events are built from a fixed vocabulary — a generic
+label, a boundary or component, a normalized route shape, an exception type
+name. Session Replay, tracing, profiling, automatic breadcrumbs, automatic PII
+and log forwarding are switched off explicitly in all three.
+
+---
+
+## 9. Production smoke test
+
+Run against **https://reverieai.in** after a release. Manual, and short enough
+that it actually gets run.
+
+| # | Check | Passes when |
+|---|---|---|
+| 1 | **Landing page** | loads, no console errors, links render |
+| 2 | **Privacy & Demo Notice, signed out** | reachable and readable without an account |
+| 3 | **Sign in / sign up** | the Clerk flow completes and lands in the app |
+| 4 | **Home** | recent meetings and open action items render |
+| 5 | **Record page** | opening it does **not** start recording — capture begins only on an explicit Start |
+| 6 | **Short recording** | record a few seconds, stop, and it is accepted |
+| 7 | **Transcript processing** | status advances and the meeting reaches READY |
+| 8 | **Import / upload** | a file upload is accepted and processes |
+| 9 | **Meeting brief** | transcript, summary and action items all present |
+| 10 | **Ask Reverie** | a question returns a grounded answer with citations |
+| 11 | **Library / search** | search finds the meeting just created |
+| 12 | **Settings** | loads, and saves a change |
+| 13 | **Sign out, sign back in** | the session ends, and the same account's data is there again |
+
+Step 5 is not a formality. A recording page that arms itself on navigation is a
+privacy failure, and it is the one thing on this list that is invisible when it
+is wrong.
+
+---
+
+## 10. Secrets and environment variables
+
+**No real secret value belongs in this repository, in this document, or in any
+example file.** The templates in the repository carry variable *names* and
+placeholder values, and that is all they may ever carry:
+
+- [`deploy/oracle/.env.example`](../deploy/oracle/.env.example) — the
+  production host's template.
+- [`.env.example`](../.env.example) — the local development template.
+
+Where each value actually lives:
+
+| Consumer | Where its values are set |
+|---|---|
+| Frontend | the **Vercel** project's Environment Variables, per environment |
+| `reverie-backend`, `reverie-ai`, `reverie-postgres`, Caddy | **`~/reverie/deploy/oracle/.env`** on the VM, `chmod 600`, never in Git |
+
+Rules, and they are not negotiable:
+
+- Secrets belong in the deployment environment or a secret manager — Vercel's
+  environment variables, or the host's `.env`.
+- `.env` files containing secrets must **not** be committed. `.env` is
+  gitignored at every depth; `.env.example` is the only tracked half of the
+  pair.
+- Production values must **never** be copied into an example file, a README, an
+  issue, or a pasted terminal snippet.
+- Validate a populated Compose file with `docker compose config --quiet`, never
+  plain `config`, which renders every resolved secret to stdout.
+
+### One `.env`, and no service receives all of it
+
+`deploy/oracle/docker-compose.yml` deliberately has no `env_file:` on any
+service. Each lists the variables it reads and is handed nothing else.
+
+| Container | Gets |
+|---|---|
+| Caddy | the hostname and the ACME contact address — nothing else |
+| `reverie-postgres` | the three database passwords, and nothing else |
+| `reverie-backend` | the datasources, Confluent (as a JAAS line), Clerk, the free-tier HMAC, R2, Resend, its own Sentry DSN, the internal token |
+| `reverie-ai` | Confluent (as username/password), R2, the **unprivileged** database role, provider keys, its own Sentry DSN, the internal token |
+
+What that buys is blast radius. The worker feeds untrusted media to `ffmpeg`,
+so it is the most likely thing here to be compromised and it holds the least:
+no schema-owner password, no Clerk secret key, no free-tier HMAC. In the other
+direction the backend holds no provider key, because it never calls a provider.
+
+Two things are genuinely shared and have to be: `REVERIE_INTERNAL_TOKEN`, the
+shared secret on `/internal/**` — both sides need it or every worker callback
+is a 401 — and the R2 credentials, since both read and write objects.
+
+### The ones that fail by working
+
+Every item here starts cleanly and is wrong anyway. That is what earns them a
+list.
+
+| Variable | What a wrong value does |
+|---|---|
+| `REVERIE_AUTH_MODE` | `dev` trusts an `X-Dev-User` header, so any request can impersonate any user. Production is `clerk` |
+| `REVERIE_INTERNAL_TOKEN` | has no default. Unset means `/internal/**` refuses everything: meetings pile up in PROCESSING and the worker logs 401s — loud, and better than silently accepting callbacks from anyone |
+| `APP_FRONTEND_URL` | the Vercel origin, and the only allowed CORS **and** STOMP origin. Wrong, and every browser request fails while the backend stays healthy |
+| `APP_PUBLIC_URL` | where *this API* is reachable publicly, used by the calendar feed. Wrong, and subscribed calendars quietly stop updating |
+| `NEXT_PUBLIC_API_URL` | scheme-less is read as a *relative* path, so the app calls itself; unset falls back to localhost, so every request goes to the visitor's own machine |
+| `CLERK_SECRET_KEY` | `clerkMiddleware` reads it implicitly — there is no `process.env.CLERK_SECRET_KEY` to grep for. Without it the site answers 500, including the marketing page |
+| `FREE_TIER_IDENTITY_HMAC_SECRET` | changing it makes every returning account look new and hands out another allowance, silently |
+| `S3_PUBLIC_ENDPOINT` on `reverie-ai` | unset does not fail; AssemblyAI simply stops fetching from R2 itself, and every file crosses the container twice |
+
+`DeploymentCheck` catches most of the first group at startup, names every
+offending setting at once, and refuses to boot. That is the intended outcome.
+
+---
+
+## 11. External services
+
+The provisioning detail that is still accurate, kept in one place. Nothing here
+changes the architecture in section 1.
+
+### Clerk
+
+Production runs the **Clerk production configuration**. A development instance
+— `pk_test_` / `sk_test_` keys, an issuer ending `.accounts.dev` — is not a
+production instance with a different name: separate user list, relaxed session
+handling, and a sign-in flow that depends on a dev-browser cookie. The backend
+logs a warning whenever it sees `.accounts.dev` and starts anyway, because it
+cannot tell staging from production; in production that line means the wrong
+instance is wired up.
+
+| Variable | Set in |
+|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Vercel (build-time) |
+| `CLERK_SECRET_KEY` | Vercel **and** the host `.env` — the same value, runtime only |
+| `CLERK_ISSUER`, `CLERK_JWKS_URL` | the host `.env` |
+| `FREE_TIER_IDENTITY_HMAC_SECRET` | the host `.env`; back it up with the database |
+
+Add `reverieai.in` to the Clerk instance's allowed domains. Add an `email`
+claim to the JWT template: Clerk's default session token carries none, and the
+address is what a user sees on their own profile and what queued messages are
+delivered to. The free allowance no longer depends on that claim alone — with
+`CLERK_SECRET_KEY` set the backend resolves the verified primary address from
+Clerk's Backend API — but the claim still saves a round trip.
+
+### Cloudflare R2
+
+One bucket for application objects (`S3_BUCKET`), plus the dedicated backup
+location used by [section 7](#7-backups-and-restore). Both services need the
+same credentials, and the token must have **write**: MP3 export writes the
+converted copy back, so a read-only token produces a conversion that runs,
+succeeds, and fails on the last step every time.
+
+| Variable | Notes |
+|---|---|
+| `S3_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+| `S3_PUBLIC_ENDPOINT` | the same host unless a custom domain fronts the bucket; needed on **both** services |
+| `S3_REGION` | `auto` — R2 accepts nothing else |
+| `S3_BUCKET` | the same on both services; a mismatch is not an error, it is one service writing where the other never looks |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object read **and** write |
+
+**The bucket must allow the app's origin to GET and PUT**, or upload and MP3
+export fail in the browser with nothing in any server log. The browser talks to
+R2 directly with a presigned URL — deliberately not proxied through Spring,
+because an hour of audio through a request thread is a denial-of-service tool
+with a login. In **R2 → the bucket → Settings → CORS policy**:
 
 ```json
 [
   {
-    "AllowedOrigins": ["https://<your-project>.vercel.app"],
+    "AllowedOrigins": ["https://reverieai.in"],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedHeaders": ["content-type"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
@@ -378,672 +644,108 @@ In the Cloudflare dashboard, **R2 → `reverie` → Settings → CORS policy**:
 ]
 ```
 
-One rule covers both directions, because both are the browser talking straight
-to R2 with a presigned URL:
+`AllowedHeaders` must include `content-type`: `uploads.ts` sets it, which makes
+the PUT a preflighted request. `AllowedOrigins` is the frontend origin — the
+same value as `APP_FRONTEND_URL` — plus any other origin that uploads or
+exports. Do not make the bucket public; everything is served by presigned URL.
 
-- **`PUT`** is the upload. `putWithProgress` in `frontend/lib/uploads.ts` sends
-  the file to the bucket directly; without this the upload fails in the browser
-  while every server-side check still passes.
-- **`GET`** is the MP3 export download, so the converted recording can go into
-  the same archive as the summary and the transcript. Not proxied through
-  Spring on purpose: an hour of audio through a request thread is a
-  denial-of-service tool with a login.
-- **`AllowedHeaders` must include `content-type`.** `uploads.ts` calls
-  `setRequestHeader("Content-Type", file.type)`, and a non-simple `Content-Type`
-  makes the PUT a *preflighted* request — the browser sends `OPTIONS` first and
-  refuses the upload if the header is not allowed. `["*"]` works too; this is
-  just the smallest set that is correct.
-- **`ExposeHeaders`** carries `ETag` back from the upload and the two
-  `Content-*` headers back from the download. Nothing breaks loudly without
-  them, which is why they are easy to leave out and annoying to debug.
-- **`AllowedOrigins`** is the frontend origin — the same value as
-  `APP_FRONTEND_URL` on `reverie-backend`. List every origin that can reach the
-  app: the Vercel production origin, any custom domain you attach, and a preview
-  origin if you upload or export from one.
+### Confluent Cloud
 
-The failure mode is silent from the server's side. The browser refuses the
-request before it is sent, so the API sees nothing, R2 sees nothing, and the
-only evidence is a console message.
+One topic, **`meeting_uploaded`**, **1 partition**. It carries job dispatch from
+the backend's outbox to the AI worker; break it and nothing transcribes. Every
+stage the UI shows travels over the internal HTTP callbacks instead, so the
+volume here is one message per meeting.
 
-Nothing else in Reverie depends on this. Document exports come from the API, and
-the audio player uses a presigned URL as an element `src`, which is not a
-`fetch` and is not subject to CORS.
+Confluent enforces a replication factor of 3 and rejects an explicit 1, so
+`KafkaTopicsConfig` asks for `replicas(-1)` — Kafka's sentinel for "broker
+default". Do not change it back to a literal.
 
-No code change is needed: `S3Config` already overrides the endpoint and uses
-path-style addressing.
+The two services take the same credential in different shapes, and the variable
+names differ on purpose:
 
----
-
-## 4. Clerk
-
-**Create a production instance.** A Clerk *development* instance — the one whose
-keys begin `pk_test_` / `sk_test_` and whose issuer ends `.accounts.dev` — is
-not a production instance with a different name. It has its own user list, so
-accounts created there do not exist in production; it has relaxed session
-handling and no custom domain; and its sign-in flow depends on a dev-browser
-cookie that behaves differently across sites.
-
-The backend logs a WARNING when it sees `.accounts.dev`, and does not refuse to
-start — a staging environment on a development instance is a reasonable thing to
-run, and nothing here can tell staging from production.
-
-### Two instances, two sets of users
-
-Run staging and production against **different Clerk instances**, and know what
-that costs: the user lists are separate. An account created while testing on
-`dev` does not exist in production. Nobody has to migrate anything, but nobody
-can sign in to production with a staging account either.
-
-| | Staging (`dev` branch) | Production (`main` branch) |
+| | Bootstrap variable | Credential |
 |---|---|---|
-| Clerk instance | development | production |
-| Publishable key | `pk_test_…` | `pk_live_…` |
-| Secret key | `sk_test_…` | `sk_live_…` |
-| Issuer / JWKS | `…accounts.dev` | your production Clerk domain |
-| `.accounts.dev` warning | **expected — ignore it** | must not appear |
+| backend | `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `KAFKA_SASL_JAAS_CONFIG`, the whole JAAS line |
+| AI worker | `KAFKA_BOOTSTRAP_SERVERS` | `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` |
 
-The backend logs that warning whenever it sees `.accounts.dev` and starts
-anyway, because it cannot tell staging from production. On staging that line is
-correct and should be ignored; on production it means the wrong instance is
-wired up.
+Both also take `KAFKA_SECURITY_PROTOCOL=SASL_SSL` and
+`KAFKA_SASL_MECHANISM=PLAIN`. Two things bite: the **trailing semicolon** on the
+JAAS string is required, and its absence is reported as an authentication
+failure rather than a parse error; and setting the wrong bootstrap variable
+leaves that service quietly pointed at `localhost:9092`.
 
-Where each value goes:
+Neither service crashes when Kafka is unreachable — they degrade. The positive
+signal is in the worker's log, and a meeting stuck at `QUEUED` with a growing
+`SELECT count(*) FROM outbox_events WHERE published = FALSE` is the symptom.
+That is designed behaviour: `OutboxPublisher` retries and preserves order, so an
+outage queues meetings rather than losing them.
 
-| Variable | Set in | Notes |
-|---|---|---|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | **Vercel** | build-time — inlined into the bundle |
-| `CLERK_SECRET_KEY` | **Vercel _and_ Render** (`reverie-backend`) | the same value in both; runtime only, server-side; never `NEXT_PUBLIC_` |
-| `CLERK_ISSUER` | **Render** (`reverie-backend`) | |
-| `CLERK_JWKS_URL` | **Render** (`reverie-backend`) | |
-| `FREE_TIER_IDENTITY_HMAC_SECRET` | **Render** (`reverie-backend`) | `render.yaml` generates it once; back it up with the database |
+There is **no consumer-lag alert**. With one partition and one worker, nothing
+notices a stuck message except somebody looking. Configuring one in Confluent —
+consumer group `ai-service`, topic `meeting_uploaded`, lag above 5 for 15
+minutes — is the obvious first alert to add.
 
-**`CLERK_SECRET_KEY` now goes in two places, and the backend one is `sync: false`
-— so Render leaves it blank and the service refuses to start until you paste it
-in.** The message is unambiguous about which variable it is, and this is what it
-looks like:
+### Resend
 
-```
-Caused by: java.lang.IllegalStateException: This deployment is running with the
-`production` profile but still holds 1 development setting(s). Fix these and redeploy:
-  - CLERK_SECRET_KEY is not set. The lifetime free allowance needs a verified
-    email from Clerk's Backend API when the session token has no email claim ...
-```
+`RESEND_API_KEY` and `REVERIE_MAIL_FROM`, both in the host `.env`. The
+from-address must be on a **domain verified in Resend**, and must match the
+domain that is actually verified — verifying a subdomain does not verify the
+root, or the other way round. `DeploymentCheck` refuses to start on `resend.dev`,
+`example.*`, `localhost`, `test` and `invalid`, but it cannot tell a verified
+real domain from an unverified one: that failure is silent, with messages
+queued, retried for about five hours, and abandoned.
 
-It is the same secret Vercel already holds, from the same Clerk instance as
-`CLERK_ISSUER` and `CLERK_JWKS_URL` — `sk_test_…` for a development instance,
-`sk_live_…` for a production one. A key from a *different* instance is worse than
-none: tokens still verify against the JWKS, so signing in works, and every
-Backend API lookup answers 401 — which resolves to no identity, so nobody is
-granted a free allowance and `DeploymentCheck` has nothing left to complain
-about.
+Resend places SPF and MX records on a `send.` subdomain even when the sending
+domain is the root. That subdomain is the Return-Path for bounces, **not** a
+second verified sender.
 
-**`FREE_TIER_IDENTITY_HMAC_SECRET` is `generateValue: true`,** so Render makes it
-on first deploy and keeps it. That is the requirement, not a convenience: every
-identity hash in `free_tier_identities` was computed with that exact value, so a
-new one makes every returning person look new and hands the whole estate another
-100 minutes and 3 imports — silently, because nothing breaks. **Back it up with
-the database.** Restoring one without the other resets everybody's allowance.
+The self-only mode — `REVERIE_MAIL_SELF_ONLY=true` plus
+`REVERIE_MAIL_SELF_USER_ID`, the Clerk user id — is for a deployment whose only
+account is the operator's. It is enforced, not advisory: `SelfOnlyAccess`
+refuses provisioning for every other Clerk subject with a 403, before any row is
+written. **Both variables, or the service will not start**, and the id is
+per-Clerk-instance. Unsetting it means deleting the variable, not blanking it —
+Spring's `${VAR:false}` default applies only when the variable is *absent*.
 
-Both are required in clerk mode rather than in production alone. Outside the
-production profile `ClerkIdentityCheck` refuses to start for the same two
-values, because a clerk-mode deployment cannot enforce the allowance without
-them anywhere — a local stack included. `REVERIE_AUTH_MODE=dev` needs neither.
+### Not provisioned, deliberately
 
-Add the production domain to the Clerk instance once Vercel has issued it.
-
-Add an `email` claim to the JWT template. Clerk's default session token
-carries no email, and without it every Clerk-authenticated user lands with a
-null address — which is the address shown on their own profile page, **and the
-address every queued message is delivered to**. No longer cosmetic: seven
-messages now depend on it — see section 4b below.
-
-The claim is no longer what the **free allowance** depends on, though, and that
-is deliberate: an anti-abuse guarantee resting on whether somebody remembered to
-edit a JWT template is not a guarantee. With `CLERK_SECRET_KEY` set, the backend
-resolves the verified primary address from Clerk's Backend API when the token
-carries no claim, and re-reads it uncached immediately before an account is
-deleted. The claim is still the faster path and still worth adding — it saves a
-round trip on provisioning — but nothing depends on it alone.
+- **No Redis.** The one counter it held — burst protection on the
+  streaming-token endpoint, 30 requests per user per 10 minutes — is a map
+  inside the backend. That makes it per-instance, which is the one thing a
+  second backend would change. If a Redis database still exists for this
+  project, delete it or revoke its credentials: nothing has connected to it,
+  and an unused datastore with live credentials is worse than one in use.
+- **No billing.** Stripe checkout and its webhook were removed in V49. Every
+  account gets the same allowance — 100 transcribed minutes and 3 imports, for
+  the life of the account — so there is nothing for a payment to buy.
 
 ---
 
-## 4b. Resend — email
+## 12. What is not covered
 
-Seven messages, all written to `mail_outbox` inside the transaction that caused
-them and delivered later by a relay. Two have no user switch: an account closed
-and its data deleted, and an allowance spent. The closure notice is the only
-record of the deletion that exists once the account is gone.
+Stated as gaps rather than left to be discovered.
 
-Two variables, both on **Render** (`reverie-backend`), both `sync: false`:
-
-| Variable | Value |
-|---|---|
-| `RESEND_API_KEY` | `re_…` from the Resend dashboard |
-| `REVERIE_MAIL_FROM` | `Reverie <notifications@reverieai.in>` |
-
-`REVERIE_MAIL_FROM` must be on a **domain verified in Resend**. `DeploymentCheck`
-refuses to start on `resend.dev`, `example.*`, `localhost`, `test` and
-`invalid`, because those fail at the provider rather than here — every message
-is queued, retried for five hours, abandoned, and nobody is told anything.
-`onboarding@resend.dev` is the sharp one: it works, and it delivers only to the
-Resend account owner, so in production every closure notice reaches the
-developer instead of the account holder.
-
-### Verifying a domain
-
-Resend will not send from a domain you have not proved you control, and there is
-no free tier around that — the shared sender below is the only alternative it
-offers. A `.xyz` or `.com` is roughly $1–15/year at Porkbun, Namecheap or
-Cloudflare Registrar; that is the whole cost.
-
-1. Buy the domain. Any registrar whose DNS you can edit.
-2. Resend → **Domains** → **Add Domain**.
-
-   The **root** (`reverieai.in`) is the simplest choice and is what this
-   deployment uses. A subdomain (`send.reverieai.in`) keeps sending reputation
-   off the root and is what Resend suggests for a real product — but then the
-   from-address must be on the subdomain too, and that mismatch is the failure
-   described below. Pick one and make step 6 agree with it.
-3. On **GoDaddy, Cloudflare or Vercel**, click **Auto Configure**. It uses
-   Domain Connect to write the records for you, which also sidesteps GoDaddy's
-   habit of appending the domain to whatever you type in its Host field.
-
-   Anywhere else, add them by hand: an `MX` for bounce feedback, a `TXT` SPF,
-   and a `TXT` DKIM key at `resend._domainkey.…`. Values are per domain and per
-   region — copy them from the dashboard, not from any example.
-4. Wait for **Verified**. The timeline goes *Domain added → DNS verified →
-   Verifying domain*; the last step is the provider confirming DKIM and is the
-   one that takes the time. Re-running Auto Configure restarts it rather than
-   hurrying it.
-5. Resend → **API Keys** → create one with **Sending access**. That is the
-   `re_…` value.
-6. Set `REVERIE_MAIL_FROM` to an address on the domain that shows **Verified**.
-
-Note that Resend puts the SPF and MX records on a `send.` subdomain even when
-the sending domain is the root. That subdomain is the Return-Path for bounce
-handling — it is **not** a second verified sender, and a from-address on it is
-rejected.
-
-**The from-address must be on the domain you actually verified**, and this is
-the one mistake here that costs hours. Verifying `send.reverieai.in` does not
-verify the root, and verifying the root does not verify the subdomain. Either
-way round, the wrong one is an unverified sender that Resend rejects — and
-`DeploymentCheck` passes it, because it can tell a placeholder domain from a
-real one but not a verified one from an unverified one. So there is no startup
-failure: messages queue, retry for about five hours, and are abandoned with
-nobody told. Match them exactly:
-
-```
-REVERIE_MAIL_FROM = Reverie <notifications@reverieai.in>
-```
-
-### No domain? Then say so, and mean it
-
-There is a second valid mode, for a deployment whose only account is yours. It
-is not a bypass — it is enforced.
-
-| Variable | Value |
-|---|---|
-| `REVERIE_MAIL_SELF_ONLY` | `true` |
-| `REVERIE_MAIL_SELF_USER_ID` | your Clerk user id, `user_…` |
-
-**Both, or the service will not start.** `REVERIE_MAIL_SELF_ONLY=true` with a
-blank id once meant "enforce nothing", which made the one setting whose job is
-to restrict access silently do the opposite of what it said. `SelfOnlyAccess`
-now refuses to construct in that state, so the bean fails and the container
-exits 1 with the reason in the log:
-
-```
-IllegalStateException: REVERIE_MAIL_SELF_ONLY is true but REVERIE_MAIL_SELF_USER_ID is blank
-```
-
-That is this, and it is one dashboard variable away from fixed.
-
-What it enforces: every Clerk subject other than the named one is refused at
-`UserService.provision` with a 403, **before the lookup**, so no row is written
-and a rejected stranger leaves nothing behind. Hiding the sign-up button would
-not do — Clerk creates the account whatever Reverie's UI shows, and the token it
-mints is real.
-
-With the id set, `onboarding@resend.dev` is accepted: the Resend account owner
-and the only Reverie account holder are the same person, so a sender that reaches
-only them is correct rather than misdirected. Leaving both mail variables blank
-is accepted too — nothing is delivered, messages expire unsent after ninety
-days, and every boot says so in as many words.
-
-### Getting the id, in the right order
-
-The id is **per Clerk instance** — see "Two instances, two sets of users" above.
-A `user_…` copied from the development instance will not match the production
-JWT `sub`, and the symptom is not a startup failure: the service comes up and
-returns 403 to you on every request. The refusal log names both ids, which is
-how you tell that apart from a broken token.
-
-If nobody has signed up on the production instance yet, there is no id to name.
-Sign up first. Clerk's flow is entirely client-side and does not need the
-backend, so it works while the service is down:
-
-1. Sign up through the Vercel frontend, against the **production** Clerk
-   instance. The dashboard will fail to load its data — that is the backend
-   being down, and it does not matter here.
-2. Clerk dashboard → **Users** → your user → copy the id (`user_…`).
-3. Render → `reverie-backend` → **Environment** → set `REVERIE_MAIL_SELF_USER_ID`.
-4. Save. Render redeploys, and your first request provisions the account.
-
-Unset `REVERIE_MAIL_SELF_ONLY`, and verify a domain, before anybody else is meant
-to sign up. Until you do, they cannot — self-only 403s every other account at
-provisioning, which is the whole point of it and exactly wrong for a deployment
-you want strangers to try.
-
-**Unset means delete the variable, not blank it.** Spring's `${VAR:false}`
-default applies only when the variable is *absent*; a row that exists with an
-empty value resolves to `""` and is bound in place of the default. In the Render
-dashboard, remove the row.
-
----
-
-## 5. Redis
-
-None. There is no Redis to provision.
-
-It backed one thing: a fixed-window counter in front of the streaming-token
-endpoint. That counter is now a map inside the backend. The limit is unchanged
-at 30 requests per user per 10 minutes, and it no longer fails open, because
-there is no longer a connection that can fail.
-
-Being in-process makes it per-instance: two backends would allow 60 requests per
-user per 10 minutes rather than 30. That is the only thing left that a second
-instance changes — see "What is not covered". The outbox used to be on this list
-and no longer is.
-
-**If a Redis Cloud database still exists for this project, delete it or revoke
-its credentials.** Nothing has connected to it since the counter moved
-in-process, and an unused datastore with live credentials is worse than one in
-use: nobody is watching it.
-
----
-
-## 6. Billing
-
-There is none. Stripe checkout and its webhook were removed in V49: every
-account gets the same allowance — 100 transcribed minutes and 3 imports, for the
-life of the account — so there was nothing for a payment to buy.
-
-Nothing to configure, and one fewer public unauthenticated route to reason
-about. `users.plan` survives as a label on rows an earlier build created; no
-code writes it and no limit reads it.
-
----
-
-## 7. Vercel — the frontend
-
-The Next.js app is deployed on Vercel. It is **not** in `render.yaml`, and none
-of the variables below are set through it. They live in the Vercel project's
-Environment Variables, per environment.
-
-### Required
-
-| Variable | Value | Notes |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | public **HTTPS** Render backend URL | e.g. `https://reverie-backend.onrender.com` |
-| `NEXT_PUBLIC_WS_URL` | public **HTTPS** backend socket URL | e.g. `https://reverie-backend.onrender.com/ws` |
-| `NEXT_PUBLIC_AUTH_MODE` | `clerk` | never `dev` — that mode trusts an `X-Dev-User` header |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_…` staging / `pk_live_…` production | |
-| `CLERK_SECRET_KEY` | `sk_test_…` staging / `sk_live_…` production | **server-side only**, never `NEXT_PUBLIC_` |
-| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` | |
-| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` | |
-
-**`https://`, not `wss://`**, on the socket URL, and it keeps the `/ws` path.
-That is not a typo: `frontend/lib/ws.ts` connects with **SockJS**, whose
-handshake is an ordinary HTTP GET, and the client rejects a `ws`/`wss` scheme.
-The code's own fallback says the same thing — `http://localhost:8080/ws`. An
-earlier version of this table said `wss://` and was wrong.
-
-`NEXT_PUBLIC_API_URL` is the **bare origin**, with no path: `lib/api.ts` builds
-`${API_BASE}/api/v1` itself, so a trailing slash gives `//api/v1` and an
-included `/api/v1` gives it twice.
-
-Both need the scheme. A scheme-less `NEXT_PUBLIC_API_URL` is read as a relative
-path, so the app calls *itself* instead of the API and every request 404s from
-the frontend's own origin. Unset entirely it falls back to
-`http://localhost:8080`, which in a deployed app means every request goes to the
-visitor's own machine — the whole UI fails at once while the backend is healthy
-and logs nothing.
-
-Without the two `SIGN_IN`/`SIGN_UP` URLs, Clerk's components link to its hosted
-pages on `accounts.dev` — a different domain, a different look, and a route out
-of the product to get back into it. Reverie serves both screens itself.
-
-### Optional
-
-None of these break anything when unset; they are listed so "the footer looks
-wrong" is a five-second fix rather than a hunt.
-
-| Variable | Effect when unset |
-|---|---|
-| `NEXT_PUBLIC_APP_VERSION` | footer shows no version |
-| `NEXT_PUBLIC_BUILD_SHA` | footer reads "dev build" rather than inventing a hash |
-| `NEXT_PUBLIC_TERMS_URL` | the link is not rendered |
-| `NEXT_PUBLIC_PRIVACY_URL` | the link is not rendered |
-| `NEXT_PUBLIC_SENTRY_DSN` | browser error reporting stays disabled; errors remain in the local console only |
-
-`NEXT_PUBLIC_SENTRY_DSN` is the public browser DSN for the **reverie-frontend**
-Sentry project. It is configuration rather than an authentication secret, but
-it is still kept in Vercel rather than committed as a concrete value.
-
-Reverie does not use Sentry's default browser instrumentation, Session Replay,
-automatic tracing or automatic PII collection. `instrumentation-client.ts`
-disables those features, and `lib/observability.ts` sends only a generic error
-label, the fault boundary, a normalized route shape and an optional Next digest.
-Raw exception messages, stacks, query strings, meeting/folder ids and user
-content are deliberately excluded.
-
-Leaving the variable unset is valid, including in production. Observability must
-never prevent the product from starting or serving requests.
-
-### Every `NEXT_PUBLIC_*` is a BUILD-time value
-
-`next build` inlines them into the client bundle. They are not read at runtime.
-Change one and you must trigger a **new deployment** — editing the variable in
-the Vercel dashboard and redeploying the *existing* build changes nothing, and
-the old value keeps being served. This is the single most common way to spend an
-afternoon on a variable that was correct in the dashboard the whole time.
-
-`CLERK_SECRET_KEY` is the exception: it is read at runtime by `middleware.ts`,
-in Node, on the server.
-
-### Branch model
-
-| Branch | Vercel environment |
-|---|---|
-| `dev` | Preview / staging deployment |
-| `main` | Production deployment |
-
-`main` does not exist yet — production is not deployed. Point the staging
-frontend at the staging backend and the staging Clerk instance; keep production
-values in Vercel's Production environment only, so a preview build cannot pick
-up a `sk_live_` key.
-
----
-
-## 7b. Sentry — three projects, three DSNs
-
-Reverie reports errors from three places that fail for unrelated reasons and are
-fixed by different work. They get **three separate Sentry projects**, because a
-single stream would make "which service is broken?" a question you answer by
-reading payloads — and the payloads are deliberately thin.
-
-| Sentry project | Set where | Variable | Reaches |
-|---|---|---|---|
-| `reverie-frontend` | Vercel | `NEXT_PUBLIC_SENTRY_DSN` | the browser |
-| `reverie-backend` | Render → `reverie-backend` | `SENTRY_DSN` | Spring |
-| `reverie-ai` | Render → `reverie-ai` | `SENTRY_DSN` | FastAPI + the Kafka worker |
-
-The two Render variables share a name and **must not share a value**. Pasting
-the backend's DSN into the AI service is the easy mistake and it is silent: both
-services report, nothing errors, and the alerts merge.
-
-### Creating them
-
-In Sentry, create three projects — platform **Browser/JavaScript**, **Java** and
-**Python** respectively — and copy the DSN from each project's
-*Settings → Client Keys (DSN)*. Then:
-
-1. **Vercel** → project → Settings → Environment Variables →
-   `NEXT_PUBLIC_SENTRY_DSN` for Production (and Preview, if you want preview
-   errors separated by Sentry's `environment` tag).
-   **Then redeploy.** `NEXT_PUBLIC_*` is compiled into the bundle at build time,
-   so changing it does nothing until a new deployment is built — see
-   *Every `NEXT_PUBLIC_*` is a BUILD-time value* above.
-2. **Render → `reverie-backend`** → Environment → `SENTRY_DSN`.
-3. **Render → `reverie-ai`** → Environment → `SENTRY_DSN`.
-
-Render restarts the service on save; no rebuild is needed for either.
-
-### Leaving them unset is supported
-
-Every other `sync: false` value in `render.yaml` is one the backend refuses to
-start without. **These are not.** A missing or malformed DSN disables monitoring
-and changes nothing else:
-
-| Unset | Effect |
-|---|---|
-| `NEXT_PUBLIC_SENTRY_DSN` | browser errors stay in the local console |
-| `SENTRY_DSN` on `reverie-backend` | 500s are logged, not reported; startup unaffected |
-| `SENTRY_DSN` on `reverie-ai` | worker and API failures are logged, not reported |
-
-A malformed DSN is treated the same way: Spring logs one warning and carries on,
-and the AI service does the same. Monitoring is never allowed to be the reason a
-deployment will not boot or a request will not be served.
-
-`SENTRY_ENVIRONMENT` on the backend defaults to `development` and is set to
-`production` in `render.yaml`; the AI service reuses `REVERIE_ENV` for the same
-purpose.
-
-### What Reverie will not send
-
-Sentry is the pager. The service logs are the evidence. Nothing sent to Sentry
-carries transcripts, recordings, questions, prompts, model output, summaries,
-action items, request or response bodies, headers, cookies, tokens, email
-addresses, names, IP addresses, or meeting/folder/user identifiers.
-
-That is not a filter applied to a captured exception — no exception object is
-ever handed to Sentry by any of the three services. Events are constructed from
-a fixed vocabulary:
-
-- **Frontend** — a generic label, the fault boundary, a normalized route shape
-  (`/meetings/[id]`, never the id), and an optional Next digest.
-- **Backend** — a generic label, the exception's class name and its cause's.
-  Nothing request-derived, including a correlation id: `X-Correlation-Id` is
-  taken from the caller verbatim when they send one, so a UUID *shape* proves
-  only that the caller can format a UUID. Correlation ids stay in Reverie's own
-  logs and in the HTTP error envelope.
-- **AI service** — a generic label plus `service`, `component`, `operation` and
-  the exception's type name. The reporter has no parameter for a meeting id or
-  an object key, so a call site cannot pass one by mistake.
-
-Session Replay, performance tracing, profiling, automatic breadcrumbs, automatic
-PII and automatic log forwarding are switched off explicitly in all three. The
-last one matters most in the AI service: its worker logs meeting ids and
-exception strings through `logger.exception`, and Sentry's default Python
-logging integration would forward every one of those as an event. It is not
-installed.
-
-Raw exception messages and stacks remain in each service's own logs, on
-infrastructure Reverie controls. There is deliberately no shared identifier
-linking a Sentry alert to a specific request: an alert says which service failed
-and with which exception type, and the log is then read by time and type. That
-costs a little at triage and is what keeps request-scoped, caller-influenced
-values out of a third party entirely.
-
----
-
-## 8. Render — two services
-
-`render.yaml` declares exactly two, and no frontend:
-
-| Service | Type | Public? | Runs |
-|---|---|---|---|
-| `reverie-backend` | `web` | yes | Spring Boot, Flyway migrations, `production` profile |
-| `reverie-ai` | `pserv` | **no** | FastAPI worker, Kafka consumer |
-
-```bash
-# from the repo root, on the branch you want live
-render blueprint launch     # or point the dashboard at render.yaml
-```
-
-### Branch model
-
-| Branch | Render services |
-|---|---|
-| `dev` | staging backend + AI, deployed first |
-| `main` | production backend + AI, later |
-
-`main` does not exist yet, so **nothing is in production**. Everything below
-describes bringing staging up from `dev`.
-
-Fill every `sync: false` value in the dashboard before the first build.
-`REVERIE_INTERNAL_TOKEN` is generated on the backend and referenced by the
-ai-service, so the two always match — do not set it by hand on one side only,
-or every worker callback returns 401.
-
-If any of them is missed, the backend will not start: `DeploymentCheck` lists
-every development setting it found and refuses. That is the intended outcome —
-it is a bad ten minutes rather than a deployment that is open, or broken, and
-looks fine. The message names each variable and what it costs.
-
-### Order matters on first boot
-
-The backend runs migrations, so let it come up first and confirm
-`/actuator/health` is `UP`. The ai-service degrades rather than crashes when
-Kafka or Postgres is unreachable, which means it can look healthy while doing
-nothing — check its logs for `RAG connected to Postgres` rather than trusting
-the service status.
-
----
-
-## 8b. Oracle Cloud — where the two services are going
-
-Render's Starter plan has a 512 MB hard limit, and on **12 Sep 2026 at ~20:04
-UTC** it OOM-killed `reverie-backend`. The investigation that followed
-established that 512 MB was never enough for this application — the JVM's floor
-alone is ~280–320 MB before any application object — and `b7c1734` bounded the
-heap to make the plan survivable rather than safe.
-`docs/load-testing-report.md` has the analysis.
-
-Both compute services therefore move to **one Oracle Cloud Always Free Ampere
-A1 VM** (ARM64, 2 OCPU / 6 GB), behind Caddy, with Docker Compose.
-**`deploy/oracle/README.md` is the deployment guide**; this section only says
-what changes and what does not.
-
-| | |
-|---|---|
-| Moves | `reverie-backend`, `reverie-ai` — Render compute only |
-| Stays | Neon, Confluent Cloud, Cloudflare R2, Vercel, Clerk, Resend, Sentry |
-| Rollback | **Render stays live.** `render.yaml` is not deleted and the services are not disabled until Oracle is proven |
-
-ARM64 was verified before anything else: both images build for `linux/arm64`
-from the repository's real Dockerfiles, with **no Dockerfile changes required**.
-Every native Python wheel resolved to a prebuilt `aarch64` build — nothing
-compiled from source — and `ffmpeg` installs and encodes MP3 on ARM. Both
-images were then run under emulation: Spring reached `UP` and served a real API
-call on `aarch64`/Temurin 21.0.12, and the worker started FastAPI and joined its
-Kafka consumer group.
-
-The operator keeps one `.env`, but **no service receives all of it**: each lists
-the variables it actually reads, so the worker never holds Flyway's password,
-Clerk's secret key or the free-tier HMAC, and Spring never holds a provider key.
-Validate a populated file with `docker compose config --quiet` — plain
-`config` renders every resolved secret to stdout.
-
-Two variables move at cutover, both on **Vercel**, and both are
-`NEXT_PUBLIC_*` — which Next.js inlines at **build** time, so changing them
-needs a redeploy rather than an environment edit:
-
-| Variable | To |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://<oracle hostname>` |
-| `NEXT_PUBLIC_WS_URL` | `https://<oracle hostname>/ws` |
-
-`APP_FRONTEND_URL` does **not** change — the frontend is still on Vercel, and
-that variable is the CORS and STOMP allowed origin. `APP_PUBLIC_URL` **does**:
-it becomes the Oracle hostname, and `DeploymentCheck` refuses to start without
-a public one.
-
----
-
-## 9. Deployment order
-
-### The one circular dependency
-
-The frontend needs the backend's URL at **build** time. The backend needs the
-frontend's origin for CORS and for the STOMP allowed-origins check. Neither host
-will tell you its URL before the service exists, so this cannot be done in one
-pass.
-
-It resolves because only one side needs its value *up front*:
-
-```
-backend deployed  ->  URL exists  ->  frontend built with it
-                                          |
-                                          v
-                                    Vercel URL exists
-                                          |
-                                          v
-                      APP_FRONTEND_URL filled -> backend RESTARTED
-```
-
-The backend is deployed with `APP_FRONTEND_URL` still blank. `DeploymentCheck`
-will refuse to start on a blank value, so put a placeholder origin in — any
-`https://` URL — bring it up, get the Vercel URL, then replace the placeholder
-and restart. A **restart** is enough on the backend: `APP_FRONTEND_URL` is read
-at runtime. The frontend needs a full **rebuild**, because its variables are
-inlined.
-
-### Steps
-
-1. **Provision the managed dependencies** — Neon (sections 1), Confluent (2),
-   R2 (3), Clerk (4). Nothing deploys until these exist.
-2. **Deploy the Render staging services from `dev`** — `reverie-backend` and
-   `reverie-ai`. `APP_FRONTEND_URL` gets a placeholder for now.
-3. **Take the public backend URL**, e.g. `https://reverie-backend.onrender.com`.
-   Confirm `/actuator/health` is `UP` before going further.
-4. **Configure the Vercel Preview environment** — every variable in section 7,
-   with `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` built from step 3, and
-   the **development** Clerk keys.
-5. **Deploy the frontend from `dev`** and take its URL, e.g.
-   `https://<your-project>.vercel.app`.
-6. **Put that URL into `APP_FRONTEND_URL`** on `reverie-backend`. Add it to the
-   R2 CORS `AllowedOrigins` (section 3) and to the Clerk instance's allowed
-   domains at the same time — all three want the same value, and forgetting the
-   R2 one fails only at upload.
-7. **Restart `reverie-backend`** so it picks the value up.
-8. **Run the end-to-end staging checks**: sign in, record and upload a meeting,
-   watch the status arrive over the socket, open the finished summary, ask the
-   chat a question, export. Each exercises a different one of the four
-   dependencies, which is the point of doing all five rather than just the
-   first.
-9. **Only then create `main`** and repeat 2–8 with the production Clerk
-   instance, production Vercel environment, and a fresh `REVERIE_INTERNAL_TOKEN`.
-
-Steps 6 and 7 are the ones people skip, because the frontend loads fine without
-them — it is every API call behind it that fails, which reads as "the backend is
-down".
-
----
-
-## What is not covered
-
-- **No CI.** Nothing runs the backend or ai-service suites before a deploy.
-  This blueprint deploys whatever is on the branch.
-- **No bounce handling.** Resend accepting the message is where Reverie's
-  knowledge ends. A hard bounce, a spam complaint, or an address that stopped
-  existing is not fed back: the row is marked sent and nothing reconciles it.
-  There is no webhook endpoint to point Resend at.
-- **Mail delivery is at-least-once, not exactly-once.** The relay claims rows
-  with `FOR UPDATE SKIP LOCKED` and sends each one under a dedupe key passed as
-  Resend's `Idempotency-Key`, which Resend honours for **24 hours**. Every
-  automatic retry happens well inside that window, so it cannot duplicate. An
-  operator who manually replays an abandoned row *after* the window can, and
-  there is nothing provider-side to prevent it.
-- **Rate limiting is per-instance.** The streaming-token counter is a map in
-  the backend, so two instances allow twice the limit. It is burst protection
-  rather than a quota — the thing that actually costs money is the AI-minute
-  allowance, which is a database row and unaffected — but it is the one piece of
-  correctness that a second backend changes.
-
-  The outbox is no longer on this list. `OutboxPublisher.publishBatch()` claims
-  its rows with `FOR UPDATE SKIP LOCKED`, so two backends divide the backlog
-  instead of both publishing it; proven against a real PostgreSQL in
-  `OutboxClaimConcurrencyTest` and against two live containers.
-
+- **No automated deployment to the Oracle host.** CI checks a pull request; it
+  does not deploy. An operator updates the checkout and runs Compose.
+- **No alerting.** Sentry reports errors when somebody reads it. There is no
+  pager, no uptime monitor and no consumer-lag alert.
 - **One Kafka partition, one AI worker.** `meeting_uploaded` has a single
   partition and the worker consumes it serially, so one slow meeting delays
-  every meeting behind it and a second worker would idle. More partitions is
+  every meeting behind it, and a second worker would idle. More partitions is
   the change, and it is a Confluent-side change first.
-
-- **No consumer-lag alert.** With one partition and one worker there is nothing
-  that notices a stuck message except somebody looking. Configure one in
-  Confluent Cloud: consumer group `ai-service`, topic `meeting_uploaded`, alert
-  when lag stays above 5 for 15 minutes.
-- **No backup policy** beyond whatever the Neon plan provides.
+- **Rate limiting is per-instance.** Two backends would allow twice the limit.
+  It is burst protection rather than a quota. The outbox is *not* on this list:
+  `OutboxPublisher.publishBatch()` claims rows with `FOR UPDATE SKIP LOCKED`,
+  so two backends divide the backlog.
+- **No bounce handling.** Resend accepting a message is where Reverie's
+  knowledge ends; a hard bounce is not fed back and nothing reconciles the row.
+- **Mail delivery is at-least-once.** Each row is sent under a dedupe key passed
+  as Resend's `Idempotency-Key`, which Resend honours for 24 hours. Automatic
+  retries happen well inside that window; a manual replay after it can
+  duplicate.
+- **The SLO is not met and is not claimed.** The launch target for
+  `list-meetings` is 50 VUs, p95 < 200 ms. See
+  [`docs/load-testing-report.md`](load-testing-report.md) and the Performance
+  section of [`deploy/oracle/README.md`](../deploy/oracle/README.md); the
+  measurements there are local and CPU-bound, and are not evidence about the
+  Oracle host.

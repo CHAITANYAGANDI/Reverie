@@ -1,19 +1,24 @@
 # Reverie on Oracle Cloud (Ampere A1, ARM64)
 
+> **This is the host runbook.** It covers provisioning and operating the VM.
+> The canonical description of the production deployment as a whole —
+> architecture, branch model, frontend, backups, monitoring, the smoke test —
+> is [`docs/deploy.md`](../../docs/deploy.md). Read that first if you want to
+> know how Reverie is deployed; read this if you are working on the host.
+
 Both compute services — `reverie-backend` (Spring Boot) and `reverie-ai`
-(FastAPI) — on one Always Free Ampere A1 VM, behind Caddy.
+(FastAPI) — on one Always Free Ampere A1 VM, behind Caddy. This is where
+production runs.
 
 **The database is here too.** PostgreSQL 16 with pgvector runs in this stack,
-on a named volume, reachable only on the private bridge — Neon is gone.
-Confluent Cloud still holds the broker, Cloudflare R2 the recordings, Vercel
-the frontend. **Render stays live as the rollback** until this is proven; see
-[Cutover](#cutover) and [Rollback](#rollback).
+on a named volume, reachable only on the private bridge. Confluent Cloud holds
+the broker, Cloudflare R2 the recordings, Vercel the frontend.
 
-That changes what this VM is. It used to own no user data, which made it
-disposable: a replacement was this repository, a populated `.env` and a DNS
-record. It is not disposable now. `postgres_data` is the only copy of every
-meeting, transcript and account, and rollback is no longer free either — see
-[Backups](#backups) and [Rollback](#rollback).
+That is what makes this VM different from a stateless one. It used to own no
+user data, which made it disposable: a replacement was this repository, a
+populated `.env` and a DNS record. It is not disposable now —
+`postgres_data` is the only copy of every meeting, transcript and account. See
+[Backups](#backups).
 
 ```
                          Internet
@@ -42,6 +47,12 @@ meeting, transcript and account, and rollback is no longer free either — see
 ---
 
 ## Why this exists
+
+*Historical. Reverie previously ran its two compute services on Render. That
+is no longer the case and there is nothing on Render to fall back to — this
+section records why the move happened, because the numbers in
+[JVM sizing](#jvm-sizing) and [Resource limits](#resource-limits) came out of
+it.*
 
 Render's Starter plan has a 512 MB hard limit. On **12 Sep 2026 at ~20:04 UTC**
 Render OOM-killed `reverie-backend` (instance `k9wwr`) for exceeding it, after
@@ -507,40 +518,61 @@ exceptions interpolate because the name changes (`SENTRY_DSN_BACKEND` →
 
 ## Backups
 
-**This is the part the old architecture did not need.** Neon took backups.
-Nothing takes one now unless you arrange it, and `postgres_data` is the only
-copy of every meeting, transcript, summary and account in the product.
+`postgres_data` is the only copy of every meeting, transcript, summary and
+account in the product, so this host takes its own backups.
 
-A dump, from the host, as the owner:
+**Scheduled backups are a systemd timer on this VM**, not something in this
+repository. The script and the two unit files are installed on the host and are
+not tracked here — cloning the repository does not give you a backup system.
+
+| | |
+|---|---|
+| Script | `/usr/local/sbin/reverie-db-backup` |
+| Timer | `reverie-db-backup.timer` — enabled and active |
+| Service | `reverie-db-backup.service` |
+| Destination | the dedicated Cloudflare R2 backup location |
+
+One run dumps the database, validates the archive, uploads it, reads the
+uploaded object back and verifies its checksum. Local copies are pruned by the
+configured local cleanup; remote copies expire under an R2 lifecycle rule on
+the backup prefix. Both are configured for roughly a week.
+
+```bash
+systemctl status reverie-db-backup.timer --no-pager
+journalctl -u reverie-db-backup.service -n 50 --no-pager
+systemctl list-timers reverie-db-backup.timer --no-pager
+```
+
+An ad-hoc dump by hand, as the owner — for a scratch restore, or before a risky
+change:
 
 ```bash
 docker compose exec -T postgres \
-  pg_dump -U reverie -d reverie --format=custom \
+  pg_dump -U <owner-role> -d <database> --format=custom \
   > "reverie-$(date -u +%Y%m%dT%H%M%SZ).dump"
 ```
 
 `--format=custom` so it restores selectively with `pg_restore`, and `-T` so
 Compose does not allocate a TTY and corrupt the stream with carriage returns.
 
-Restoring into an empty database:
+Restoring that dump:
 
 ```bash
 docker compose exec -T postgres \
-  pg_restore -U reverie -d reverie --clean --if-exists < reverie-TIMESTAMP.dump
+  pg_restore -U <owner-role> -d <database> --clean --if-exists < reverie-TIMESTAMP.dump
 ```
 
-Three things worth deciding now rather than after an incident:
-
-- **Off-host.** A dump sitting on the VM is not a backup of the VM. Copy it
-  somewhere else — R2 is already configured and already holds the recordings.
-- **Scheduled.** A backup somebody remembers to take is one that stops being
-  taken. `cron` on the host is enough.
-- **Restore-tested.** An untested dump is a belief, not a backup. Restore one
-  into a scratch container and count the rows before you rely on it.
+An untested dump is a belief, not a backup. Restore one into a scratch
+container and count the rows before you rely on it.
 
 `FREE_TIER_IDENTITY_HMAC_SECRET` must be backed up **with** the database.
 Restoring one without the other resets every account's lifetime free
 allowance, silently — see the note on that variable in `.env.example`.
+
+Fetching a specific backup object out of R2 needs the bucket, prefix and client
+the installed script uses; those are host-specific and are not reproduced here.
+[`docs/deploy.md`](../../docs/deploy.md#7-backups-and-restore) says the same and
+says what is missing.
 
 ---
 
@@ -582,120 +614,76 @@ cannot fill.
 
 ---
 
-## Cutover
+## One backend instance
 
-Render stays live throughout. Oracle is brought up independently and proven
-before any traffic moves.
+One `reverie-backend` is the intended steady state, and the rate limiter is the
+reason. It is a process-local map, deliberately: two instances would give a
+user roughly twice the allowance. That is degraded enforcement rather than
+damage, but it is why a second instance is a short-lived thing during a
+restart and not a configuration.
 
-1. Deploy Oracle with real `.env` values. Verify health, and verify the worker
-   log line above.
-2. Smoke-test against the Oracle hostname directly — sign in, list meetings,
-   open a meeting. CORS will refuse a browser call from the Vercel origin until
-   step 4, so use a token or a local page for this.
-3. Watch it for a few hours under no load. Confirm memory is stable and nothing
-   restarts.
-4. **Move the frontend.** Two variables on Vercel:
-
-   | Variable | From | To |
-   |---|---|---|
-   | `NEXT_PUBLIC_API_URL` | the Render backend URL | `https://$BACKEND_HOSTNAME` |
-   | `NEXT_PUBLIC_WS_URL` | the Render backend URL + `/ws` | `https://$BACKEND_HOSTNAME/ws` |
-
-   Both are `NEXT_PUBLIC_*`, which Next.js **inlines at build time**. Changing
-   them requires a Vercel **redeploy**, not just an environment edit. This is
-   the one step that is not instant, in either direction.
-
-5. `APP_FRONTEND_URL` does **not** change — the frontend is still on Vercel, and
-   that variable is the CORS and STOMP allowed origin. `APP_PUBLIC_URL` **does**:
-   it becomes `https://$BACKEND_HOSTNAME`.
-6. Once traffic is on Oracle and healthy, **suspend the Render backend** rather
-   than deleting it. See the overlap note below for why not to leave both
-   running indefinitely.
-
-### Clerk
-
-Nothing here requires a Clerk change: the backend verifies tokens against
-`CLERK_JWKS_URL` and the issuer, neither of which depends on the API hostname.
-If Clerk is configured with allowed origins or redirect URLs that name the
-Render host, add the Oracle host there.
-
-Production still warns that Clerk is on a **development** instance. That is a
-real launch-hardening item and is **not** part of this migration.
-
----
-
-## Rollback
-
-**Read this before cutting over, because it is no longer free.**
-
-It used to be minutes with no data to restore: Neon, Confluent and R2 were
-shared by both deployments, so neither had state the other lacked. That is no
-longer true of the database. Once Oracle is live, meetings are written to
-`postgres_data` **here**, and Render's backend points at a Neon that stops
-receiving them. Rolling back after real traffic loses every meeting created in
-between unless it is migrated back by hand.
-
-So the rollback below is only clean while Oracle has taken no production
-traffic — the validation window, before the Vercel switch. After that,
-treat rollback as a data migration and not as a config change.
-
-Confluent and R2 are still shared, so recordings and queued work are not at
-risk either way.
-
-1. Set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` back to the Render URL.
-2. **Redeploy Vercel** (they are build-time inlined).
-3. Confirm Render's `/actuator/health` is `UP`, and that `reverie-ai` on Render
-   is running.
-4. `docker compose down` on Oracle, or leave it up and idle — with the frontend
-   pointed away it receives nothing.
-
-Keep `render.yaml` and the Render services until Oracle has been stable for long
-enough to trust. `b7c1734`'s bounded JVM configuration is what makes Render a
-safe place to fall back to.
-
----
-
-## Running both at once, briefly
-
-A short overlap is safe. A permanent one is not.
-
-**The worker is fine.** `meeting_uploaded` has **one partition** and both
-instances join the consumer group `ai-service`, so Kafka assigns that partition
-to exactly one of them. The other idles. No meeting is transcribed twice.
-
-**Spring is mostly fine**, by design rather than by luck:
+Everything else is safe on more than one, by design rather than by luck:
 
 | | |
 |---|---|
 | Outbox relay | `FOR UPDATE SKIP LOCKED` — two relays divide the backlog |
-| Mail outbox | same claim, plus a unique `dedupe_key` with `ON CONFLICT DO NOTHING`, so a nightly job running on both hosts still enqueues one message |
+| Mail outbox | same claim, plus a unique `dedupe_key` with `ON CONFLICT DO NOTHING`, so a nightly job running twice still enqueues one message |
 | Retention | deletions are idempotent; the second pass finds nothing left |
+| AI worker | `meeting_uploaded` has **one partition**, so Kafka assigns it to exactly one consumer in the `ai-service` group. A second worker idles; no meeting is transcribed twice |
 
-**The rate limiter is not.** It is process-local and deliberately so — one
-backend instance is the intended steady state. Two instances means a user gets
-roughly twice the allowance until one is stopped. That is degraded enforcement,
-not damage, and it is the reason to keep the overlap short rather than to
-redesign anything.
+---
 
-Do not run two Spring instances permanently.
+## Historical: the migration onto this host
+
+*Kept because the reasoning is referenced above, not because anything here is
+still a live procedure.*
+
+The two compute services previously ran on Render, and the database on Neon.
+Both moved here: Render's 512 MB Starter limit could not hold the JVM (see
+[Why this exists](#why-this-exists)), and the database followed so that
+`postgres_data` is the only copy rather than one of two.
+
+The cutover was a Vercel change — `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`
+repointed at this host and the frontend rebuilt, because `NEXT_PUBLIC_*` is
+inlined at build time — plus `APP_PUBLIC_URL` on the backend.
+`APP_FRONTEND_URL` did not change: the frontend was on Vercel before and is on
+Vercel now.
+
+**There is no Render rollback.** Once meetings were written to `postgres_data`
+here, going back would have been a data migration rather than a config change,
+and the Render services are not a warm standby. Recovery from a bad release is
+a checkout of a known-good commit or tag and a rebuild
+([Operations](#operations)); recovery from data loss is
+[Backups](#backups).
 
 ---
 
 ## Operations
 
 ```bash
+cd ~/reverie/deploy/oracle
+
 docker compose ps                        # status
+docker stats --no-stream                 # memory and CPU against the limits above
 docker compose logs -f --tail=100        # follow (rotation is bounded)
 docker compose restart reverie-backend
 docker compose down                      # stop everything
 
-# update to a new commit
-git fetch && git checkout <commit>
+# the backup timer
+systemctl status reverie-db-backup.timer --no-pager
+journalctl -u reverie-db-backup.service -n 30 --no-pager
+
+# update to a new reviewed commit or tag
+cd ~/reverie && git fetch --tags && git checkout <tag-or-commit>
+cd deploy/oracle
+docker compose config --quiet            # validate; prints NOTHING on success
 docker compose build && docker compose up -d
 ```
 
 Recovery after a VM reboot is automatic: every service is
 `restart: unless-stopped` and Docker is enabled at boot.
 
-Rebuilding the whole host is this repository, a populated `.env`, and the DNS
-record. Nothing else lives here.
+Rebuilding the host needs this repository, a populated `.env`, the DNS record —
+and a restored database, because `postgres_data` is here and is the only copy.
+The backup script and its systemd units are installed on the host too, and are
+not in this repository. See [Backups](#backups).

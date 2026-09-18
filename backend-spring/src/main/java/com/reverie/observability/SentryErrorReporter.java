@@ -105,7 +105,7 @@ public class SentryErrorReporter implements UnexpectedErrorReporter {
                 options.setAttachThreads(false);
 
                 // Hostnames are infrastructure detail Reverie has no reason to
-                // export; on Render they are container identifiers.
+                // export; in a container they are container identifiers.
                 options.setAttachServerName(false);
 
                 // Dependency/version inventory is infrastructure detail, not needed for paging.

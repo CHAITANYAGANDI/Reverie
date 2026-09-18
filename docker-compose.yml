@@ -8,9 +8,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Postgres is Neon. The JDBC form of Neon's DIRECT URL -- the host
-      # WITHOUT `-pooler` -- with `channel_binding` stripped, that being a
-      # libpq parameter the JDBC driver does not understand and rejects.
+      # Local development points at whatever Postgres you configure in .env;
+      # production self-hosts its own on the Oracle VM (see docs/deploy.md).
+      #
+      # If that is a managed instance behind a pooler, use the JDBC form of its
+      # DIRECT URL -- the host WITHOUT `-pooler` -- and strip `channel_binding`,
+      # that being a libpq parameter the JDBC driver does not understand and
+      # rejects.
       #
       # Direct because row-level security is armed with a session-level setting
       # on each connection (TenantAwareDataSource), and a transaction-mode
@@ -36,7 +40,7 @@ services:
       # Defaults to the compose broker. Set KAFKA_BOOTSTRAP_SERVERS plus the
       # SASL vars in .env to point local dev at a managed broker instead —
       # worth doing once before a deploy, because credentials that are wrong
-      # here fail the same way they would on Render, where the logs are worse.
+      # here fail the same way they do in production, where the logs are worse.
       # One .env name feeds both services; only the container env differs.
       SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?set it in .env}
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
@@ -160,16 +164,18 @@ services:
       # RAG: direct Postgres access for transcript chunk storage/retrieval.
       PG_HOST: ${PG_HOST:?set it in .env}
       PG_PORT: "${PG_PORT:-5432}"
-      # Neon names its database `neondb`, not `reverie`. Parameterised rather
-      # than hardcoded because the failure is a connection error naming a
-      # database that was never meant to exist here.
+      # Parameterised rather than hardcoded: a managed provider names the
+      # database for you (Neon hands out `neondb`), and the failure otherwise
+      # is a connection error naming a database that was never meant to exist
+      # here.
       PG_DATABASE: ${PG_DATABASE:-reverie}
       # Unprivileged, same reason as the backend: a superuser connection would
       # silently ignore every row-level security policy.
       PG_USER: ${APP_DB_USER:-reverie_app}
       PG_PASSWORD: ${APP_DB_PASSWORD:-reverie_app}
-      # "prefer" downgrades to plaintext when the server allows it, which the
-      # local container does. Neon refuses unencrypted connections outright.
+      # "prefer" downgrades to plaintext when the server allows it, which a
+      # local container does. A managed provider typically refuses unencrypted
+      # connections outright, so set PG_SSLMODE=require against one.
       PG_SSLMODE: ${PG_SSLMODE:-prefer}
 
   frontend:

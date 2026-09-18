@@ -16,8 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>{@code UserService.provision} runs on every authenticated request through
  * both doors, and for a returning user it re-derives a mapping that has not
- * changed. Against a loopback database that was invisible. Against Neon it is
- * not: the production round trip is ~16-17 ms, and provisioning spends four of
+ * changed. Against a loopback database that was invisible. Against a network
+ * database it is not: the round trip measured ~16-17 ms on the managed
+ * PostgreSQL production used at the time, and provisioning spends four of
  * them — a system-pool checkout and its {@code set_config}, the lookup by
  * {@code clerk_user_id}, the free-tier identity lookup, and the commit — before
  * the request's own query has issued a single statement. Measured against the

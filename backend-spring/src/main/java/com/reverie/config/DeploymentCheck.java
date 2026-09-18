@@ -35,8 +35,9 @@ import java.util.Optional;
  * announcement has to be built.
  *
  * <p>So the mode declares itself instead. Under the {@code production} profile
- * — set by {@code render.yaml} and by nothing else — a development-shaped value
- * is a startup failure with a named cause, before the first request is served.
+ * — set by the production deployment and by nothing else — a development-shaped
+ * value is a startup failure with a named cause, before the first request is
+ * served.
  * A deployment that cannot boot is a bad ten minutes; a deployment that boots
  * open is a bad quarter.
  *
@@ -594,9 +595,9 @@ public class DeploymentCheck {
             return List.of(name + " is not set. " + why);
         }
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            // Render's blueprint cannot express a scheme: `fromService` yields
-            // a bare host, and a bare host is not an origin. This is the single
-            // most likely way to get here, so the message says the fix.
+            // A bare host is not an origin, and pasting one is the single most
+            // likely way to get here — the earlier Render blueprint emitted
+            // exactly that shape — so the message says the fix.
             return List.of(name + " is '" + url + "', which has no scheme. "
                     + "It must be an absolute URL, e.g. https://" + url + ". " + why);
         }

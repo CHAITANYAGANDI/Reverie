@@ -1,12 +1,12 @@
 """Who is allowed to call the AI service.
 
 Every ``/ai/*`` route is internal: Spring calls them, browsers never do. Until
-this existed the only thing saying so was the network -- Render runs the AI
-service as a private service, unreachable from the internet -- and network
-placement is a deployment fact, not an application one. It is one misconfigured
-service definition, one SSRF from another component inside the same private
-network, or one `docker compose` port mapping away from being wrong, and
-nothing in the process would notice.
+this existed the only thing saying so was the network -- the AI service runs
+with no published port, unreachable from the internet -- and network placement
+is a deployment fact, not an application one. It is one misconfigured service
+definition, one SSRF from another component inside the same private network, or
+one `docker compose` port mapping away from being wrong, and nothing in the
+process would notice.
 
 That matters more here than it would for most internal services, because these
 routes take ``user_id`` from the caller and use it as the tenant. PostgreSQL
@@ -17,11 +17,11 @@ will, and could index text into a tenant it named.
 
 So the same shared secret already used in the other direction is required in
 this one. ``callback.py`` sends ``X-Internal-Token`` to Spring, Spring's
-``InternalTokenFilter`` checks it, and Render already puts the same value in
-both services -- so this is a second use of an existing credential rather than
-a new one to distribute and rotate.
+``InternalTokenFilter`` checks it, and the deployment already puts the same
+value in both services -- so this is a second use of an existing credential
+rather than a new one to distribute and rotate.
 
-``/health`` is deliberately not covered. Render polls it to decide whether the
+``/health`` is deliberately not covered. It is polled to decide whether the
 service is up, and a health check that needs a secret is a health check that
 reports "down" for a configuration mistake that has not happened yet.
 """
