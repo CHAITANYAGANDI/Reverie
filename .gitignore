@@ -1,8 +1,8 @@
 # Env / secrets
 #
-# Real environment files hold live credentials -- the Clerk secret key, the Neon
-# password, R2 access keys, the Confluent API secret. None of them belong in a
-# repository, and this one is public.
+# Real environment files hold live credentials -- the Clerk secret key, the
+# database passwords, R2 access keys, the Confluent API secret. None of them
+# belong in a repository, and this one is public.
 #
 # `.env.*` rather than a list of names. The variants multiply -- .env.production,
 # .env.staging, .env.development, .env.production.local, and whatever the next

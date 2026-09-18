@@ -297,8 +297,9 @@ services:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 5s
-      # Spring takes ~70 s to start on Render. The grace period is generous so
-      # a slow boot is not read as a failure and restarted into a loop.
+      # Spring takes ~70 s to start (measured on the earlier Render host, and
+      # the same order of magnitude here). The grace period is generous so a
+      # slow boot is not read as a failure and restarted into a loop.
       start_period: 180s
       retries: 3
     networks:

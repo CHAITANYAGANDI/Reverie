@@ -57,7 +57,7 @@ logger = logging.getLogger("ai-service.router.ai")
 
 # Applied to the router rather than to each route, so a new endpoint is
 # authenticated by existing here instead of by somebody remembering to say so.
-# `/health` lives on the app, not this router, and stays open for Render's probe.
+# `/health` lives on the app, not this router, and stays open for the probe.
 router = APIRouter(
     prefix="/ai",
     tags=["ai"],

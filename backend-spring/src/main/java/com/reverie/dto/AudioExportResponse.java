@@ -7,7 +7,7 @@ package com.reverie.dto;
  *
  * <p>Converting an hour of audio takes tens of seconds. A synchronous endpoint
  * that did it would hold a request thread for the whole of that and then lose
- * the race anyway: Render's proxy, most corporate proxies and every browser
+ * the race anyway: the reverse proxy, most corporate proxies and every browser
  * give up well before the longest recording Reverie accepts is finished. The
  * failure mode is the worst kind — the conversion completes, the object is
  * written, and the user is looking at a timeout.

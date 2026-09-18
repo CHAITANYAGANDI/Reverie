@@ -14,10 +14,11 @@ these contracts so they interoperate.
 | backend-spring | Spring Boot        | 8080  | http://localhost:8080     |
 | ai-service     | FastAPI            | 8000  | http://localhost:8000     |
 
-No infrastructure runs locally. Postgres, Kafka and object storage are Neon,
-Confluent Cloud and Cloudflare R2, reached over the internet and configured
-from `.env`. Only the three application containers above are
-built and run here.
+No infrastructure runs locally. The Postgres, Kafka and object-storage
+endpoints a development stack uses are reached over the internet and
+configured from `.env`; only the three application containers above are built
+and run here. Production is a different shape — a self-hosted PostgreSQL on
+the Oracle VM, see [`docs/deploy.md`](deploy.md).
 
 The frontend talks **only** to Spring Boot (`/api/v1/**`) and the WebSocket.
 Spring Boot orchestrates FastAPI via Kafka. FastAPI calls back to Spring Boot's

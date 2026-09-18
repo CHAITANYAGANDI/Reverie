@@ -113,17 +113,17 @@ public class AiClient {
     /**
      * Puts {@code http://} in front of a bare {@code host:port}.
      *
-     * <p>Render's blueprint cannot produce a URL. {@code fromService} with
-     * {@code property: hostport} yields {@code reverie-ai:10000} — the right
-     * host and the right port, with no scheme — and that is not a base URL:
-     * {@code URI} reads {@code reverie-ai} as the scheme and the rest as an
-     * opaque body, so every call fails with a parse error naming a host nobody
-     * configured. Losing the auto-wiring to avoid that would mean writing the
-     * private service's port out by hand and keeping it in step forever.
+     * <p>A bare {@code host:port} is not a base URL: {@code URI} reads
+     * {@code reverie-ai} as the scheme and the rest as an opaque body, so every
+     * call fails with a parse error naming a host nobody configured. This
+     * existed because the earlier Render blueprint could not express a scheme —
+     * {@code fromService} with {@code property: hostport} yielded exactly that
+     * shape — and it is kept as a defence, because the value is still an
+     * operator-supplied address.
      *
-     * <p>{@code http}, not {@code https}: this address exists only on Render's
-     * internal network, where private services are plain HTTP and are not
-     * reachable from outside at all.
+     * <p>{@code http}, not {@code https}: this address exists only on the
+     * private container network, where the AI service is plain HTTP, has no
+     * published port and is not reachable from outside at all.
      *
      * <p>Only this URL gets repaired. The frontend and public URLs are refused
      * by {@link com.reverie.config.DeploymentCheck} instead, because for those
