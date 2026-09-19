@@ -50,14 +50,11 @@ but does not count as an import. No paid tier, and no demo credentials here.
 
 ## Product Preview
 
-<!--
-  SCREENSHOTS TO BE ADDED from https://reverieai.in: landing page; Home with the
-  ask panel; a summary with decisions, risks and action items; the transcript
-  with speakers and timestamps; Ask Reverie with a citation resolved into the
-  transcript.
--->
+A quick walkthrough of Reverie's core workflow — record or import a meeting,
+generate a speaker-aware transcript and summary, review action items, and ask
+questions with transcript citations.
 
-_No screenshots in the repository yet — see [reverieai.in](https://reverieai.in)._
+https://github.com/user-attachments/assets/1a1aa19a-3cc3-4722-b11e-1190fb393156
 
 ## Core Features
 
