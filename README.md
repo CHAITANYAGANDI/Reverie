@@ -117,13 +117,46 @@ Everything below is reachable in the product today.
 
 The diagram below shows the current production architecture.
 
-![Reverie AI High-Level Architecture](docs/assets/reverie-hld.png)
+```mermaid
+flowchart TB
+    User(["Browser"])
+    subgraph Vercel
+        FE["Next.js frontend"]
+    end
+    subgraph Oracle["Oracle Cloud VM — Docker Compose"]
+        Caddy["Caddy<br/>TLS + reverse proxy"]
+        API["Spring Boot API<br/>system of record"]
+        AI["FastAPI AI worker"]
+        DB[("PostgreSQL 16<br/>+ pgvector")]
+    end
+    Clerk["Clerk"]
+    R2["Cloudflare R2"]
+    Kafka["Kafka<br/>meeting_uploaded"]
+    Providers["AssemblyAI / OpenAI"]
+
+    User --> FE
+    User -->|"REST + WebSocket"| Caddy
+    User -.->|"presigned upload/download"| R2
+    FE --> Clerk
+    Caddy --> API
+    API -->|"verify token"| Clerk
+    API --> DB
+    API --> R2
+    API -->|"internal API"| AI
+    API -->|"outbox"| Kafka
+    Kafka --> AI
+    AI --> DB
+    AI --> R2
+    AI --> Providers
+    AI -->|"result callback"| API
+```
 
 **Spring Boot** is the system of record and the only public application entry
 point: it owns the data, checks who you are, and never calls a model itself.
-**FastAPI** does the AI work, **PostgreSQL + pgvector** holds both application
-data and search vectors, and **Cloudflare R2** holds recordings and generated
-media.
+**FastAPI** does the AI work: long jobs reach it through the queue, while
+interactive work — asking a question, translating — is a direct call.
+**PostgreSQL + pgvector** holds both application data and search vectors, and
+**Cloudflare R2** holds recordings and generated media.
 
 ## Technology Stack
 
