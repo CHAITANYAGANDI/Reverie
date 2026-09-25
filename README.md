@@ -117,39 +117,7 @@ Everything below is reachable in the product today.
 
 The diagram below shows the current production architecture.
 
-```mermaid
-flowchart TB
-    User(["Browser"])
-    subgraph Vercel
-        FE["Next.js frontend"]
-    end
-    subgraph Oracle["Oracle Cloud VM — Docker Compose"]
-        Caddy["Caddy<br/>TLS + reverse proxy"]
-        API["Spring Boot API<br/>system of record"]
-        AI["FastAPI AI worker"]
-        DB[("PostgreSQL 16<br/>+ pgvector")]
-    end
-    Clerk["Clerk"]
-    R2["Cloudflare R2"]
-    Kafka["Kafka<br/>meeting_uploaded"]
-    Providers["AssemblyAI / OpenAI"]
-
-    User --> FE
-    User -->|"REST + WebSocket"| Caddy
-    User -.->|"presigned upload/download"| R2
-    FE --> Clerk
-    Caddy --> API
-    API -->|"verify token"| Clerk
-    API --> DB
-    API --> R2
-    API -->|"internal API"| AI
-    API -->|"outbox"| Kafka
-    Kafka --> AI
-    AI --> DB
-    AI --> R2
-    AI --> Providers
-    AI -->|"result callback"| API
-```
+![Reverie AI high-level design: browser, Vercel frontend, and an Oracle Cloud VM running Caddy, Spring Boot, FastAPI and PostgreSQL with pgvector, connected to Clerk, Cloudflare R2, Kafka, AssemblyAI, OpenAI, Resend and Sentry](docs/assets/reverie-hld.gif)
 
 **Spring Boot** is the system of record and the only public application entry
 point: it owns the data, checks who you are, and never calls a model itself.
